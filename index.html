@@ -958,19 +958,15 @@ async function drawMonth(){
   // Combinar con agenda local
   const todosItems = [...agendaItems, ...gcalEvents];
   const hoy=fechaHoyLocal();
-  // Calcular firstDay con Zeller's formula (sin usar Date timezone)
-  // Día de la semana para el 1ro del mes: 0=dom,1=lun...6=sab
-  const _y = m===0?y-1:y, _m = m===0?13:m+1;
-  const _k = _y%100, _j = Math.floor(_y/100);
-  const firstDay = ((1 + Math.floor(13*(_m+1)/5) + _k + Math.floor(_k/4) + Math.floor(_j/4) - 2*_j) % 7 + 7) % 7;
-  const daysInMonth=new Date(y,m+1,0).getDate();
-  const daysInPrev=new Date(y,m,0).getDate();
+  // Calcular firstDay correctamente
+  const firstDay = new Date(Date.UTC(y, m, 1)).getUTCDay();
+  const daysInMonth=new Date(Date.UTC(y,m+1,0)).getUTCDate();
+  const daysInPrev=new Date(Date.UTC(y,m,0)).getUTCDate();
   const DAYS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   let html=`<div class="cal-grid-month">${DAYS.map(d=>`<div class="cal-dow">${d}</div>`).join('')}`;
   // días del mes anterior
   for(let i=firstDay-1;i>=0;i--){
     const dd=daysInPrev-i;
-    const iso=`${y}-${String(m).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
     html+=`<div class="cal-day other-month"><div class="cal-day-num">${dd}</div></div>`;
   }
   // días del mes
@@ -996,14 +992,8 @@ async function drawMonth(){
 
 async function drawWeek(){
   const d=new Date(calDate);
-  // Calcular día de semana de calDate sin timezone usando Zeller
-  const _cy=calDate.getFullYear(), _cm=calDate.getMonth(), _cd=calDate.getDate();
-  const _zy=_cm===0?_cy-1:_cy, _zm=_cm===0?13:_cm+1;
-  const _zk=_zy%100, _zj=Math.floor(_zy/100);
-  const dow=((_cd + Math.floor(13*(_zm+1)/5) + _zk + Math.floor(_zk/4) + Math.floor(_zj/4) - 2*_zj)%7+7)%7;
-  // dow: 0=sab,1=dom,2=lun...6=vie (Zeller) — convertir a 0=dom,1=lun...
-  const dowJS=[6,0,1,2,3,4,5][dow];
-  const monday=new Date(calDate);monday.setDate(calDate.getDate()-(dowJS===0?6:dowJS-1));
+  const dow = new Date(Date.UTC(calDate.getFullYear(), calDate.getMonth(), calDate.getDate())).getUTCDay();
+  const monday=new Date(calDate);monday.setDate(calDate.getDate()-(dow===0?6:dow-1));
   const days=[];
   for(let i=0;i<7;i++){const dd=new Date(monday);dd.setDate(monday.getDate()+i);days.push(dd);}
   const label=`${days[0].toLocaleDateString('es-CO',{day:'numeric',month:'short'})} – ${days[6].toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}`;
