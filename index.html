@@ -924,6 +924,16 @@ async function fetchGcalEvents(fechaInicio, fechaFin){
         const timePart = ev.start.dateTime.split('T')[1]||'';
         hora = timePart.slice(0,5);
       }
+      // Calcular duración del evento de Google
+      let duracion_minutos=60;
+      if(ev.start.dateTime && ev.end?.dateTime){
+        const startD=new Date(ev.start.dateTime);
+        const endD=new Date(ev.end.dateTime);
+        duracion_minutos=Math.round((endD-startD)/60000);
+      } else if(ev.start.date && ev.end?.date){
+        // Evento de todo el día
+        duracion_minutos=1440;
+      }
       return {
         id: ev.id,
         titulo: ev.summary||'(sin título)',
@@ -932,7 +942,8 @@ async function fetchGcalEvents(fechaInicio, fechaFin){
         detalle: ev.description||'',
         urgente: false,
         done: false,
-        fuente: 'google'
+        fuente: 'google',
+        duracion_minutos
       };
     });
   }catch(e){ return []; }
@@ -1276,6 +1287,10 @@ async function abrirEditarAgenda(id){
           </label>
         </div>
       </div>
+        <div class="fg full"><div class="flbl">Invitados (correos)</div>
+          <input class="finput" id="age-invitados" value="${(it.invitados||'').replace(/"/g,'&quot;')}" placeholder="correo1@satlock.com, correo2@empresa.com"/>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px">Separe múltiples correos con coma.</div>
+        </div>
       <div class="form-actions" style="margin-top:16px;justify-content:space-between">
         <button class="btn-sec" style="color:var(--red);border-color:var(--red)" onclick="eliminarAgenda('${id}')">Eliminar</button>
         <div style="display:flex;gap:8px">
@@ -1288,13 +1303,15 @@ async function abrirEditarAgenda(id){
 }
 
 async function guardarEdicionAgenda(id){
+  const invitadosEdit=document.getElementById('age-invitados')?.value.trim()||'';
   const update={
     fecha:document.getElementById('age-fecha').value,
     hora:document.getElementById('age-hora').value+':00',
     titulo:document.getElementById('age-titulo').value.trim(),
     detalle:document.getElementById('age-detalle').value,
     duracion_minutos:parseInt(document.getElementById('age-duracion').value),
-    urgente:document.getElementById('age-urgente').checked
+    urgente:document.getElementById('age-urgente').checked,
+    invitados:invitadosEdit
   };
   if(!update.titulo) return;
   await sb.from('agenda').update(update).eq('id',id);
@@ -1433,7 +1450,8 @@ async function guardarActividad(){
   const nuevo={
     usuario_id:USER.id,
     fecha,hora:hora+':00',titulo,detalle,urgente,done:false,
-    duracion_minutos:duracion
+    duracion_minutos:duracion,
+    invitados:invitados
   };
   const {data}=await sb.from('agenda').insert(nuevo).select().single();
   if(data) agendaItems.push(data);
