@@ -988,9 +988,10 @@ function renderCalendar(container){
             <button class="cal-view-btn${calView==='week'?' active':''}" onclick="setCalView('week')">Semana</button>
           </div>
           <button class="btn-pri" onclick="nuevaActividadCal()" style="font-size:11px;padding:5px 12px">+ Nuevo</button>
+          <span style="font-size:9px;color:var(--text3)">v4.0</span>
         </div>
       </div>
-      <div id="cal-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column"></div>
+      <div id="cal-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0"></div>
     </div>`;
   drawCal();
 }
