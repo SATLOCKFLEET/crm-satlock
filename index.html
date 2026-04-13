@@ -1178,7 +1178,7 @@ async function drawWeek(){
   for(let h=HORA_INI;h<HORA_FIN;h++){
     for(let q=0;q<4;q++){
       const top=(h-HORA_INI)*4*SLOT_H+q*SLOT_H;
-      bodyHtml+=`<div style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;border-bottom:0.5px solid ${q===0?'var(--border)':'rgba(0,0,0,0.04)'}">
+      bodyHtml+=`<div style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;${q===0?'border-top:0.5px solid var(--border)':'border-bottom:0.5px dashed rgba(0,0,0,0.06)'}">
         ${q===0?`<span style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace;position:absolute;top:2px;right:6px;padding:0 2px;line-height:1">${String(h).padStart(2,'0')}:00</span>`:''}
       </div>`;
     }
@@ -1198,7 +1198,7 @@ async function drawWeek(){
       for(let q=0;q<4;q++){
         const top=(h-HORA_INI)*4*SLOT_H+q*SLOT_H;
         const horaClick=`${String(h).padStart(2,'0')}:${q===0?'00':q===1?'15':q===2?'30':'45'}`;
-        bodyHtml+=`<div onclick="nuevaActividadFecha('${iso}','${horaClick}')" style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;border-bottom:0.5px solid ${q===0?'var(--border)':'rgba(0,0,0,0.04)'};cursor:pointer;transition:background .1s" onmouseover="this.style.background='rgba(25,66,140,0.05)'" onmouseout="this.style.background=''"></div>`;
+        bodyHtml+=`<div onclick="nuevaActividadFecha('${iso}','${horaClick}')" style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;${q===0?'border-top:0.5px solid var(--border)':'border-bottom:0.5px dashed rgba(0,0,0,0.04)'};cursor:pointer;transition:background .1s" onmouseover="this.style.background='rgba(25,66,140,0.05)'" onmouseout="this.style.background=''"></div>`;
       }
     }
 
