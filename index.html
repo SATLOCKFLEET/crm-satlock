@@ -313,6 +313,49 @@ tbody tr:hover{background:var(--surface2)}
 .loading-bar{position:fixed;top:0;left:0;width:0;height:3px;background:var(--sat-orange);z-index:9999;transition:width .3s}
 .loading-bar.active{animation:loadbar 1.5s ease-in-out infinite}
 @keyframes loadbar{0%{width:0;left:0}50%{width:70%;left:0}100%{width:100%;left:0;opacity:0}}
+
+/* ── Diario de gestión ── */
+.diario-row{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+.diario-header{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;transition:background .12s;border-bottom:0.5px solid var(--border)}
+.diario-header:hover{background:var(--surface2)}
+.diario-empresa{font-size:13px;font-weight:500;color:var(--text);flex:1}
+.diario-contacto{font-size:11px;color:var(--text3)}
+.diario-semaforo{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.diario-semaforo.verde{background:#639922}
+.diario-semaforo.amarillo{background:#BA7517}
+.diario-semaforo.rojo{background:#E24B4A}
+.diario-semaforo.gris{background:#888780}
+.diario-dias{font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.diario-body{padding:14px 16px;display:none}
+.diario-body.open{display:block}
+.diario-timeline{display:flex;flex-direction:column;gap:0;margin-bottom:14px;position:relative}
+.diario-timeline::before{content:'';position:absolute;left:15px;top:0;bottom:0;width:1px;background:var(--border)}
+.diario-entry{display:flex;gap:12px;align-items:flex-start;position:relative;padding:6px 0}
+.diario-dot{width:8px;height:8px;border-radius:50%;background:var(--sat-blue);border:2px solid var(--surface);flex-shrink:0;margin-top:5px;z-index:1;position:relative}
+.diario-dot.whatsapp{background:#25D366}
+.diario-dot.correo{background:var(--sat-orange)}
+.diario-dot.presencial{background:#534AB7}
+.diario-dot.llamada{background:var(--sat-blue)}
+.diario-entry-content{flex:1;min-width:0}
+.diario-entry-fecha{font-size:10px;color:var(--text3);font-family:'Courier New',monospace;margin-bottom:2px}
+.diario-entry-tipo{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.diario-entry-tipo.llamada{color:var(--sat-blue)}
+.diario-entry-tipo.whatsapp{color:#25D366}
+.diario-entry-tipo.correo{color:var(--sat-orange)}
+.diario-entry-tipo.presencial{color:#534AB7}
+.diario-entry-tipo.otro{color:var(--gray)}
+.diario-entry-nota{font-size:12px;color:var(--text);line-height:1.5}
+.diario-add-form{background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius-sm);padding:12px;margin-top:8px}
+.diario-add-grid{display:grid;grid-template-columns:120px 130px 1fr auto;gap:8px;align-items:start}
+.tipo-btn{font-family:inherit;font-size:11px;font-weight:500;padding:4px 10px;border-radius:20px;border:0.5px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;transition:all .12s;white-space:nowrap}
+.tipo-btn:hover{border-color:var(--border2);color:var(--text)}
+.tipo-btn.sel-llamada{background:var(--blue-light);color:var(--blue-dark);border-color:var(--sat-blue)}
+.tipo-btn.sel-whatsapp{background:#e8fdf0;color:#1a7a42;border-color:#25D366}
+.tipo-btn.sel-correo{background:var(--sat-orange-light);color:var(--sat-orange-dark);border-color:var(--sat-orange)}
+.tipo-btn.sel-presencial{background:var(--purple-light);color:var(--purple-dark);border-color:#534AB7}
+.tipo-btn.sel-otro{background:var(--gray-light);color:var(--gray);border-color:var(--gray)}
+.diario-search{font-family:inherit;font-size:12px;padding:6px 10px;border:0.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);width:200px}
+.diario-search:focus{outline:none;border-color:var(--sat-blue)}
 </style>
 </head>
 <body>
@@ -509,6 +552,7 @@ function construirTabs(){
   const base = [
     {label:'Seguimiento',render:renderSeguimiento},
     {label:'+ Nueva oportunidad',render:renderNueva},
+    {label:'Diario de gestión',render:renderDiario},
     {label:'Agenda del día',render:renderAgenda},
     {label:'Pendientes',render:renderPendientes},
     {label:'15 · 5 · 1',render:renderQCO},
@@ -1710,6 +1754,183 @@ async function registrarQCO(){
   switchTab(4);
 }
 
+
+
+// ── DIARIO DE GESTIÓN ─────────────────────────────────────────────────────────
+async function renderDiario(container){
+  let query = sb.from('oportunidades')
+    .select('id,empresa,contacto,cargo_contacto,estado,fecha_inicio_gestion,de_mercadeo,producto')
+    .in('estado',['en_proceso','propuesta_enviada','cerrado'])
+    .order('empresa');
+  if(PERFIL.rol==='ejecutivo_fleet'||PERFIL.rol==='ejecutivo_carga'){
+    query = query.eq('usuario_id', USER.id);
+  }
+  const {data:ops} = await query;
+  
+  // Cargar última gestión de cada oportunidad
+  const {data:gestiones} = await sb.from('gestiones')
+    .select('oportunidad_id,fecha,tipo,nota,created_at')
+    .order('fecha',{ascending:false});
+
+  container.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:14px;font-weight:500;color:var(--text)">Diario de gestión</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Registro de contactos y seguimiento por cliente — alerta si pasan +30 días sin gestión</div>
+      </div>
+      <input class="diario-search" type="text" placeholder="Buscar cliente..." oninput="filtrarDiario(this.value)" id="diario-search"/>
+    </div>
+    <div id="diario-lista"></div>`;
+
+  window._diarioOps = ops||[];
+  window._diarioGestiones = gestiones||[];
+  renderDiarioLista('');
+}
+
+function ultimaGestion(opId){
+  const gg = (window._diarioGestiones||[]).filter(g=>g.oportunidad_id===opId);
+  if(!gg.length) return null;
+  return gg.sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+}
+
+function semaforoDiario(opId, fechaInicio, estado){
+  const ult = ultimaGestion(opId);
+  const refFecha = ult ? ult.fecha : fechaInicio;
+  if(!refFecha) return {cls:'gris',dias:null,label:'Sin gestión'};
+  const dias = diasGestion(refFecha, null);
+  if(estado==='cerrado') return {cls:'verde',dias,label:dias+'d · Cerrado'};
+  if(dias<=15) return {cls:'verde',dias,label:dias+'d'};
+  if(dias<=30) return {cls:'amarillo',dias,label:dias+'d ⚠'};
+  return {cls:'rojo',dias,label:dias+'d !'};
+}
+
+function filtrarDiario(q){
+  renderDiarioLista(q);
+}
+
+function renderDiarioLista(q){
+  const lista = document.getElementById('diario-lista');
+  if(!lista) return;
+  let ops = window._diarioOps||[];
+  if(q){
+    const ql=q.toLowerCase();
+    ops=ops.filter(o=>o.empresa.toLowerCase().includes(ql)||(o.contacto||'').toLowerCase().includes(ql));
+  }
+  // Ordenar: más urgentes primero (más días sin gestión)
+  ops = [...ops].sort((a,b)=>{
+    const sa=semaforoDiario(a.id,a.fecha_inicio_gestion,a.estado);
+    const sb2=semaforoDiario(b.id,b.fecha_inicio_gestion,b.estado);
+    return (sb2.dias||0)-(sa.dias||0);
+  });
+  if(!ops.length){lista.innerHTML='<div class="empty">Sin clientes activos</div>';return;}
+  lista.innerHTML=ops.map(op=>{
+    const sem=semaforoDiario(op.id,op.fecha_inicio_gestion,op.estado);
+    const ult=ultimaGestion(op.id);
+    const gestOp=(window._diarioGestiones||[]).filter(g=>g.oportunidad_id===op.id)
+      .sort((a,b)=>b.fecha.localeCompare(a.fecha));
+    const TIPOS={llamada:'Llamada',whatsapp:'WhatsApp',correo:'Correo',presencial:'Presencial',otro:'Otro'};
+    const semBg=sem.cls==='verde'?'var(--green-light)':sem.cls==='amarillo'?'var(--amber-light)':sem.cls==='rojo'?'var(--red-light)':'var(--gray-light)';
+    const semTxt=sem.cls==='verde'?'var(--green)':sem.cls==='amarillo'?'var(--amber)':sem.cls==='rojo'?'var(--red)':'var(--gray)';
+    return `<div class="diario-row" id="diario-row-${op.id}">
+      <div class="diario-header" onclick="toggleDiario('${op.id}')">
+        <div class="diario-semaforo ${sem.cls}"></div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span class="diario-empresa">${op.empresa}</span>
+            ${op.de_mercadeo?`<span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;background:#fdeee8;color:var(--sat-orange)">Mercadeo</span>`:''}
+            <span style="font-size:10px;color:var(--text3)">${op.producto||''}</span>
+          </div>
+          <div class="diario-contacto">${op.contacto||''}${op.cargo_contacto?' · '+op.cargo_contacto:''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span class="diario-dias" style="background:${semBg};color:${semTxt}">${sem.label}</span>
+          <span style="font-size:11px;color:var(--text3)">${ult?'Último: '+ult.fecha.split('-').reverse().join('/'):'Sin gestión'}</span>
+          <span style="color:var(--text3);font-size:14px">▾</span>
+        </div>
+      </div>
+      <div class="diario-body" id="diario-body-${op.id}">
+        <!-- Timeline de gestiones -->
+        <div class="diario-timeline" id="timeline-${op.id}">
+          ${gestOp.length?gestOp.slice(0,10).map(g=>`
+            <div class="diario-entry">
+              <div class="diario-dot ${g.tipo||'llamada'}"></div>
+              <div class="diario-entry-content">
+                <div class="diario-entry-fecha">${g.fecha.split('-').reverse().join('/')}</div>
+                <div class="diario-entry-tipo ${g.tipo||'otro'}">${TIPOS[g.tipo]||'Gestión'}</div>
+                <div class="diario-entry-nota">${g.nota||''}</div>
+              </div>
+            </div>`).join('')
+          :'<div style="font-size:12px;color:var(--text3);padding:8px 0 8px 28px">Sin gestiones registradas aún</div>'}
+        </div>
+        <!-- Formulario agregar gestión -->
+        <div class="diario-add-form">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Registrar gestión</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            ${['llamada','whatsapp','correo','presencial','otro'].map(t=>`
+              <button class="tipo-btn" id="tipo-${op.id}-${t}" onclick="selTipo('${op.id}','${t}')">${t==='llamada'?'📞 Llamada':t==='whatsapp'?'💬 WhatsApp':t==='correo'?'✉ Correo':t==='presencial'?'🤝 Presencial':'• Otro'}</button>
+            `).join('')}
+          </div>
+          <div style="display:grid;grid-template-columns:130px 1fr auto;gap:8px;align-items:start">
+            <input class="finput" type="date" id="fecha-gest-${op.id}" value="${fechaHoyLocal()}" style="font-size:12px;padding:7px 10px"/>
+            <textarea class="ftxt" id="nota-gest-${op.id}" placeholder="Describe la gestión realizada: resultado de la llamada, acuerdo alcanzado, próximo paso..." style="min-height:60px;font-size:12px;resize:vertical"></textarea>
+            <button class="btn-pri" onclick="guardarGestion('${op.id}')" style="padding:7px 14px;white-space:nowrap;align-self:flex-end">Guardar</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  // Seleccionar llamada por defecto en cada fila
+  ops.forEach(op=>{
+    const btn=document.getElementById(`tipo-${op.id}-llamada`);
+    if(btn) btn.classList.add('sel-llamada');
+  });
+  window._diarioTipos = {};
+  ops.forEach(op=>{ window._diarioTipos[op.id]='llamada'; });
+}
+
+function toggleDiario(opId){
+  const body=document.getElementById(`diario-body-${opId}`);
+  if(body) body.classList.toggle('open');
+}
+
+function selTipo(opId, tipo){
+  const tipos=['llamada','whatsapp','correo','presencial','otro'];
+  tipos.forEach(t=>{
+    const btn=document.getElementById(`tipo-${opId}-${t}`);
+    if(btn) btn.className='tipo-btn';
+  });
+  const sel=document.getElementById(`tipo-${opId}-${tipo}`);
+  if(sel) sel.classList.add(`sel-${tipo}`);
+  if(!window._diarioTipos) window._diarioTipos={};
+  window._diarioTipos[opId]=tipo;
+}
+
+async function guardarGestion(opId){
+  const nota=document.getElementById(`nota-gest-${opId}`)?.value.trim();
+  const fecha=document.getElementById(`fecha-gest-${opId}`)?.value||fechaHoyLocal();
+  const tipo=(window._diarioTipos||{})[opId]||'llamada';
+  if(!nota){alert('Escriba una nota de la gestión.');return;}
+  const {data,error}=await sb.from('gestiones').insert({
+    oportunidad_id:opId,
+    usuario_id:USER.id,
+    fecha,tipo,nota
+  }).select().single();
+  if(error){alert('Error: '+error.message);return;}
+  // Actualizar en memoria
+  if(!window._diarioGestiones) window._diarioGestiones=[];
+  window._diarioGestiones.unshift(data);
+  // Limpiar nota
+  const notaEl=document.getElementById(`nota-gest-${opId}`);
+  if(notaEl) notaEl.value='';
+  // Re-renderizar solo esta fila
+  const q=document.getElementById('diario-search')?.value||'';
+  renderDiarioLista(q);
+  // Reabrir la fila
+  setTimeout(()=>{
+    const body=document.getElementById(`diario-body-${opId}`);
+    if(body) body.classList.add('open');
+  },50);
+}
 
 // ── EXPORTAR EXCEL (gerencia) ─────────────────────────────────────────────────
 async function exportarExcel(){
