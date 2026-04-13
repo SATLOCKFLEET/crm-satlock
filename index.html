@@ -1082,7 +1082,7 @@ async function drawMonth(){
     const mas=items.length-3;
     html+=`<div class="cal-month-cell${isToday?' today':''}" onclick="nuevaActividadFecha('${iso}')">
       <div class="cal-month-num">${d}</div>
-      ${visible.map(it=>`<div class="cal-month-event ${evClass(it)}" onclick="event.stopPropagation();toggleAg('${it.id}',${it.done})" title="${it.hora.slice(0,5)} ${it.titulo}">${it.hora.slice(0,5)} ${it.titulo}</div>`).join('')}
+      ${visible.map(it=>`<div class="cal-month-event ${evClass(it)}" onclick="event.stopPropagation();abrirEditarAgenda('${it.id}')" title="${it.hora.slice(0,5)} ${it.titulo} — clic para editar">${it.hora.slice(0,5)} ${it.titulo}</div>`).join('')}
       ${mas>0?`<div class="cal-month-more" onclick="event.stopPropagation();setCalView('week');calDate=new Date('${iso}');drawCal()">+${mas} más</div>`:''}
     </div>`;
   }
@@ -1192,7 +1192,7 @@ async function drawWeek(){
       if(slot<0||(it.hora&&parseInt(it.hora)>=HORA_FIN)) return;
       const top=Math.max(0,slotToTop(slot));
       const h=SLOT_H*4; // 1 hora
-      bodyHtml+=`<div class="cal-event-block ${evClass(it)}" style="top:${top}px;height:${h}px" onclick="toggleAg('${it.id}',${it.done})" title="${it.titulo}">
+      bodyHtml+=`<div class="cal-event-block ${evClass(it)}" style="top:${top}px;height:${h}px" onclick="abrirEditarAgenda('${it.id}')" title="${it.titulo} — clic para editar">
         <div class="cal-event-title">${it.titulo}</div>
         <div class="cal-event-time">${it.hora.slice(0,5)}${it.fuente==='google'?' · Google':''}</div>
       </div>`;
@@ -1221,6 +1221,77 @@ async function toggleAg(id,done){
   await sb.from('agenda').update({done:!done}).eq('id',id);
   const idx=agendaItems.findIndex(i=>i.id===id);
   if(idx>-1) agendaItems[idx].done=!done;
+  drawCal();
+}
+
+async function abrirEditarAgenda(id){
+  const it=agendaItems.find(x=>x.id===id);
+  if(!it) return;
+  // Generar opciones de hora
+  const timeOpts=[];
+  for(let h=7;h<=20;h++) for(let m of[0,15,30,45]) timeOpts.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+  const horaVal=it.hora?it.hora.slice(0,5):'08:00';
+  const durVal=it.duracion_minutos||60;
+
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='modal-ag-edit';
+  overlay.innerHTML=`
+    <div class="modal-box" style="max-width:420px">
+      <div class="modal-title">Editar actividad
+        <button class="modal-close" onclick="document.getElementById('modal-ag-edit').remove()">✕</button>
+      </div>
+      <div class="form-grid">
+        <div class="fg"><div class="flbl">Fecha</div><input class="finput" type="date" id="age-fecha" value="${it.fecha||''}"/></div>
+        <div class="fg"><div class="flbl">Hora</div>
+          <select class="finput" id="age-hora">
+            ${timeOpts.map(t=>`<option value="${t}"${t===horaVal?' selected':''}>${t}</option>`).join('')}
+          </select></div>
+        <div class="fg full"><div class="flbl">Título</div><input class="finput" id="age-titulo" value="${(it.titulo||'').replace(/"/g,'&quot;')}"/></div>
+        <div class="fg full"><div class="flbl">Descripción</div><input class="finput" id="age-detalle" value="${(it.detalle||'').replace(/"/g,'&quot;')}"/></div>
+        <div class="fg"><div class="flbl">Duración</div>
+          <select class="finput" id="age-duracion">
+            ${[15,30,45,60,90,120,180,240].map(d=>`<option value="${d}"${d===durVal?' selected':''}>${d<60?d+'min':d===60?'1h':Math.floor(d/60)+'h'+(d%60?d%60+'min':'')}</option>`).join('')}
+          </select></div>
+        <div class="fg" style="display:flex;align-items:flex-end">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);padding-bottom:8px">
+            <input type="checkbox" id="age-urgente" ${it.urgente?'checked':''} style="accent-color:var(--red);width:14px;height:14px"/>
+            Urgente
+          </label>
+        </div>
+      </div>
+      <div class="form-actions" style="margin-top:16px;justify-content:space-between">
+        <button class="btn-sec" style="color:var(--red);border-color:var(--red)" onclick="eliminarAgenda('${id}')">Eliminar</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn-sec" onclick="document.getElementById('modal-ag-edit').remove()">Cancelar</button>
+          <button class="btn-pri" onclick="guardarEdicionAgenda('${id}')">Guardar</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function guardarEdicionAgenda(id){
+  const update={
+    fecha:document.getElementById('age-fecha').value,
+    hora:document.getElementById('age-hora').value+':00',
+    titulo:document.getElementById('age-titulo').value.trim(),
+    detalle:document.getElementById('age-detalle').value,
+    duracion_minutos:parseInt(document.getElementById('age-duracion').value),
+    urgente:document.getElementById('age-urgente').checked
+  };
+  if(!update.titulo) return;
+  await sb.from('agenda').update(update).eq('id',id);
+  const idx=agendaItems.findIndex(x=>x.id===id);
+  if(idx>-1) agendaItems[idx]={...agendaItems[idx],...update};
+  document.getElementById('modal-ag-edit').remove();
+  drawCal();
+}
+
+async function eliminarAgenda(id){
+  if(!confirm('¿Eliminar esta actividad?')) return;
+  await sb.from('agenda').delete().eq('id',id);
+  agendaItems=agendaItems.filter(x=>x.id!==id);
+  document.getElementById('modal-ag-edit').remove();
   drawCal();
 }
 
