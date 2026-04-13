@@ -332,7 +332,7 @@ async function recuperarPassword(){
   }
   if(!sb) return;
   const {error}=await sb.auth.resetPasswordForEmail(email,{
-    redirectTo:'https://crm-satlock.netlify.app'
+    redirectTo:'https://satlockfleet.github.io/crm-satlock/'
   });
   const err=document.getElementById('auth-err');
   if(error){
