@@ -1125,7 +1125,7 @@ async function drawWeek(){
   const DAYS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   const HORA_INI=7, HORA_FIN=20; // 7am a 8pm
   const SLOTS_POR_HORA=4; // intervalos de 15min
-  const SLOT_H=20; // px por slot de 15min
+  const SLOT_H=15; // px por slot de 15min
 
   const label=`${days[0].toLocaleDateString('es-CO',{day:'numeric',month:'short'})} – ${days[6].toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}`;
   const el=document.getElementById('cal-period-label');
@@ -1179,7 +1179,7 @@ async function drawWeek(){
     for(let q=0;q<4;q++){
       const top=(h-HORA_INI)*4*SLOT_H+q*SLOT_H;
       bodyHtml+=`<div style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;border-bottom:0.5px solid ${q===0?'var(--border)':'rgba(0,0,0,0.04)'}">
-        ${q===0?`<span style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace;position:absolute;top:50%;transform:translateY(-50%);right:6px;background:var(--surface);padding:0 2px;line-height:1">${String(h).padStart(2,'0')}:00</span>`:''}
+        ${q===0?`<span style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace;position:absolute;top:2px;right:6px;padding:0 2px;line-height:1">${String(h).padStart(2,'0')}:00</span>`:''}
       </div>`;
     }
   }
