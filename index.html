@@ -230,6 +230,76 @@ tbody tr:hover{background:var(--surface2)}
 .add-event-hint{font-size:9px;color:var(--text3);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0}
 .cal-week-cell:hover .add-event-hint{opacity:1}
 
+
+/* ── Agenda estilo Google Calendar ── */
+.cal-container{display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:500px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.cal-toolbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:0.5px solid var(--border);flex-shrink:0;gap:8px;flex-wrap:wrap}
+.cal-nav-group{display:flex;align-items:center;gap:4px}
+.cal-nav-btn{background:none;border:0.5px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit;font-size:12px;color:var(--text2);transition:all .12s}
+.cal-nav-btn:hover{background:var(--surface2);color:var(--text)}
+.cal-today-btn{background:var(--sat-blue);color:#fff;border-color:var(--sat-blue);font-weight:500}
+.cal-today-btn:hover{background:var(--sat-blue-dark)}
+.cal-period-title{font-size:15px;font-weight:500;color:var(--text)}
+.cal-view-toggle{display:flex;border:0.5px solid var(--border);border-radius:6px;overflow:hidden}
+.cal-view-btn{background:none;border:none;border-right:0.5px solid var(--border);padding:5px 12px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:500;color:var(--text2);transition:all .12s}
+.cal-view-btn:last-child{border-right:none}
+.cal-view-btn.active{background:var(--sat-blue);color:#fff}
+.cal-view-btn:hover:not(.active){background:var(--surface2)}
+
+/* Vista mensual */
+.cal-month-wrap{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.cal-month-header{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:0.5px solid var(--border);flex-shrink:0}
+.cal-month-dow{text-align:center;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);padding:8px 0}
+.cal-month-grid{display:grid;grid-template-columns:repeat(7,1fr);flex:1}
+.cal-month-cell{border-right:0.5px solid var(--border);border-bottom:0.5px solid var(--border);padding:4px;min-height:90px;cursor:pointer;transition:background .1s;position:relative}
+.cal-month-cell:nth-child(7n){border-right:none}
+.cal-month-cell:hover{background:var(--surface2)}
+.cal-month-cell.other-month{background:var(--surface2);opacity:.6}
+.cal-month-cell.today{background:var(--sat-blue-light)}
+.cal-month-num{font-size:12px;font-weight:400;color:var(--text2);width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:50%;margin-bottom:2px}
+.cal-month-cell.today .cal-month-num{background:var(--sat-blue);color:#fff;font-weight:600}
+.cal-month-event{font-size:11px;padding:2px 6px;border-radius:3px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;display:block;line-height:1.4}
+.cal-month-event.ev-satlock{background:var(--sat-blue-light);color:var(--sat-blue);border-left:2px solid var(--sat-blue)}
+.cal-month-event.ev-google{background:#e8f0fe;color:#1a73e8;border-left:2px solid #1a73e8}
+.cal-month-event.ev-urgente{background:var(--red-light);color:var(--red-dark);border-left:2px solid var(--red)}
+.cal-month-event.ev-done{background:var(--surface2);color:var(--text3);text-decoration:line-through;border-left:2px solid var(--border)}
+.cal-month-more{font-size:10px;color:var(--sat-blue);cursor:pointer;padding:1px 4px}
+
+/* Vista semanal */
+.cal-week-wrap{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.cal-week-header{display:grid;border-bottom:0.5px solid var(--border);flex-shrink:0}
+.cal-week-day-hdr{text-align:center;padding:8px 4px;border-right:0.5px solid var(--border)}
+.cal-week-day-hdr:last-child{border-right:none}
+.cal-week-day-name{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)}
+.cal-week-day-num{font-size:22px;font-weight:300;color:var(--text);line-height:1.1;margin-top:2px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50%;margin:2px auto 0}
+.cal-week-day-num.today-num{background:var(--sat-blue);color:#fff;font-weight:500}
+.cal-week-body{flex:1;overflow-y:auto;position:relative}
+.cal-week-scroll{display:grid;position:relative}
+.cal-time-col{display:flex;flex-direction:column}
+.cal-time-slot{height:60px;border-bottom:0.5px solid var(--border);display:flex;align-items:flex-start;padding:2px 8px 0;flex-shrink:0}
+.cal-time-slot.quarter{height:15px;border-bottom:0.5px dashed var(--border);opacity:.4}
+.cal-time-label{font-size:10px;color:var(--text3);font-family:'Courier New',monospace;white-space:nowrap;margin-top:-6px}
+.cal-day-col{border-right:0.5px solid var(--border);position:relative;cursor:pointer}
+.cal-day-col:last-child{border-right:none}
+.cal-day-col:hover{background:rgba(25,66,140,.02)}
+.cal-hour-line{height:60px;border-bottom:0.5px solid var(--border);position:relative}
+.cal-quarter-line{height:15px;border-bottom:0.5px dashed rgba(0,0,0,.06)}
+.cal-event-block{position:absolute;left:2px;right:2px;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;overflow:hidden;transition:opacity .15s;z-index:1}
+.cal-event-block:hover{opacity:.85;z-index:2}
+.cal-event-block.ev-satlock{background:#c8d8f4;border-left:3px solid var(--sat-blue);color:var(--sat-blue-dark)}
+.cal-event-block.ev-google{background:#d2e3fc;border-left:3px solid #1a73e8;color:#174ea6}
+.cal-event-block.ev-urgente{background:#fad2d2;border-left:3px solid var(--red);color:var(--red-dark)}
+.cal-event-block.ev-done{background:var(--surface2);border-left:3px solid var(--border);color:var(--text3)}
+.cal-event-title{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-event-time{font-size:10px;opacity:.75}
+.cal-now-line{position:absolute;left:0;right:0;height:2px;background:var(--sat-orange);z-index:3;pointer-events:none}
+.cal-now-dot{position:absolute;left:-4px;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--sat-orange)}
+
+/* Modal nueva actividad mejorado */
+.time-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.time-select{font-family:inherit;font-size:13px;padding:8px 10px;border:0.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface2);color:var(--text);width:100%}
+.time-select:focus{outline:none;border-color:var(--sat-blue)}
+
 /* ── Google Calendar ── */
 .gcal-btn{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:12px;font-weight:500;padding:6px 14px;border-radius:6px;border:0.5px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;transition:all .15s}
 .gcal-btn:hover{background:var(--surface2);color:var(--text)}
@@ -899,34 +969,33 @@ async function renderAgenda(container){
 }
 
 function renderCalendar(container){
-  const hoy=new Date();
   const mesStr=calDate.toLocaleDateString('es-CO',{month:'long',year:'numeric'});
   container.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-      <span style="font-size:13px;font-weight:500">Agenda — ${mesStr.charAt(0).toUpperCase()+mesStr.slice(1)}</span>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="gcal-btn gcal-connect-btn${gcalToken?' connected':''}" onclick="conectarGcal()">
-          ${gcalToken?'Google Calendar conectado':'Conectar Google Calendar'}
-        </button>
-        <button class="btn-pri" onclick="nuevaActividadCal()">+ Nueva actividad</button>
-      </div>
-    </div>
-    <div class="cal-wrap" id="cal-main">
-      <div class="cal-header">
-        <button class="cal-nav" onclick="calNav(-1)">&#8249;</button>
-        <span class="cal-title" id="cal-period-label"></span>
-        <div style="display:flex;gap:8px;align-items:center">
-          <div class="cal-toggle">
-            <button class="cal-toggle-btn${calView==='month'?' active':''}" onclick="setCalView('month')">Mes</button>
-            <button class="cal-toggle-btn${calView==='week'?' active':''}" onclick="setCalView('week')">Semana</button>
+    <div class="cal-container">
+      <div class="cal-toolbar">
+        <div class="cal-nav-group">
+          <button class="cal-nav-btn cal-today-btn" onclick="irHoy()">Hoy</button>
+          <button class="cal-nav-btn" onclick="calNav(-1)">&#8249;</button>
+          <button class="cal-nav-btn" onclick="calNav(1)">&#8250;</button>
+          <span class="cal-period-title" id="cal-period-label"></span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="gcal-btn gcal-connect-btn${gcalToken?' connected':''}" onclick="conectarGcal()" style="font-size:11px;padding:5px 10px">
+            ${gcalToken?'● Google Calendar':'○ Conectar Google'}
+          </button>
+          <div class="cal-view-toggle">
+            <button class="cal-view-btn${calView==='month'?' active':''}" onclick="setCalView('month')">Mes</button>
+            <button class="cal-view-btn${calView==='week'?' active':''}" onclick="setCalView('week')">Semana</button>
           </div>
-          <button class="cal-nav" onclick="calNav(1)">&#8250;</button>
+          <button class="btn-pri" onclick="nuevaActividadCal()" style="font-size:11px;padding:5px 12px">+ Nuevo</button>
         </div>
       </div>
-      <div id="cal-body"></div>
+      <div id="cal-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column"></div>
     </div>`;
   drawCal();
 }
+
+function irHoy(){calDate=new Date();drawCal();}
 
 function setCalView(v){calView=v;const c=document.getElementById('main-content');if(c)renderCalendar(c);}
 function calNav(d){
@@ -951,89 +1020,172 @@ async function drawMonth(){
   if(el) el.textContent=label.charAt(0).toUpperCase()+label.slice(1);
   const body=document.getElementById('cal-body');
   if(!body)return;
-  // Cargar eventos de Google Calendar
   const primerDia=`${y}-${String(m+1).padStart(2,'0')}-01`;
-  const ultimoDia=`${y}-${String(m+1).padStart(2,'0')}-${new Date(y,m+1,0).getDate()}`;
-  const gcalEvents = await fetchGcalEvents(primerDia, ultimoDia);
-  // Combinar con agenda local
-  const todosItems = [...agendaItems, ...gcalEvents];
-  const hoy=fechaHoyLocal();
-  // Calcular firstDay correctamente
-  const firstDay = new Date(Date.UTC(y, m, 1)).getUTCDay();
+  const ultimoDia=`${y}-${String(m+1).padStart(2,'0')}-${new Date(Date.UTC(y,m+1,0)).getUTCDate()}`;
+  const gcalEvents=await fetchGcalEvents(primerDia,ultimoDia);
+  const todosItems=[...agendaItems,...gcalEvents];
+  const hoyStr=fechaHoyLocal();
+  const firstDay=new Date(Date.UTC(y,m,1)).getUTCDay();
   const daysInMonth=new Date(Date.UTC(y,m+1,0)).getUTCDate();
   const daysInPrev=new Date(Date.UTC(y,m,0)).getUTCDate();
   const DAYS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
-  let html=`<div class="cal-grid-month">${DAYS.map(d=>`<div class="cal-dow">${d}</div>`).join('')}`;
-  // días del mes anterior
+
+  function evClass(it){
+    if(it.done) return 'ev-done';
+    if(it.fuente==='google') return 'ev-google';
+    if(it.urgente) return 'ev-urgente';
+    return 'ev-satlock';
+  }
+
+  let html=`<div class="cal-month-wrap">
+    <div class="cal-month-header">${DAYS.map(d=>`<div class="cal-month-dow">${d}</div>`).join('')}</div>
+    <div class="cal-month-grid">`;
+
   for(let i=firstDay-1;i>=0;i--){
     const dd=daysInPrev-i;
-    html+=`<div class="cal-day other-month"><div class="cal-day-num">${dd}</div></div>`;
+    html+=`<div class="cal-month-cell other-month"><div class="cal-month-num">${dd}</div></div>`;
   }
-  // días del mes
   for(let d=1;d<=daysInMonth;d++){
     const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const isToday=iso===fechaHoyLocal();
-    const items=itemsForDate(iso);
-    html+=`<div class="cal-day${isToday?' today':''}" onclick="nuevaActividadFecha('${iso}')">
-      <div class="cal-day-num">${d}</div>
-      ${items.slice(0,3).map(it=>`<div class="cal-event${it.urgente?' urgente':it.done?' done':' normal'}" onclick="event.stopPropagation();toggleAg('${it.id}',${it.done})" title="${it.titulo}">${it.hora.slice(0,5)} ${it.titulo}</div>`).join('')}
-      ${items.length>3?`<div style="font-size:9px;color:var(--text3)">+${items.length-3} más</div>`:''}
+    const isToday=iso===hoyStr;
+    const items=todosItems.filter(i=>i.fecha===iso).sort((a,b)=>a.hora.localeCompare(b.hora));
+    const visible=items.slice(0,3);
+    const mas=items.length-3;
+    html+=`<div class="cal-month-cell${isToday?' today':''}" onclick="nuevaActividadFecha('${iso}')">
+      <div class="cal-month-num">${d}</div>
+      ${visible.map(it=>`<div class="cal-month-event ${evClass(it)}" onclick="event.stopPropagation();toggleAg('${it.id}',${it.done})" title="${it.hora.slice(0,5)} ${it.titulo}">${it.hora.slice(0,5)} ${it.titulo}</div>`).join('')}
+      ${mas>0?`<div class="cal-month-more" onclick="event.stopPropagation();setCalView('week');calDate=new Date('${iso}');drawCal()">+${mas} más</div>`:''}
     </div>`;
   }
-  // días del siguiente mes para completar la grilla
   const total=firstDay+daysInMonth;
   const rem=total%7===0?0:7-(total%7);
   for(let d=1;d<=rem;d++){
-    html+=`<div class="cal-day other-month"><div class="cal-day-num">${d}</div></div>`;
+    html+=`<div class="cal-month-cell other-month"><div class="cal-month-num">${d}</div></div>`;
   }
-  html+='</div>';
+  html+=`</div></div>`;
   body.innerHTML=html;
 }
 
 async function drawWeek(){
-  const d=new Date(calDate);
-  const dow = new Date(Date.UTC(calDate.getFullYear(), calDate.getMonth(), calDate.getDate())).getUTCDay();
+  const isoLocal=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const dow=new Date(Date.UTC(calDate.getFullYear(),calDate.getMonth(),calDate.getDate())).getUTCDay();
   const monday=new Date(calDate);monday.setDate(calDate.getDate()-(dow===0?6:dow-1));
   const days=[];
   for(let i=0;i<7;i++){const dd=new Date(monday);dd.setDate(monday.getDate()+i);days.push(dd);}
+  const isoLun=isoLocal(days[0]);
+  const isoDom=isoLocal(days[6]);
+  const gcalEventsW=await fetchGcalEvents(isoLun,isoDom);
+  const todosItemsW=[...agendaItems,...gcalEventsW];
+  const hoyStr=fechaHoyLocal();
+  const DAYS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const HORA_INI=7, HORA_FIN=20; // 7am a 8pm
+  const SLOTS_POR_HORA=4; // intervalos de 15min
+  const SLOT_H=15; // px por slot de 15min
+
   const label=`${days[0].toLocaleDateString('es-CO',{day:'numeric',month:'short'})} – ${days[6].toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}`;
   const el=document.getElementById('cal-period-label');
   if(el) el.textContent=label;
-  const hoy=fechaHoyLocal();
   const body=document.getElementById('cal-body');
   if(!body)return;
-  // Cargar eventos de Google Calendar para la semana
-  const isoLocal=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  const isoLun=isoLocal(days[0]);
-  const isoDom=isoLocal(days[6]);
-  const gcalEventsW = await fetchGcalEvents(isoLun, isoDom);
-  const todosItemsW = [...agendaItems, ...gcalEventsW];
-  const DAYS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-  let html=`<div class="cal-week-grid" style="overflow-x:auto">
-    <div class="cal-week-col-hdr" style="border-right:0.5px solid var(--border)"></div>
+
+  function evClass(it){
+    if(it.done) return 'ev-done';
+    if(it.fuente==='google') return 'ev-google';
+    if(it.urgente) return 'ev-urgente';
+    return 'ev-satlock';
+  }
+  function horaToSlot(horaStr){
+    const [h,min]=horaStr.split(':').map(Number);
+    return (h-HORA_INI)*SLOTS_POR_HORA+Math.floor(min/15);
+  }
+  function slotToTop(slot){ return slot*SLOT_H; }
+  function eventHeight(horaStr){
+    // Duración estimada: 1 hora por defecto
+    return SLOT_H*4;
+  }
+
+  // Línea de ahora
+  const ahora=new Date();
+  const ahoraH=ahora.getHours()+(ahora.getMinutes()/60);
+  const nowTop=ahoraH>=HORA_INI&&ahoraH<=HORA_FIN
+    ?(ahoraH-HORA_INI)*SLOTS_POR_HORA*SLOT_H:null;
+
+  const totalH=(HORA_FIN-HORA_INI)*SLOT_H*SLOTS_POR_HORA;
+
+  // Header con días
+  let hdrHtml=`<div class="cal-week-header" style="display:grid;grid-template-columns:52px repeat(7,1fr);border-bottom:0.5px solid var(--border);flex-shrink:0">
+    <div style="border-right:0.5px solid var(--border)"></div>
     ${days.map((dd,i)=>{
       const iso=isoLocal(dd);
-      const isToday=iso===fechaHoyLocal();
-      return `<div class="cal-week-col-hdr${isToday?' today-col':''}" style="${i===6?'':'border-right:0.5px solid var(--border)'}">
-        <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3)">${DAYS[i]}</div>
-        <div style="font-size:16px;font-weight:${isToday?'700':'300'};color:${isToday?'var(--sat-orange)':'var(--text)'}">${dd.getDate()}</div>
+      const isToday=iso===hoyStr;
+      return `<div class="cal-week-day-hdr${i===6?'':''}" style="${i===6?'':'border-right:0.5px solid var(--border)'}">
+        <div class="cal-week-day-name">${DAYS[i]}</div>
+        <div class="cal-week-day-num${isToday?' today-num':''}">${dd.getDate()}</div>
       </div>`;
-    }).join('')}`;
-  // horas 07:00 a 20:00
-  for(let h=7;h<=20;h++){
-    const hStr=String(h).padStart(2,'0')+':00';
-    html+=`<div class="cal-week-time">${hStr}</div>`;
-    days.forEach((dd,di)=>{
-      const iso=isoLocal(dd);
-      const items=todosItemsW.filter(i=>i.fecha===iso&&i.hora&&i.hora.startsWith(String(h).padStart(2,'0')));
-      html+=`<div class="cal-week-cell" onclick="nuevaActividadFecha('${iso}','${hStr}')" style="${di===6?'':'border-right:0.5px solid var(--border)'}">
-        ${items.map(it=>`<div class="cal-week-event${it.urgente?' urgente':it.done?' done':' normal'}" onclick="event.stopPropagation();toggleAg('${it.id}',${it.done})" title="${it.titulo}">${it.titulo}</div>`).join('')}
-        <div class="add-event-hint">+</div>
+    }).join('')}
+  </div>`;
+
+  // Cuerpo scrollable
+  let bodyHtml=`<div style="flex:1;overflow-y:auto;position:relative">
+    <div style="display:grid;grid-template-columns:52px repeat(7,1fr);position:relative;min-height:${totalH}px">`;
+
+  // Columna de horas
+  bodyHtml+=`<div style="position:relative">`;
+  for(let h=HORA_INI;h<HORA_FIN;h++){
+    for(let q=0;q<4;q++){
+      const top=(h-HORA_INI)*4*SLOT_H+q*SLOT_H;
+      bodyHtml+=`<div style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;border-bottom:0.5px solid ${q===0?'var(--border)':'rgba(0,0,0,0.04)'}">
+        ${q===0?`<span style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace;position:absolute;top:-6px;right:6px;background:var(--surface);padding:0 2px">${h}:00</span>`:''}
+      </div>`;
+    }
+  }
+  bodyHtml+=`</div>`;
+
+  // Columna por día
+  days.forEach((dd,di)=>{
+    const iso=isoLocal(dd);
+    const isToday=iso===hoyStr;
+    const dayItems=todosItemsW.filter(it=>it.fecha===iso);
+
+    bodyHtml+=`<div style="position:relative;border-right:0.5px solid var(--border);${isToday?'background:rgba(25,66,140,0.02)':''}${di===6?';border-right:none':''}">`;
+
+    // Líneas de horas y cuartos
+    for(let h=HORA_INI;h<HORA_FIN;h++){
+      for(let q=0;q<4;q++){
+        const top=(h-HORA_INI)*4*SLOT_H+q*SLOT_H;
+        bodyHtml+=`<div onclick="nuevaActividadFecha('${iso}','${String(h).padStart(2,'0')}:${q===0?'00':q===1?'15':q===2?'30':'45'}')" style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;border-bottom:0.5px solid ${q===0?'var(--border)':'rgba(0,0,0,0.04)'};cursor:pointer;transition:background .1s" onmouseover="this.style.background='rgba(25,66,140,0.05)'" onmouseout="this.style.background=''"></div>`;
+      }
+    }
+
+    // Eventos
+    dayItems.forEach(it=>{
+      const slot=horaToSlot(it.hora||'07:00');
+      if(slot<0||(it.hora&&parseInt(it.hora)>=HORA_FIN)) return;
+      const top=Math.max(0,slotToTop(slot));
+      const h=SLOT_H*4; // 1 hora
+      bodyHtml+=`<div class="cal-event-block ${evClass(it)}" style="top:${top}px;height:${h}px" onclick="toggleAg('${it.id}',${it.done})" title="${it.titulo}">
+        <div class="cal-event-title">${it.titulo}</div>
+        <div class="cal-event-time">${it.hora.slice(0,5)}${it.fuente==='google'?' · Google':''}</div>
       </div>`;
     });
-  }
-  html+='</div>';
-  body.innerHTML=html;
+
+    // Línea de ahora
+    if(isToday&&nowTop!==null){
+      bodyHtml+=`<div class="cal-now-line" style="top:${nowTop}px"><div class="cal-now-dot"></div></div>`;
+    }
+
+    bodyHtml+=`</div>`;
+  });
+
+  bodyHtml+=`</div></div>`;
+
+  body.innerHTML=hdrHtml+bodyHtml;
+
+  // Scroll a la hora actual o a las 8am
+  const scrollTarget=nowTop?Math.max(0,nowTop-80):(HORA_INI+1)*4*SLOT_H;
+  setTimeout(()=>{
+    body.querySelector('[style*="overflow-y"]')?.scrollTo({top:scrollTarget,behavior:'smooth'});
+  },100);
 }
 
 async function toggleAg(id,done){
@@ -1050,19 +1202,79 @@ async function nuevaActividadFecha(fecha,hora){
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';overlay.id='modal-ag';
   overlay.innerHTML=`
-    <div class="modal-box" style="max-width:380px">
+    <div class="modal-box" style="max-width:420px">
       <div class="modal-title">Nueva actividad
         <button class="modal-close" onclick="document.getElementById('modal-ag').remove()">✕</button>
       </div>
       <div class="form-grid">
         <div class="fg"><div class="flbl">Fecha</div><input class="finput" type="date" id="ag-fecha" value="${fecha}"/></div>
-        <div class="fg"><div class="flbl">Hora</div><input class="finput" type="time" id="ag-hora" value="${hora||'08:00'}"/></div>
-        <div class="fg full"><div class="flbl">Actividad</div><input class="finput" id="ag-titulo" placeholder="Ej: Llamada con cliente"/></div>
-        <div class="fg full"><div class="flbl">Detalle</div><input class="finput" id="ag-detalle" placeholder="Descripción opcional"/></div>
-        <div class="fg full"><div class="flbl" style="display:flex;align-items:center;gap:8px">
-          <input type="checkbox" id="ag-urgente" style="width:14px;height:14px"/>
-          Marcar como urgente
-        </div></div>
+        <div class="fg"><div class="flbl">Hora</div>
+          <select class="finput" id="ag-hora" style="cursor:pointer">
+            <option value="07:00">07:00</option>
+<option value="07:15">07:15</option>
+<option value="07:30">07:30</option>
+<option value="07:45">07:45</option>
+<option value="08:00">08:00</option>
+<option value="08:15">08:15</option>
+<option value="08:30">08:30</option>
+<option value="08:45">08:45</option>
+<option value="09:00">09:00</option>
+<option value="09:15">09:15</option>
+<option value="09:30">09:30</option>
+<option value="09:45">09:45</option>
+<option value="10:00">10:00</option>
+<option value="10:15">10:15</option>
+<option value="10:30">10:30</option>
+<option value="10:45">10:45</option>
+<option value="11:00">11:00</option>
+<option value="11:15">11:15</option>
+<option value="11:30">11:30</option>
+<option value="11:45">11:45</option>
+<option value="12:00">12:00</option>
+<option value="12:15">12:15</option>
+<option value="12:30">12:30</option>
+<option value="12:45">12:45</option>
+<option value="13:00">13:00</option>
+<option value="13:15">13:15</option>
+<option value="13:30">13:30</option>
+<option value="13:45">13:45</option>
+<option value="14:00">14:00</option>
+<option value="14:15">14:15</option>
+<option value="14:30">14:30</option>
+<option value="14:45">14:45</option>
+<option value="15:00">15:00</option>
+<option value="15:15">15:15</option>
+<option value="15:30">15:30</option>
+<option value="15:45">15:45</option>
+<option value="16:00">16:00</option>
+<option value="16:15">16:15</option>
+<option value="16:30">16:30</option>
+<option value="16:45">16:45</option>
+<option value="17:00">17:00</option>
+<option value="17:15">17:15</option>
+<option value="17:30">17:30</option>
+<option value="17:45">17:45</option>
+<option value="18:00">18:00</option>
+<option value="18:15">18:15</option>
+<option value="18:30">18:30</option>
+<option value="18:45">18:45</option>
+<option value="19:00">19:00</option>
+<option value="19:15">19:15</option>
+<option value="19:30">19:30</option>
+<option value="19:45">19:45</option>
+<option value="20:00">20:00</option>
+<option value="20:15">20:15</option>
+<option value="20:30">20:30</option>
+<option value="20:45">20:45</option>
+          </select></div>
+        <div class="fg full"><div class="flbl">Título</div><input class="finput" id="ag-titulo" placeholder="Ej: Llamada con Holcim — seguimiento propuesta"/></div>
+        <div class="fg full"><div class="flbl">Descripción</div><input class="finput" id="ag-detalle" placeholder="Detalles adicionales (opcional)"/></div>
+        <div class="fg full">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
+            <input type="checkbox" id="ag-urgente" style="accent-color:var(--red);width:14px;height:14px"/>
+            Marcar como urgente
+          </label>
+        </div>
       </div>
       ${gcalToken?`<div style="margin-top:10px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
         <input type="checkbox" id="ag-sync-gcal" checked style="accent-color:var(--sat-blue)"/>
