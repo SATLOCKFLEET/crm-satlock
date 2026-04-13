@@ -1854,9 +1854,12 @@ function semaforoDiario(opId, fechaInicio, estado){
   // Si hay próxima gestión programada, usarla como referencia
   if(ult&&ult.proxima_gestion){
     const hoy=fechaHoyLocal();
-    const diasProx=diasGestion(hoy, ult.proxima_gestion);
-    // diasGestion devuelve positivo si fin > ini, aquí queremos días que FALTAN
-    const diasFaltan=Math.ceil((new Date(ult.proxima_gestion)-new Date(hoy))/(1000*60*60*24));
+    const pxDate=ult.proxima_gestion.slice(0,10);
+    const [py,pm,pd]=pxDate.split('-').map(Number);
+    const [hy,hm,hd]=hoy.split('-').map(Number);
+    const proxMs=Date.UTC(py,pm-1,pd);
+    const hoyMs=Date.UTC(hy,hm-1,hd);
+    const diasFaltan=Math.ceil((proxMs-hoyMs)/(1000*60*60*24));
     if(diasFaltan<0){
       return {cls:'rojo',diasFaltan,label:`Vencido ${Math.abs(diasFaltan)}d`,diasProx:ult.proxima_gestion};
     } else if(diasFaltan<=5){
