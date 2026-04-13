@@ -1207,10 +1207,12 @@ async function drawWeek(){
       const slot=horaToSlot(it.hora||'07:00');
       if(slot<0||(it.hora&&parseInt(it.hora)>=HORA_FIN)) return;
       const top=Math.max(0,slotToTop(slot));
-      const h=SLOT_H*4; // 1 hora
+      const durMin=it.duracion_minutos||60;
+      const h=Math.max(SLOT_H, Math.round(durMin/15)*SLOT_H);
+      const durLabel=durMin<60?durMin+'min':durMin===60?'1h':Math.floor(durMin/60)+'h'+(durMin%60?durMin%60+'min':'');
       bodyHtml+=`<div class="cal-event-block ${evClass(it)}" style="top:${top}px;height:${h}px" onclick="abrirEditarAgenda('${it.id}')" title="${it.titulo} — clic para editar">
         <div class="cal-event-title">${it.titulo}</div>
-        <div class="cal-event-time">${it.hora.slice(0,5)}${it.fuente==='google'?' · Google':''}</div>
+        <div class="cal-event-time">${it.hora.slice(0,5)} · ${durLabel}${it.fuente==='google'?' · Google':''}</div>
       </div>`;
     });
 
