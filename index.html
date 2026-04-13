@@ -1144,9 +1144,8 @@ async function drawWeek(){
     return (h-HORA_INI)*SLOTS_POR_HORA+Math.floor(min/15);
   }
   function slotToTop(slot){ return slot*SLOT_H; }
-  function eventHeight(horaStr){
-    // Duración estimada: 1 hora por defecto
-    return SLOT_H*4;
+  function eventHeight(durMin){
+    return Math.max(SLOT_H, Math.round((durMin||60)/15)*SLOT_H);
   }
 
   // Línea de ahora
