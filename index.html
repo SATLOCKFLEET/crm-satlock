@@ -534,7 +534,7 @@ function renderTab(idx,tabs){
 
 // ── SEGUIMIENTO ───────────────────────────────────────────────────────────────
 async function renderSeguimiento(container){
-  let query = sb.from('oportunidades').select('*,usuarios(nombre,linea)').order('fecha',{ascending:false});
+  let query = sb.from('oportunidades').select('*,usuarios(nombre,linea,cargo)').order('fecha',{ascending:false});
   if(PERFIL.rol==='ejecutivo_fleet'||PERFIL.rol==='ejecutivo_carga'){
     query = query.eq('usuario_id',USER.id);
   }
@@ -552,7 +552,7 @@ async function renderSeguimiento(container){
     <div class="table-wrap"><table>
       <thead><tr>
         <th>Fecha</th><th>Cliente</th><th>Contacto</th><th>Producto</th>
-        <th>N° propuesta</th><th>Próx. acción</th><th>Avance</th><th>Estado</th>
+        <th>N° propuesta</th><th>Próx. acción</th><th>Días</th><th>Avance</th><th>Estado</th>
         ${['gerencia','jefe_fleet'].includes(PERFIL.rol)?'<th>Ejecutivo</th>':''}
         <th></th>
       </tr></thead>
@@ -606,8 +606,12 @@ function renderOpRows(rows, filtro, q){
         ${r.link_drive?`<a href="${r.link_drive}" target="_blank" style="display:inline-flex;align-items:center;margin-top:2px;font-size:10px;color:var(--sat-blue);text-decoration:none;background:var(--sat-blue-light);padding:2px 5px;border-radius:4px">Ver propuesta</a>`:''}
       </td>
       <td>
-        <span style="font-size:11px;background:var(--surface2);border:0.5px solid var(--border);border-radius:4px;padding:2px 6px">${r.proxima_accion||'—'}</span>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:11px;background:var(--surface2);border:0.5px solid var(--border);border-radius:4px;padding:2px 6px">${r.proxima_accion||'—'}</span>
+          ${r.de_mercadeo?`<span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;background:#fdeee8;color:var(--sat-orange);border:0.5px solid var(--sat-orange)">Mercadeo</span>`:''}
+        </div>
       </td>
+      <td style="text-align:center">${badgeDiasGestion(diasGestion(r.fecha_inicio_gestion, (r.estado==='cerrado'||r.estado==='perdido')?r.updated_at?.split('T')[0]:null), r.estado)}</td>
       <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:${r.avance}%;background:${cfg.color}"></div></div><div class="bar-pct">${r.avance}%</div></div></td>
       <td><span class="pill ${cfg.cls}"><span class="dot"></span>${cfg.label}</span></td>
       ${esJefe?`<td style="font-size:11px;color:var(--text2)">${r.usuarios?.nombre||'—'}</td>`:''}
@@ -646,12 +650,19 @@ function renderNueva(container){
   container.innerHTML=`
   <div class="form-card">
     <div class="form-title">Registrar oportunidad comercial</div>
-    <div style="margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
       <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:12px 14px;background:var(--sat-blue-light);border:1.5px solid var(--sat-blue);border-radius:var(--radius-sm)">
         <input type="checkbox" id="f-lead-nuevo" style="width:18px;height:18px;accent-color:var(--sat-blue);flex-shrink:0"/>
         <div>
-          <div style="font-size:13px;font-weight:500;color:var(--sat-blue)">Es un lead nuevo</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">Cuenta automáticamente como contacto en la estrategia 15·5·1 del período actual</div>
+          <div style="font-size:12px;font-weight:500;color:var(--sat-blue)">Lead nuevo</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Cuenta en la estrategia 15·5·1</div>
+        </div>
+      </label>
+      <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:12px 14px;background:#fdeee8;border:1.5px solid var(--sat-orange);border-radius:var(--radius-sm)">
+        <input type="checkbox" id="f-de-mercadeo" style="width:18px;height:18px;accent-color:var(--sat-orange);flex-shrink:0"/>
+        <div>
+          <div style="font-size:12px;font-weight:500;color:var(--sat-orange)">Viene de Mercadeo</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Lead asignado por el área de mercadeo</div>
         </div>
       </label>
     </div>
@@ -719,7 +730,9 @@ async function guardarOp(){
   const productoEl=document.getElementById('f-producto');
   const producto=productoEl?productoEl.options[productoEl.selectedIndex]?.value||'':'';
   const esLeadNuevo=document.getElementById('f-lead-nuevo')?.checked||false;
+  const deMercadeo=document.getElementById('f-de-mercadeo')?.checked||false;
   const estadoInicial=document.getElementById('f-estado').value;
+  const fechaHoy=document.getElementById('f-fecha').value||fechaHoyLocal();
   const {error}=await sb.from('oportunidades').insert({
     usuario_id:USER.id,
     fecha:document.getElementById('f-fecha').value,
@@ -738,13 +751,41 @@ async function guardarOp(){
     fecha_proxima_accion:document.getElementById('f-fprox').value||null,
     notas:document.getElementById('f-notas').value,
     valor_estimado:parseFloat((document.getElementById('f-valor').dataset.raw||document.getElementById('f-valor').value.replace(/[^0-9]/g,'')))||null,
-    es_lead_nuevo:esLeadNuevo
+    es_lead_nuevo:esLeadNuevo,
+    de_mercadeo:deMercadeo,
+    fecha_inicio_gestion:fechaHoy
   });
   if(error){alert('Error al guardar: '+error.message);return;}
   if(esLeadNuevo) await registrarQCOAuto(1,estadoInicial==='propuesta_enviada'?1:0,estadoInicial==='cerrado'?1:0);
   else if(estadoInicial==='propuesta_enviada') await registrarQCOAuto(0,1,0);
   else if(estadoInicial==='cerrado') await registrarQCOAuto(0,0,1);
   switchTab(0);
+}
+
+function diasGestion(fechaInicio, fechaFin){
+  if(!fechaInicio) return null;
+  const fin = fechaFin ? new Date(fechaFin) : new Date();
+  const ini = new Date(fechaInicio);
+  return Math.floor((fin - ini) / (1000*60*60*24));
+}
+
+function badgeDiasGestion(dias, estado){
+  if(dias===null) return '—';
+  const cerrado = estado==='cerrado'||estado==='perdido';
+  let color, bg, label;
+  if(cerrado){
+    // Negocio cerrado/perdido: mostrar total en días
+    if(dias<=30){color='#27500A';bg='#EAF3DE';}
+    else if(dias<=60){color='#633806';bg='#FAEEDA';}
+    else{color='#791F1F';bg:'#FCEBEB';}
+    label=dias+'d';
+  } else {
+    // En proceso: semáforo de urgencia
+    if(dias<=15){color='#27500A';bg='#EAF3DE';label=dias+'d';}
+    else if(dias<=30){color='#633806';bg='#FAEEDA';label=dias+'d ⚠';}
+    else{color='#791F1F';bg='#FCEBEB';label=dias+'d !';}
+  }
+  return `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${bg};color:${color}">${label}</span>`;
 }
 
 async function registrarQCOAuto(contactos,cotizaciones,cierres){
@@ -824,6 +865,8 @@ async function guardarEdicion(id){
     fecha:document.getElementById('e-fecha').value,
     linea:(document.getElementById('e-linea')?.value)||'fleet',
     link_drive:document.getElementById('e-linkdrive')?.value||'',
+    de_mercadeo:document.getElementById('e-de-mercadeo')?.checked||false,
+    es_lead_nuevo:document.getElementById('e-lead-nuevo')?.checked||false,
     empresa:document.getElementById('e-empresa').value,
     contacto:document.getElementById('e-contacto').value,
     cargo_contacto:document.getElementById('e-cargo').value,
@@ -1727,7 +1770,7 @@ function getMetasQCO(linea){
 async function renderConsolidado(container){
   container.innerHTML='<div class="loading">Cargando consolidado...</div>';
   const {data:usuarios}=await sb.from('usuarios').select('*').neq('rol','gerencia').order('nombre');
-  const {data:ops}=await sb.from('oportunidades').select('usuario_id,estado');
+  const {data:ops}=await sb.from('oportunidades').select('usuario_id,estado,fecha_inicio_gestion,updated_at,de_mercadeo');
   const hoy=new Date();
   const mes=hoy.getMonth()+1;const anio=hoy.getFullYear();
   const {data:qco}=await sb.from('quince_cinco_uno').select('usuario_id,contactos,cotizaciones,cierres,semana').eq('mes',mes).eq('anio',anio);
@@ -1745,7 +1788,15 @@ async function renderConsolidado(container){
     const proceso=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).length;
     const puntaje=calcPuntaje(tc,tq,tci,metas);
     const color=EXEC_COLORS[idx%EXEC_COLORS.length];
-    return {u,tc,tq,tci,cerrados,proceso,puntaje,metas,color};
+    // Días promedio de gestión en negocios cerrados
+    const opsCerradas=uops.filter(o=>o.estado==='cerrado'&&o.fecha_inicio_gestion);
+    const diasProm=opsCerradas.length
+      ?Math.round(opsCerradas.reduce((s,o)=>{
+          const d=diasGestion(o.fecha_inicio_gestion,o.updated_at?.split('T')[0]);
+          return s+(d||0);
+        },0)/opsCerradas.length)
+      :null;
+    return {u,tc,tq,tci,cerrados,proceso,puntaje,metas,color,diasProm};
   }
 
   function renderPodio(execs){
