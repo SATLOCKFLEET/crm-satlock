@@ -420,6 +420,7 @@ async function login(){
   const err   = document.getElementById('auth-err');
   const btn   = document.querySelector('.btn-main');
   err.style.display = 'none';
+  err.style.background='';err.style.padding='';err.style.border='';err.style.borderRadius='';err.style.color='var(--red)';
   if(!email||!pass){err.textContent='Complete los dos campos.';err.style.display='block';return;}
   btn.textContent='Ingresando...';btn.disabled=true;
   btn.style.opacity='0.7';
@@ -427,8 +428,20 @@ async function login(){
   try{
     const {data,error} = await sb.auth.signInWithPassword({email,password:pass});
     if(error){
-      err.textContent='Error: '+error.message;
+      const msg = error.message.includes('Invalid login credentials')
+        ? 'Correo o contraseña incorrectos. Verifique sus datos.'
+        : error.message.includes('Email not confirmed')
+        ? 'Correo no confirmado. Revise su bandeja de entrada.'
+        : error.message.includes('Too many requests')
+        ? 'Demasiados intentos. Espere unos minutos.'
+        : 'Error al ingresar: '+error.message;
+      err.textContent = msg;
       err.style.display='block';
+      err.style.color='var(--red)';
+      err.style.background='var(--red-light)';
+      err.style.padding='8px 12px';
+      err.style.borderRadius='6px';
+      err.style.border='0.5px solid var(--red)';
       btn.textContent='Ingresar';btn.disabled=false;btn.style.opacity='1';
       return;
     }
