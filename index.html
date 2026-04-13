@@ -958,11 +958,11 @@ async function drawMonth(){
   // Combinar con agenda local
   const todosItems = [...agendaItems, ...gcalEvents];
   const hoy=fechaHoyLocal();
-  // Calcular firstDay con fecha local Colombia
-  const primerDelMes=new Date(y,m,1);
-  const offset=-5*60;
-  const primerLocal=new Date(primerDelMes.getTime()+(primerDelMes.getTimezoneOffset()+offset)*60000);
-  const firstDay=primerLocal.getDay(); // 0=dom
+  // Calcular firstDay con Zeller's formula (sin usar Date timezone)
+  // Día de la semana para el 1ro del mes: 0=dom,1=lun...6=sab
+  const _y = m===0?y-1:y, _m = m===0?13:m+1;
+  const _k = _y%100, _j = Math.floor(_y/100);
+  const firstDay = ((1 + Math.floor(13*(_m+1)/5) + _k + Math.floor(_k/4) + Math.floor(_j/4) - 2*_j) % 7 + 7) % 7;
   const daysInMonth=new Date(y,m+1,0).getDate();
   const daysInPrev=new Date(y,m,0).getDate();
   const DAYS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -976,7 +976,7 @@ async function drawMonth(){
   // días del mes
   for(let d=1;d<=daysInMonth;d++){
     const iso=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const isToday=iso===hoy;
+    const isToday=iso===fechaHoyLocal();
     const items=itemsForDate(iso);
     html+=`<div class="cal-day${isToday?' today':''}" onclick="nuevaActividadFecha('${iso}')">
       <div class="cal-day-num">${d}</div>
@@ -996,10 +996,14 @@ async function drawMonth(){
 
 async function drawWeek(){
   const d=new Date(calDate);
-  const offset5=-5*60;
-  const dLocal=new Date(d.getTime()+(d.getTimezoneOffset()+offset5)*60000);
-  const dow=dLocal.getDay();
-  const monday=new Date(d);monday.setDate(d.getDate()-(dow===0?6:dow-1));
+  // Calcular día de semana de calDate sin timezone usando Zeller
+  const _cy=calDate.getFullYear(), _cm=calDate.getMonth(), _cd=calDate.getDate();
+  const _zy=_cm===0?_cy-1:_cy, _zm=_cm===0?13:_cm+1;
+  const _zk=_zy%100, _zj=Math.floor(_zy/100);
+  const dow=((_cd + Math.floor(13*(_zm+1)/5) + _zk + Math.floor(_zk/4) + Math.floor(_zj/4) - 2*_zj)%7+7)%7;
+  // dow: 0=sab,1=dom,2=lun...6=vie (Zeller) — convertir a 0=dom,1=lun...
+  const dowJS=[6,0,1,2,3,4,5][dow];
+  const monday=new Date(calDate);monday.setDate(calDate.getDate()-(dowJS===0?6:dowJS-1));
   const days=[];
   for(let i=0;i<7;i++){const dd=new Date(monday);dd.setDate(monday.getDate()+i);days.push(dd);}
   const label=`${days[0].toLocaleDateString('es-CO',{day:'numeric',month:'short'})} – ${days[6].toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}`;
@@ -1018,7 +1022,7 @@ async function drawWeek(){
     <div class="cal-week-col-hdr" style="border-right:0.5px solid var(--border)"></div>
     ${days.map((dd,i)=>{
       const iso=dd.toISOString().split('T')[0];
-      const isToday=iso===hoy;
+      const isToday=iso===fechaHoyLocal();
       return `<div class="cal-week-col-hdr${isToday?' today-col':''}" style="${i===6?'':'border-right:0.5px solid var(--border)'}">
         <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3)">${DAYS[i]}</div>
         <div style="font-size:16px;font-weight:${isToday?'700':'300'};color:${isToday?'var(--sat-orange)':'var(--text)'}">${dd.getDate()}</div>
