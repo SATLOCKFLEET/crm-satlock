@@ -1003,15 +1003,16 @@ async function drawWeek(){
   const body=document.getElementById('cal-body');
   if(!body)return;
   // Cargar eventos de Google Calendar para la semana
-  const isoLun=days[0].toISOString().split('T')[0];
-  const isoDom=days[6].toISOString().split('T')[0];
+  const isoLocal=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const isoLun=isoLocal(days[0]);
+  const isoDom=isoLocal(days[6]);
   const gcalEventsW = await fetchGcalEvents(isoLun, isoDom);
   const todosItemsW = [...agendaItems, ...gcalEventsW];
   const DAYS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   let html=`<div class="cal-week-grid" style="overflow-x:auto">
     <div class="cal-week-col-hdr" style="border-right:0.5px solid var(--border)"></div>
     ${days.map((dd,i)=>{
-      const iso=dd.toISOString().split('T')[0];
+      const iso=isoLocal(dd);
       const isToday=iso===fechaHoyLocal();
       return `<div class="cal-week-col-hdr${isToday?' today-col':''}" style="${i===6?'':'border-right:0.5px solid var(--border)'}">
         <div style="font-size:10px;font-weight:600;text-transform:uppercase;color:var(--text3)">${DAYS[i]}</div>
@@ -1023,7 +1024,7 @@ async function drawWeek(){
     const hStr=String(h).padStart(2,'0')+':00';
     html+=`<div class="cal-week-time">${hStr}</div>`;
     days.forEach((dd,di)=>{
-      const iso=dd.toISOString().split('T')[0];
+      const iso=isoLocal(dd);
       const items=todosItemsW.filter(i=>i.fecha===iso&&i.hora&&i.hora.startsWith(String(h).padStart(2,'0')));
       html+=`<div class="cal-week-cell" onclick="nuevaActividadFecha('${iso}','${hStr}')" style="${di===6?'':'border-right:0.5px solid var(--border)'}">
         ${items.map(it=>`<div class="cal-week-event${it.urgente?' urgente':it.done?' done':' normal'}" onclick="event.stopPropagation();toggleAg('${it.id}',${it.done})" title="${it.titulo}">${it.titulo}</div>`).join('')}
