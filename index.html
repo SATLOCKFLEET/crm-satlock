@@ -1812,7 +1812,7 @@ async function renderDiario(container){
   
   // Cargar última gestión de cada oportunidad
   const {data:gestiones} = await sb.from('gestiones')
-    .select('oportunidad_id,fecha,tipo,nota,created_at')
+    .select('oportunidad_id,fecha,tipo,nota,proxima_gestion,created_at')
     .order('fecha',{ascending:false});
 
   container.innerHTML=`
