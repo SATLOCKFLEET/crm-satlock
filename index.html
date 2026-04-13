@@ -1125,7 +1125,7 @@ async function drawWeek(){
   const DAYS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   const HORA_INI=7, HORA_FIN=20; // 7am a 8pm
   const SLOTS_POR_HORA=4; // intervalos de 15min
-  const SLOT_H=15; // px por slot de 15min
+  const SLOT_H=20; // px por slot de 15min
 
   const label=`${days[0].toLocaleDateString('es-CO',{day:'numeric',month:'short'})} – ${days[6].toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}`;
   const el=document.getElementById('cal-period-label');
