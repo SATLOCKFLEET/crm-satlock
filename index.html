@@ -939,20 +939,48 @@ async function fetchGcalEvents(fechaInicio, fechaFin){
 }
 
 async function crearEventoGcal(titulo, fecha, hora, detalle){
+  return crearEventoGcalConInvitados(titulo, fecha, hora, detalle, 60, []);
+}
+
+async function crearEventoGcalConInvitados(titulo, fecha, hora, detalle, duracionMin, invitados){
   if(!gcalToken) return null;
   const inicio = `${fecha}T${hora}:00`;
-  const fin = `${fecha}T${hora.split(':')[0]}:${String(parseInt(hora.split(':')[1])+30).padStart(2,'0')}:00`;
+  // Calcular fin sumando duración en minutos
+  const [h,m] = hora.split(':').map(Number);
+  const totalMin = h*60 + m + (duracionMin||60);
+  const finH = Math.floor(totalMin/60);
+  const finM = totalMin%60;
+  // Manejar overflow de medianoche
+  const finFecha = finH >= 24 
+    ? new Date(new Date(fecha).getTime() + 86400000).toISOString().split('T')[0]
+    : fecha;
+  const finHStr = String(finH>=24?finH-24:finH).padStart(2,'0');
+  const fin = `${finFecha}T${finHStr}:${String(finM).padStart(2,'0')}:00`;
+  
+  const body = {
+    summary: titulo,
+    description: detalle||'',
+    start:{ dateTime: inicio, timeZone:'America/Bogota' },
+    end:{ dateTime: fin, timeZone:'America/Bogota' }
+  };
+  
+  // Agregar invitados si los hay
+  if(invitados&&invitados.length){
+    body.attendees = invitados.map(email=>({email}));
+    body.guestsCanModifyEvent = false;
+    body.sendUpdates = 'all'; // Envía invitación por correo automáticamente
+  }
+  
   try{
     const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
       method:'POST',
       headers:{ Authorization:`Bearer ${gcalToken}`, 'Content-Type':'application/json' },
-      body: JSON.stringify({
-        summary: titulo,
-        description: detalle,
-        start:{ dateTime: inicio, timeZone:'America/Bogota' },
-        end:{ dateTime: fin, timeZone:'America/Bogota' }
-      })
+      body: JSON.stringify(body)
     });
+    if(res.ok && invitados&&invitados.length){
+      const ev = await res.json();
+      console.log('Evento creado con invitados:', ev.id, 'Invitados:', invitados);
+    }
     return res.ok;
   }catch(e){ return false; }
 }
@@ -1270,11 +1298,26 @@ async function nuevaActividadFecha(fecha,hora){
           </select></div>
         <div class="fg full"><div class="flbl">Título</div><input class="finput" id="ag-titulo" placeholder="Ej: Llamada con Holcim — seguimiento propuesta"/></div>
         <div class="fg full"><div class="flbl">Descripción</div><input class="finput" id="ag-detalle" placeholder="Detalles adicionales (opcional)"/></div>
-        <div class="fg full">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
+        <div class="fg"><div class="flbl">Duración</div>
+          <select class="finput" id="ag-duracion">
+            <option value="15">15 minutos</option>
+            <option value="30">30 minutos</option>
+            <option value="45">45 minutos</option>
+            <option value="60" selected>1 hora</option>
+            <option value="90">1 hora 30 min</option>
+            <option value="120">2 horas</option>
+            <option value="180">3 horas</option>
+            <option value="240">4 horas</option>
+          </select></div>
+        <div class="fg" style="display:flex;align-items:flex-end">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2);padding-bottom:8px">
             <input type="checkbox" id="ag-urgente" style="accent-color:var(--red);width:14px;height:14px"/>
-            Marcar como urgente
+            Urgente
           </label>
+        </div>
+        <div class="fg full"><div class="flbl">Invitar por correo</div>
+          <input class="finput" id="ag-invitados" placeholder="correo1@satlock.com, correo2@empresa.com" autocomplete="off"/>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px">Separe múltiples correos con coma. Se envía invitación a Google Calendar.</div>
         </div>
       </div>
       ${gcalToken?`<div style="margin-top:10px"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text2)">
@@ -1296,16 +1339,20 @@ async function guardarActividad(){
   const hora=document.getElementById('ag-hora').value;
   const detalle=document.getElementById('ag-detalle').value;
   const urgente=document.getElementById('ag-urgente').checked;
+  const duracion=parseInt(document.getElementById('ag-duracion')?.value||'60');
+  const invitados=document.getElementById('ag-invitados')?.value.trim()||'';
   const sincGcal=document.getElementById('ag-sync-gcal')?.checked;
   const nuevo={
     usuario_id:USER.id,
-    fecha,hora:hora+':00',titulo,detalle,urgente,done:false
+    fecha,hora:hora+':00',titulo,detalle,urgente,done:false,
+    duracion_minutos:duracion
   };
   const {data}=await sb.from('agenda').insert(nuevo).select().single();
   if(data) agendaItems.push(data);
   // Sincronizar con Google Calendar si está conectado y marcado
   if(sincGcal && gcalToken){
-    await crearEventoGcal(titulo, fecha, hora, detalle);
+    const invList=invitados?invitados.split(',').map(e=>e.trim()).filter(Boolean):[];
+    await crearEventoGcalConInvitados(titulo, fecha, hora, detalle, duracion, invList);
   }
   document.getElementById('modal-ag').remove();
   drawCal();
