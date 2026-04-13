@@ -1052,6 +1052,7 @@ async function drawMonth(){
   const primerDia=`${y}-${String(m+1).padStart(2,'0')}-01`;
   const ultimoDia=`${y}-${String(m+1).padStart(2,'0')}-${new Date(Date.UTC(y,m+1,0)).getUTCDate()}`;
   const gcalEvents=await fetchGcalEvents(primerDia,ultimoDia);
+  window._lastGcalEvents=gcalEvents;
   const todosItems=[...agendaItems,...gcalEvents];
   const hoyStr=fechaHoyLocal();
   const firstDay=new Date(Date.UTC(y,m,1)).getUTCDay();
@@ -1104,6 +1105,7 @@ async function drawWeek(){
   const isoLun=isoLocal(days[0]);
   const isoDom=isoLocal(days[6]);
   const gcalEventsW=await fetchGcalEvents(isoLun,isoDom);
+  window._lastGcalEvents=gcalEventsW;
   const todosItemsW=[...agendaItems,...gcalEventsW];
   const hoyStr=fechaHoyLocal();
   const DAYS=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -1225,8 +1227,23 @@ async function toggleAg(id,done){
 }
 
 async function abrirEditarAgenda(id){
-  const it=agendaItems.find(x=>x.id===id);
-  if(!it) return;
+  // Buscar primero en agenda local
+  let it=agendaItems.find(x=>x.id===id);
+  // Si no está en local, puede ser un evento de Google
+  if(!it){
+    // Buscar en los últimos gcalEvents cargados
+    if(window._lastGcalEvents){
+      const gcalEv=window._lastGcalEvents.find(x=>x.id===id);
+      if(gcalEv){
+        // Para eventos de Google, ofrecer abrir en Google Calendar
+        if(confirm(`"${gcalEv.titulo}" es un evento de Google Calendar.\n\nPresione OK para abrirlo en Google Calendar.`)){
+          window.open('https://calendar.google.com','_blank');
+        }
+        return;
+      }
+    }
+    return;
+  }
   // Generar opciones de hora
   const timeOpts=[];
   for(let h=7;h<=20;h++) for(let m of[0,15,30,45]) timeOpts.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
