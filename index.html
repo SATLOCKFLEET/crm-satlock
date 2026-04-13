@@ -1773,13 +1773,22 @@ async function renderDiario(container){
     .order('fecha',{ascending:false});
 
   container.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:14px;font-weight:500;color:var(--text)">Diario de gestión</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Registro de contactos y seguimiento por cliente — alerta si pasan +30 días sin gestión</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Registro de contactos y seguimiento — alerta próxima gestión por cliente</div>
       </div>
-      <input class="diario-search" type="text" placeholder="Buscar cliente..." oninput="filtrarDiario(this.value)" id="diario-search"/>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;gap:4px">
+          <button class="fbtn active" id="dfiltro-todos" onclick="setFiltroDiario('todos',this)">Todos</button>
+          <button class="fbtn" id="dfiltro-urgentes" onclick="setFiltroDiario('urgentes',this)">Urgentes</button>
+          <button class="fbtn" id="dfiltro-hoy" onclick="setFiltroDiario('hoy',this)">Hoy</button>
+          <button class="fbtn" id="dfiltro-semana" onclick="setFiltroDiario('semana',this)">Esta semana</button>
+        </div>
+        <input class="diario-search" type="text" placeholder="Buscar cliente..." oninput="filtrarDiario(this.value)" id="diario-search"/>
+      </div>
     </div>
+    <div id="diario-resumen" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
     <div id="diario-lista"></div>`;
 
   window._diarioOps = ops||[];
@@ -1795,20 +1804,47 @@ function ultimaGestion(opId){
 
 function semaforoDiario(opId, fechaInicio, estado){
   const ult = ultimaGestion(opId);
+  if(estado==='cerrado'){
+    const dias=diasGestion(fechaInicio,null);
+    return {cls:'verde',dias,label:'Cerrado',diasProx:null};
+  }
+  // Si hay próxima gestión programada, usarla como referencia
+  if(ult&&ult.proxima_gestion){
+    const hoy=fechaHoyLocal();
+    const diasProx=diasGestion(hoy, ult.proxima_gestion);
+    // diasGestion devuelve positivo si fin > ini, aquí queremos días que FALTAN
+    const diasFaltan=Math.ceil((new Date(ult.proxima_gestion)-new Date(hoy))/(1000*60*60*24));
+    if(diasFaltan<0){
+      return {cls:'rojo',diasFaltan,label:`Vencido ${Math.abs(diasFaltan)}d`,diasProx:ult.proxima_gestion};
+    } else if(diasFaltan<=5){
+      return {cls:'amarillo',diasFaltan,label:`${diasFaltan}d para gestión`,diasProx:ult.proxima_gestion};
+    } else {
+      return {cls:'verde',diasFaltan,label:`${diasFaltan}d para gestión`,diasProx:ult.proxima_gestion};
+    }
+  }
+  // Sin próxima gestión programada: semáforo por días transcurridos
   const refFecha = ult ? ult.fecha : fechaInicio;
-  if(!refFecha) return {cls:'gris',dias:null,label:'Sin gestión'};
+  if(!refFecha) return {cls:'gris',diasFaltan:null,label:'Sin gestión',diasProx:null};
   const dias = diasGestion(refFecha, null);
-  if(estado==='cerrado') return {cls:'verde',dias,label:dias+'d · Cerrado'};
-  if(dias<=15) return {cls:'verde',dias,label:dias+'d'};
-  if(dias<=30) return {cls:'amarillo',dias,label:dias+'d ⚠'};
-  return {cls:'rojo',dias,label:dias+'d !'};
+  if(dias<=15) return {cls:'verde',diasFaltan:30-dias,label:`${30-dias}d restantes`,diasProx:null};
+  if(dias<=30) return {cls:'amarillo',diasFaltan:30-dias,label:`${30-dias}d restantes ⚠`,diasProx:null};
+  return {cls:'rojo',diasFaltan:dias-30,label:`${dias}d sin gestión !`,diasProx:null};
 }
 
+let _diarioFiltro='todos';
 function filtrarDiario(q){
-  renderDiarioLista(q);
+  renderDiarioLista(q, _diarioFiltro);
+}
+function setFiltroDiario(f, btn){
+  _diarioFiltro=f;
+  document.querySelectorAll('#dfiltro-todos,#dfiltro-urgentes,#dfiltro-hoy,#dfiltro-semana').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const q=document.getElementById('diario-search')?.value||'';
+  renderDiarioLista(q, f);
 }
 
-function renderDiarioLista(q){
+function renderDiarioLista(q, filtro){
+  filtro=filtro||_diarioFiltro||'todos';
   const lista = document.getElementById('diario-lista');
   if(!lista) return;
   let ops = window._diarioOps||[];
@@ -1816,6 +1852,36 @@ function renderDiarioLista(q){
     const ql=q.toLowerCase();
     ops=ops.filter(o=>o.empresa.toLowerCase().includes(ql)||(o.contacto||'').toLowerCase().includes(ql));
   }
+  // Aplicar filtro de urgencia
+  const hoyStr=fechaHoyLocal();
+  const enSemana=new Date(); enSemana.setDate(enSemana.getDate()+7);
+  const enSemanaStr=enSemana.getFullYear()+'-'+String(enSemana.getMonth()+1).padStart(2,'0')+'-'+String(enSemana.getDate()).padStart(2,'0');
+  if(filtro==='urgentes'){
+    ops=ops.filter(o=>{const s=semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado);return s.cls==='rojo';});
+  } else if(filtro==='hoy'){
+    ops=ops.filter(o=>{const s=semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado);return s.diasProx===hoyStr||(s.diasFaltan!==null&&s.diasFaltan<=0);});
+  } else if(filtro==='semana'){
+    ops=ops.filter(o=>{const s=semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado);return s.diasProx&&s.diasProx<=enSemanaStr;});
+  }
+  // Resumen de contadores
+  const allOps=window._diarioOps||[];
+  const nRojo=allOps.filter(o=>semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado).cls==='rojo').length;
+  const nAmarillo=allOps.filter(o=>semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado).cls==='amarillo').length;
+  const nVerde=allOps.filter(o=>semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado).cls==='verde').length;
+  const resumen=document.getElementById('diario-resumen');
+  if(resumen) resumen.innerHTML=`
+    <div style="background:var(--red-light);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px">
+      <span style="width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block"></span>
+      <span style="font-size:11px;color:var(--red-dark)"><strong>${nRojo}</strong> vencidos / urgentes</span>
+    </div>
+    <div style="background:var(--amber-light);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px">
+      <span style="width:8px;height:8px;border-radius:50%;background:var(--amber);display:inline-block"></span>
+      <span style="font-size:11px;color:var(--amber)"><strong>${nAmarillo}</strong> próximos (≤5 días)</span>
+    </div>
+    <div style="background:var(--green-light);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px">
+      <span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span>
+      <span style="font-size:11px;color:var(--green)"><strong>${nVerde}</strong> al día</span>
+    </div>`;
   // Ordenar: más urgentes primero (más días sin gestión)
   ops = [...ops].sort((a,b)=>{
     const sa=semaforoDiario(a.id,a.fecha_inicio_gestion,a.estado);
@@ -1843,8 +1909,11 @@ function renderDiarioLista(q){
           <div class="diario-contacto">${op.contacto||''}${op.cargo_contacto?' · '+op.cargo_contacto:''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <span class="diario-dias" style="background:${semBg};color:${semTxt}">${sem.label}</span>
-          <span style="font-size:11px;color:var(--text3)">${ult?'Último: '+ult.fecha.split('-').reverse().join('/'):'Sin gestión'}</span>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+            <span class="diario-dias" style="background:${semBg};color:${semTxt}">${sem.label}</span>
+            <span style="font-size:10px;color:var(--text3)">${ult?'Último: '+ult.fecha.split('-').reverse().join('/'):'Sin gestión'}${sem.diasProx?' · Próx: '+sem.diasProx.split('-').reverse().join('/'):''}
+            </span>
+          </div>
           <span style="color:var(--text3);font-size:14px">▾</span>
         </div>
       </div>
@@ -1870,8 +1939,17 @@ function renderDiarioLista(q){
               <button class="tipo-btn" id="tipo-${op.id}-${t}" onclick="selTipo('${op.id}','${t}')">${t==='llamada'?'📞 Llamada':t==='whatsapp'?'💬 WhatsApp':t==='correo'?'✉ Correo':t==='presencial'?'🤝 Presencial':'• Otro'}</button>
             `).join('')}
           </div>
-          <div style="display:grid;grid-template-columns:130px 1fr auto;gap:8px;align-items:start">
-            <input class="finput" type="date" id="fecha-gest-${op.id}" value="${fechaHoyLocal()}" style="font-size:12px;padding:7px 10px"/>
+          <div style="display:grid;grid-template-columns:130px 1fr;gap:8px;align-items:start;margin-bottom:8px">
+            <div>
+              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Fecha gestión</div>
+              <input class="finput" type="date" id="fecha-gest-${op.id}" value="${fechaHoyLocal()}" style="font-size:12px;padding:7px 10px;width:100%"/>
+            </div>
+            <div>
+              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Próxima gestión</div>
+              <input class="finput" type="date" id="prox-gest-${op.id}" value="${proxGestionDefault()}" style="font-size:12px;padding:7px 10px;width:100%"/>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">
             <textarea class="ftxt" id="nota-gest-${op.id}" placeholder="Describe la gestión realizada: resultado de la llamada, acuerdo alcanzado, próximo paso..." style="min-height:60px;font-size:12px;resize:vertical"></textarea>
             <button class="btn-pri" onclick="guardarGestion('${op.id}')" style="padding:7px 14px;white-space:nowrap;align-self:flex-end">Guardar</button>
           </div>
@@ -1888,6 +1966,11 @@ function renderDiarioLista(q){
   ops.forEach(op=>{ window._diarioTipos[op.id]='llamada'; });
 }
 
+function proxGestionDefault(){
+  const d=new Date();
+  d.setDate(d.getDate()+30);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
 function toggleDiario(opId){
   const body=document.getElementById(`diario-body-${opId}`);
   if(body) body.classList.toggle('open');
@@ -1910,10 +1993,12 @@ async function guardarGestion(opId){
   const fecha=document.getElementById(`fecha-gest-${opId}`)?.value||fechaHoyLocal();
   const tipo=(window._diarioTipos||{})[opId]||'llamada';
   if(!nota){alert('Escriba una nota de la gestión.');return;}
+  const proxGest=document.getElementById(`prox-gest-${opId}`)?.value||proxGestionDefault();
   const {data,error}=await sb.from('gestiones').insert({
     oportunidad_id:opId,
     usuario_id:USER.id,
-    fecha,tipo,nota
+    fecha,tipo,nota,
+    proxima_gestion:proxGest
   }).select().single();
   if(error){alert('Error: '+error.message);return;}
   // Actualizar en memoria
