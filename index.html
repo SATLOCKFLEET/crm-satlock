@@ -232,7 +232,7 @@ tbody tr:hover{background:var(--surface2)}
 
 
 /* ── Agenda estilo Google Calendar ── */
-.cal-container{display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:500px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.cal-container{display:flex;flex-direction:column;height:calc(100vh - 180px);min-height:500px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);overflow:visible}
 .cal-toolbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:0.5px solid var(--border);flex-shrink:0;gap:8px;flex-wrap:wrap}
 .cal-nav-group{display:flex;align-items:center;gap:4px}
 .cal-nav-btn{background:none;border:0.5px solid var(--border);border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit;font-size:12px;color:var(--text2);transition:all .12s}
@@ -284,8 +284,8 @@ tbody tr:hover{background:var(--surface2)}
 .cal-day-col:hover{background:rgba(25,66,140,.02)}
 .cal-hour-line{height:60px;border-bottom:0.5px solid var(--border);position:relative}
 .cal-quarter-line{height:15px;border-bottom:0.5px dashed rgba(0,0,0,.06)}
-.cal-event-block{position:absolute;left:2px;right:2px;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;overflow:hidden;transition:opacity .15s;z-index:1}
-.cal-event-block:hover{opacity:.85;z-index:2}
+.cal-event-block{position:absolute;left:2px;right:2px;border-radius:4px;padding:3px 6px;font-size:11px;cursor:pointer;overflow:hidden;transition:opacity .15s;z-index:10}
+.cal-event-block:hover{opacity:.85;z-index:20}
 .cal-event-block.ev-satlock{background:#c8d8f4;border-left:3px solid var(--sat-blue);color:var(--sat-blue-dark)}
 .cal-event-block.ev-google{background:#d2e3fc;border-left:3px solid #1a73e8;color:#174ea6}
 .cal-event-block.ev-urgente{background:#fad2d2;border-left:3px solid var(--red);color:var(--red-dark)}
@@ -459,6 +459,9 @@ async function logout(){
   document.getElementById('app').style.display='none';
   document.getElementById('auth-screen').style.display='flex';
 }
+document.addEventListener('keydown',(e)=>{
+  if(e.key==='Escape') document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
+});
 document.addEventListener('DOMContentLoaded',()=>{
   // Inicializar Google Auth (carga dinámica)
   setTimeout(initGoogleAuth, 500);
