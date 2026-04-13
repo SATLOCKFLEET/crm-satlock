@@ -1193,14 +1193,20 @@ async function drawWeek(){
 
     bodyHtml+=`<div style="position:relative;border-right:0.5px solid var(--border);${isToday?'background:rgba(25,66,140,0.02)':''}${di===6?';border-right:none':''}">`;
 
-    // Líneas de horas y cuartos — mismo cálculo que columna de horas
+    // Líneas de horas — una línea sólida por hora, punteada por cuarto
     for(let h=HORA_INI;h<HORA_FIN;h++){
+      // Línea sólida de hora
+      const topH=(h-HORA_INI)*4*SLOT_H;
+      bodyHtml+=`<div style="position:absolute;top:${topH}px;left:0;right:0;height:1px;background:var(--border);z-index:1;pointer-events:none"></div>`;
+      // Slots clickeables de 15 min con líneas punteadas para cuartos
       for(let q=0;q<4;q++){
-        const top=(h-HORA_INI)*4*SLOT_H+q*SLOT_H;
+        const top=topH+q*SLOT_H;
         const horaClick=`${String(h).padStart(2,'0')}:${q===0?'00':q===1?'15':q===2?'30':'45'}`;
-        bodyHtml+=`<div onclick="nuevaActividadFecha('${iso}','${horaClick}')" style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;${q===0?'border-top:0.5px solid var(--border)':'border-bottom:0.5px dashed rgba(0,0,0,0.04)'};cursor:pointer;transition:background .1s" onmouseover="this.style.background='rgba(25,66,140,0.05)'" onmouseout="this.style.background=''"></div>`;
+        bodyHtml+=`<div onclick="nuevaActividadFecha('${iso}','${horaClick}')" style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;${q>0?'border-bottom:0.5px dashed rgba(0,0,0,0.06)':''};cursor:pointer;transition:background .1s" onmouseover="this.style.background='rgba(25,66,140,0.05)'" onmouseout="this.style.background=''"></div>`;
       }
     }
+    // Línea final
+    bodyHtml+=`<div style="position:absolute;top:${(HORA_FIN-HORA_INI)*4*SLOT_H}px;left:0;right:0;height:1px;background:var(--border);pointer-events:none"></div>`;
 
     // Eventos
     dayItems.forEach(it=>{
