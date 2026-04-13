@@ -1173,13 +1173,13 @@ async function drawWeek(){
   let bodyHtml=`<div style="flex:1;overflow-y:auto;position:relative">
     <div style="display:grid;grid-template-columns:52px repeat(7,1fr);position:relative;min-height:${totalH}px">`;
 
-  // Columna de horas
+  // Columna de horas — label centrado en la línea de hora
   bodyHtml+=`<div style="position:relative">`;
   for(let h=HORA_INI;h<HORA_FIN;h++){
     for(let q=0;q<4;q++){
       const top=(h-HORA_INI)*4*SLOT_H+q*SLOT_H;
       bodyHtml+=`<div style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;border-bottom:0.5px solid ${q===0?'var(--border)':'rgba(0,0,0,0.04)'}">
-        ${q===0?`<span style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace;position:absolute;top:2px;right:6px;background:var(--surface);padding:0 2px">${String(h).padStart(2,'0')}:00</span>`:''}
+        ${q===0?`<span style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace;position:absolute;top:50%;transform:translateY(-50%);right:6px;background:var(--surface);padding:0 2px;line-height:1">${String(h).padStart(2,'0')}:00</span>`:''}
       </div>`;
     }
   }
@@ -1193,11 +1193,12 @@ async function drawWeek(){
 
     bodyHtml+=`<div style="position:relative;border-right:0.5px solid var(--border);${isToday?'background:rgba(25,66,140,0.02)':''}${di===6?';border-right:none':''}">`;
 
-    // Líneas de horas y cuartos
+    // Líneas de horas y cuartos — mismo cálculo que columna de horas
     for(let h=HORA_INI;h<HORA_FIN;h++){
       for(let q=0;q<4;q++){
         const top=(h-HORA_INI)*4*SLOT_H+q*SLOT_H;
-        bodyHtml+=`<div onclick="nuevaActividadFecha('${iso}','${String(h).padStart(2,'0')}:${q===0?'00':q===1?'15':q===2?'30':'45'}')" style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;border-bottom:0.5px solid ${q===0?'var(--border)':'rgba(0,0,0,0.04)'};cursor:pointer;transition:background .1s" onmouseover="this.style.background='rgba(25,66,140,0.05)'" onmouseout="this.style.background=''"></div>`;
+        const horaClick=`${String(h).padStart(2,'0')}:${q===0?'00':q===1?'15':q===2?'30':'45'}`;
+        bodyHtml+=`<div onclick="nuevaActividadFecha('${iso}','${horaClick}')" style="position:absolute;top:${top}px;left:0;right:0;height:${SLOT_H}px;border-bottom:0.5px solid ${q===0?'var(--border)':'rgba(0,0,0,0.04)'};cursor:pointer;transition:background .1s" onmouseover="this.style.background='rgba(25,66,140,0.05)'" onmouseout="this.style.background=''"></div>`;
       }
     }
 
