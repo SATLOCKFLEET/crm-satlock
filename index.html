@@ -553,8 +553,7 @@ function construirTabs(){
     {label:'Seguimiento',render:renderSeguimiento},
     {label:'+ Nueva oportunidad',render:renderNueva},
     {label:'Diario de gestión',render:renderDiario},
-    {label:'Agenda del día',render:renderAgenda},
-    {label:'Pendientes',render:renderPendientes},
+    {label:'Agenda',render:renderAgenda},
     {label:'15 · 5 · 1',render:renderQCO},
   ];
   if(['gerencia','jefe_fleet'].includes(PERFIL.rol)){
@@ -1107,6 +1106,9 @@ let agendaItems=[];
 async function renderAgenda(container){
   const {data}=await sb.from('agenda').select('*').eq('usuario_id',USER.id).order('fecha').order('hora');
   agendaItems=data||[];
+  // Cargar tareas manuales pendientes
+  const {data:tareas}=await sb.from('pendientes').select('*').eq('usuario_id',USER.id).eq('done',false).order('created_at');
+  window._tareasPendientes=tareas||[];
   renderCalendar(container);
 }
 
@@ -1134,8 +1136,43 @@ function renderCalendar(container){
         </div>
       </div>
       <div id="cal-body" style="flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0"></div>
+    </div>
+    <div style="margin-top:12px;background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:12px;font-weight:500;color:var(--text)">Tareas pendientes</span>
+        <button class="btn-sec" onclick="nuevoPend()" style="font-size:11px;padding:4px 10px">+ Agregar</button>
+      </div>
+      <div id="tareas-lista"></div>
     </div>`;
   drawCal();
+  renderTareasEnAgenda();
+}
+
+function renderTareasEnAgenda(){
+  const lista=document.getElementById('tareas-lista');
+  if(!lista) return;
+  const tareas=window._tareasaPendientes||window._tareasaPendientes||[];
+  const items=window._tareasPendientes||[];
+  if(!items.length){
+    lista.innerHTML='<div style="font-size:11px;color:var(--text3)">Sin tareas pendientes</div>';
+    return;
+  }
+  const prioColor={alta:'var(--red)',media:'var(--amber)',baja:'var(--border2)'};
+  lista.innerHTML=items.map(it=>`
+    <div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:0.5px solid var(--border)">
+      <div style="width:3px;min-height:20px;border-radius:2px;background:${prioColor[it.prioridad]||'var(--border2)'};flex-shrink:0;align-self:stretch"></div>
+      <div style="flex:1">
+        <div style="font-size:12px;color:var(--text)">${it.titulo}</div>
+        ${it.fecha_limite?`<div style="font-size:10px;color:var(--text3)">Vence: ${it.fecha_limite.split('-').reverse().join('/')}</div>`:''}
+      </div>
+      <button class="icon-btn" onclick="completarPendAgenda('${it.id}')" title="Marcar como lista" style="color:var(--green)">✓</button>
+    </div>`).join('');
+}
+
+async function completarPendAgenda(id){
+  await sb.from('pendientes').update({done:true}).eq('id',id);
+  window._tareasPendientes=(window._tareasPendientes||[]).filter(x=>x.id!==id);
+  renderTareasEnAgenda();
 }
 
 function irHoy(){calDate=new Date();drawCal();}
@@ -1657,8 +1694,14 @@ async function nuevoPend(){
   const titulo=prompt('Tarea:');if(!titulo)return;
   const prio=prompt('Prioridad (alta/media/baja):')||'media';
   const fecha=prompt('Fecha límite (YYYY-MM-DD, opcional):')||null;
-  await sb.from('pendientes').insert({usuario_id:USER.id,titulo,prioridad:prio,fecha_limite:fecha||null});
-  switchTab(3);
+  const {data}=await sb.from('pendientes').insert({
+    usuario_id:USER.id,titulo,prioridad:prio,fecha_limite:fecha||null
+  }).select().single();
+  if(data){
+    if(!window._tareasPendientes) window._tareasPendientes=[];
+    window._tareasPendientes.push(data);
+    renderTareasEnAgenda();
+  }
 }
 
 // ── 15·5·1 ───────────────────────────────────────────────────────────────────
