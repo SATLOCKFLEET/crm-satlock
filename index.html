@@ -1854,7 +1854,13 @@ async function renderDiario(container){
           <button class="fbtn" id="dfiltro-hoy" onclick="setFiltroDiario('hoy',this)">Hoy</button>
           <button class="fbtn" id="dfiltro-semana" onclick="setFiltroDiario('semana',this)">Esta semana</button>
         </div>
+        <div style="display:flex;gap:8px;align-items:center">
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:500;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--sat-blue);color:var(--sat-blue);background:var(--sat-blue-light)">
+          📥 Importar Excel
+          <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importarDiarioExcel(this)"/>
+        </label>
         <input class="diario-search" type="text" placeholder="Buscar cliente..." oninput="filtrarDiario(this.value)" id="diario-search"/>
+      </div>
       </div>
     </div>
     <div id="diario-resumen" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
@@ -2038,6 +2044,77 @@ function renderDiarioLista(q, filtro){
   ops.forEach(op=>{ window._diarioTipos[op.id]='llamada'; });
 }
 
+async function importarDiarioExcel(input){
+  const file = input.files[0];
+  if(!file) return;
+  // Cargar SheetJS dinámicamente
+  if(!window.XLSX){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload=res; s.onerror=rej;
+      document.head.appendChild(s);
+    });
+  }
+  const reader = new FileReader();
+  reader.onload = async(e)=>{
+    try{
+      const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws,{header:1,range:3}); // desde fila 4 (index 3)
+      
+      // Buscar oportunidades existentes para hacer match por nombre
+      const {data:ops} = await sb.from('oportunidades').select('id,empresa').eq('usuario_id',USER.id);
+      const opMap = {};
+      (ops||[]).forEach(o=>{ opMap[o.empresa.toLowerCase().trim()] = o.id; });
+      
+      let importados=0, sinMatch=[];
+      const inserts = [];
+      
+      for(const row of rows){
+        if(!row[0]||!row[4]) continue; // empresa y nota obligatorios
+        const empresa = String(row[0]).trim();
+        const fecha = row[2]?String(row[2]).slice(0,10):fechaHoyLocal();
+        const tipo = row[3]?String(row[3]).toLowerCase().trim():'llamada';
+        const nota = String(row[4]).trim();
+        const proxGest = row[5]?String(row[5]).slice(0,10):null;
+        
+        // Buscar match de empresa
+        const opId = opMap[empresa.toLowerCase()];
+        if(!opId){ sinMatch.push(empresa); continue; }
+        
+        inserts.push({
+          oportunidad_id:opId,
+          usuario_id:USER.id,
+          fecha,
+          tipo:['llamada','whatsapp','correo','presencial','otro'].includes(tipo)?tipo:'otro',
+          nota,
+          proxima_gestion:proxGest||null
+        });
+        importados++;
+      }
+      
+      if(inserts.length){
+        const {error} = await sb.from('gestiones').insert(inserts);
+        if(error){ alert('Error al importar: '+error.message); return; }
+      }
+      
+      let msg = `Importación completada: ${importados} gestiones importadas.`;
+      if(sinMatch.length){
+        const unicos=[...new Set(sinMatch)];
+        msg += `\n\nNo se encontraron ${unicos.length} empresa(s) en su CRM:\n${unicos.slice(0,5).join('\n')}${unicos.length>5?'\n...y '+(unicos.length-5)+' más':''}\n\nVerifique que el nombre coincida exactamente con el CRM.`;
+      }
+      alert(msg);
+      // Recargar diario
+      const container=document.getElementById('main-content');
+      if(container) renderDiario(container);
+    }catch(err){
+      alert('Error al leer el archivo: '+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value='';
+}
 function proxGestionDefault(){
   const d=new Date();
   d.setDate(d.getDate()+30);
