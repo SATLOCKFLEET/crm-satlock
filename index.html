@@ -356,6 +356,31 @@ tbody tr:hover{background:var(--surface2)}
 .tipo-btn.sel-otro{background:var(--gray-light);color:var(--gray);border-color:var(--gray)}
 .diario-search{font-family:inherit;font-size:12px;padding:6px 10px;border:0.5px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);width:200px}
 .diario-search:focus{outline:none;border-color:var(--sat-blue)}
+
+/* ── KPIs & Analytics ── */
+.kpi-section{margin-bottom:28px}
+.kpi-section-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.kpi-section-title::after{content:'';flex:1;height:0.5px;background:var(--border)}
+.kpi-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:16px}
+.kpi-card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px 16px;border-top:2px solid var(--sat-blue)}
+.kpi-card.orange{border-top-color:var(--sat-orange)}
+.kpi-card.green{border-top-color:var(--green)}
+.kpi-card.red{border-top-color:var(--red)}
+.kpi-card.purple{border-top-color:#534AB7}
+.kpi-lbl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:6px}
+.kpi-val{font-size:28px;font-weight:300;color:var(--text);line-height:1}
+.kpi-sub{font-size:11px;color:var(--text3);margin-top:4px;display:flex;align-items:center;gap:4px}
+.kpi-delta{font-size:11px;font-weight:600}
+.kpi-delta.pos{color:var(--green)}
+.kpi-delta.neg{color:var(--red)}
+.kpi-delta.neu{color:var(--text3)}
+.chart-wrap{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:12px}
+.chart-title{font-size:12px;font-weight:500;color:var(--text);margin-bottom:12px}
+.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.charts-grid{grid-template-columns:1fr}}
+.period-toggle{display:flex;gap:4px;margin-bottom:16px}
+.period-btn{font-family:inherit;font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer}
+.period-btn.active{background:var(--sat-blue);color:#fff;border-color:var(--sat-blue)}
 </style>
 </head>
 <body>
@@ -558,6 +583,7 @@ function construirTabs(){
   ];
   if(['gerencia','jefe_fleet'].includes(PERFIL.rol)){
     base.push({label:'Consolidado equipo',render:renderConsolidado});
+    base.push({label:'KPIs & Analytics',render:renderKPIs});
   }
   return base;
 }
@@ -2063,6 +2089,265 @@ async function guardarGestion(opId){
   },50);
 }
 
+
+// ── KPIs & ANALYTICS ──────────────────────────────────────────────────────────
+let _kpiPeriodo = 'mes'; // 'mes' | 'trimestre'
+
+async function renderKPIs(container){
+  container.innerHTML='<div class="loading">Cargando analytics...</div>';
+  const hoy=new Date();
+  const mesActual=hoy.getMonth()+1;
+  const anioActual=hoy.getFullYear();
+  const mesAnterior=mesActual===1?12:mesActual-1;
+  const anioAnterior=mesActual===1?anioActual-1:anioActual;
+
+  // Cargar datos
+  const [opsRes, gesRes, qcoRes, usuRes] = await Promise.all([
+    sb.from('oportunidades').select('*').order('created_at',{ascending:true}),
+    sb.from('gestiones').select('oportunidad_id,usuario_id,fecha,tipo').order('fecha'),
+    sb.from('quince_cinco_uno').select('*').order('mes').order('anio'),
+    sb.from('usuarios').select('id,nombre,linea,rol').neq('rol','gerencia')
+  ]);
+
+  const ops = opsRes.data||[];
+  const gest = gesRes.data||[];
+  const qco = qcoRes.data||[];
+  const usuarios = usuRes.data||[];
+
+  // ── Helpers ──
+  const opsMes=(m,a)=>ops.filter(o=>o.created_at&&new Date(o.created_at).getMonth()+1===m&&new Date(o.created_at).getFullYear()===a);
+  const cerradosMes=(m,a)=>ops.filter(o=>o.estado==='cerrado'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===m&&new Date(o.updated_at).getFullYear()===a);
+  const perdidosMes=(m,a)=>ops.filter(o=>o.estado==='perdido'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===m&&new Date(o.updated_at).getFullYear()===a);
+  const delta=(act,ant)=>{
+    if(!ant) return {pct:null,cls:'neu'};
+    const d=Math.round((act-ant)/Math.max(ant,1)*100);
+    return {pct:d,cls:d>0?'pos':d<0?'neg':'neu'};
+  };
+
+  // ── KPIs principales ──
+  const leadsAct=opsMes(mesActual,anioActual).length;
+  const leadsAnt=opsMes(mesAnterior,anioAnterior).length;
+  const cerradosAct=cerradosMes(mesActual,anioActual).length;
+  const cerradosAnt=cerradosMes(mesAnterior,anioAnterior).length;
+  const totalActivos=ops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).length;
+  const perdidosAct=perdidosMes(mesActual,anioActual).length;
+  const tasa=leadsAct>0?Math.round(cerradosAct/leadsAct*100):0;
+  const tasaAnt=leadsAnt>0?Math.round(cerradosAnt/leadsAnt*100):0;
+
+  // Tiempo promedio de ciclo (días creación→cierre)
+  const opsCerradasConFecha=ops.filter(o=>o.estado==='cerrado'&&o.fecha_inicio_gestion&&o.updated_at);
+  const cicloPromAct=opsCerradasConFecha.length
+    ?Math.round(opsCerradasConFecha.filter(o=>new Date(o.updated_at).getMonth()+1===mesActual)
+        .reduce((s,o)=>s+diasGestion(o.fecha_inicio_gestion,o.updated_at.split('T')[0]),0)
+        /Math.max(cerradosAct,1))
+    :0;
+
+  // Gestiones este mes
+  const gestMes=gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesActual&&new Date(g.fecha).getFullYear()===anioActual).length;
+  const gestAnt=gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesAnterior&&new Date(g.fecha).getFullYear()===anioAnterior).length;
+
+  // Mercadeo
+  const mercadeoTotal=ops.filter(o=>o.de_mercadeo).length;
+  const mercadeoCerrado=ops.filter(o=>o.de_mercadeo&&o.estado==='cerrado').length;
+  const tasaMercadeo=mercadeoTotal>0?Math.round(mercadeoCerrado/mercadeoTotal*100):0;
+
+  const dL=delta(leadsAct,leadsAnt);
+  const dC=delta(cerradosAct,cerradosAnt);
+  const dG=delta(gestMes,gestAnt);
+  const dT=delta(tasa,tasaAnt);
+
+  const mesNombre=new Date(anioActual,mesActual-1,1).toLocaleDateString('es-CO',{month:'long'});
+  const mesAntNombre=new Date(anioAnterior,mesAnterior-1,1).toLocaleDateString('es-CO',{month:'long'});
+
+  container.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:14px;font-weight:500;color:var(--text)">KPIs & Analytics</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Comparativo ${mesNombre} vs ${mesAntNombre}</div>
+      </div>
+    </div>
+
+    <div class="kpi-section">
+      <div class="kpi-section-title">Resumen del mes</div>
+      <div class="kpi-cards">
+        <div class="kpi-card">
+          <div class="kpi-lbl">Nuevos leads</div>
+          <div class="kpi-val">${leadsAct}</div>
+          <div class="kpi-sub">${dL.pct!==null?`<span class="kpi-delta ${dL.cls}">${dL.pct>0?'+':''}${dL.pct}%</span> vs ${mesAntNombre}`:'Sin comparativo'}</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-lbl">Cierres</div>
+          <div class="kpi-val" style="color:var(--green)">${cerradosAct}</div>
+          <div class="kpi-sub">${dC.pct!==null?`<span class="kpi-delta ${dC.cls}">${dC.pct>0?'+':''}${dC.pct}%</span> vs ${mesAntNombre}`:'Sin comparativo'}</div>
+        </div>
+        <div class="kpi-card orange">
+          <div class="kpi-lbl">Tasa conversión</div>
+          <div class="kpi-val" style="color:var(--sat-orange)">${tasa}%</div>
+          <div class="kpi-sub">${dT.pct!==null?`<span class="kpi-delta ${dT.cls}">${dT.pct>0?'+':''}${dT.pct}pp</span> vs ${mesAntNombre}`:'Sin comparativo'}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-lbl">Pipeline activo</div>
+          <div class="kpi-val" style="color:var(--sat-blue)">${totalActivos}</div>
+          <div class="kpi-sub">en proceso + prop. enviada</div>
+        </div>
+        <div class="kpi-card red">
+          <div class="kpi-lbl">Perdidos este mes</div>
+          <div class="kpi-val" style="color:var(--red)">${perdidosAct}</div>
+          <div class="kpi-sub">leads no convertidos</div>
+        </div>
+        <div class="kpi-card purple">
+          <div class="kpi-lbl">Ciclo promedio</div>
+          <div class="kpi-val" style="color:#534AB7">${cicloPromAct||'—'}<span style="font-size:14px">${cicloPromAct?'d':''}</span></div>
+          <div class="kpi-sub">días creación → cierre</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-lbl">Gestiones registradas</div>
+          <div class="kpi-val">${gestMes}</div>
+          <div class="kpi-sub">${dG.pct!==null?`<span class="kpi-delta ${dG.cls}">${dG.pct>0?'+':''}${dG.pct}%</span> vs ${mesAntNombre}`:'Sin comparativo'}</div>
+        </div>
+        <div class="kpi-card orange">
+          <div class="kpi-lbl">Conv. leads Mercadeo</div>
+          <div class="kpi-val" style="color:var(--sat-orange)">${tasaMercadeo}%</div>
+          <div class="kpi-sub">${mercadeoCerrado} cerrados de ${mercadeoTotal}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-wrap">
+        <div class="chart-title">Embudo de conversión — mes actual</div>
+        <div id="chart-embudo" style="height:220px"></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">Evolución mensual de leads y cierres</div>
+        <div id="chart-evolucion" style="height:220px"></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">Gestiones por tipo de contacto</div>
+        <div id="chart-tipos" style="height:220px"></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title">Ciclo de venta por ejecutivo (días promedio)</div>
+        <div id="chart-ciclo" style="height:220px"></div>
+      </div>
+    </div>
+
+    <div class="kpi-section" style="margin-top:16px">
+      <div class="kpi-section-title">Rendimiento por ejecutivo — mes actual</div>
+      <div id="tabla-ejecutivos"></div>
+    </div>`;
+
+  // ── Gráficos ──
+  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
+  const plotBg='rgba(0,0,0,0)';
+  const plotFont={family:'inherit',size:11,color:isDark?'#a0a098':'#5a5a56'};
+  const plotLayout=(extra={})=>({
+    paper_bgcolor:plotBg,plot_bgcolor:plotBg,
+    font:plotFont,margin:{l:40,r:10,t:10,b:40},
+    showlegend:false,
+    ...extra
+  });
+
+  // Embudo
+  const embudo=['Leads','En proceso','Prop. enviada','Cerrados'];
+  const embudoVals=[
+    opsMes(mesActual,anioActual).length,
+    ops.filter(o=>o.estado==='en_proceso').length,
+    ops.filter(o=>o.estado==='propuesta_enviada').length,
+    cerradosAct
+  ];
+  Plotly.newPlot('chart-embudo',[{
+    type:'funnel',y:embudo,x:embudoVals,
+    textinfo:'value+percent initial',
+    marker:{color:['#19428C','#378ADD','#BA7517','#639922']}
+  }],plotLayout({margin:{l:100,r:20,t:10,b:10}}),{responsive:true,displayModeBar:false});
+
+  // Evolución últimos 6 meses
+  const meses6=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(anioActual,mesActual-1-i,1);
+    meses6.push({m:d.getMonth()+1,a:d.getFullYear(),lbl:d.toLocaleDateString('es-CO',{month:'short'})});
+  }
+  Plotly.newPlot('chart-evolucion',[
+    {name:'Leads',x:meses6.map(m=>m.lbl),y:meses6.map(m=>opsMes(m.m,m.a).length),
+     type:'bar',marker:{color:'#19428C'},opacity:.8},
+    {name:'Cierres',x:meses6.map(m=>m.lbl),y:meses6.map(m=>cerradosMes(m.m,m.a).length),
+     type:'bar',marker:{color:'#639922'},opacity:.9}
+  ],plotLayout({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.2}}),{responsive:true,displayModeBar:false});
+
+  // Tipos de gestión
+  const tiposCount={llamada:0,whatsapp:0,correo:0,presencial:0,otro:0};
+  gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesActual).forEach(g=>{tiposCount[g.tipo||'otro']++;});
+  const tiposLabels=['Llamada','WhatsApp','Correo','Presencial','Otro'];
+  const tiposVals=Object.values(tiposCount);
+  Plotly.newPlot('chart-tipos',[{
+    type:'pie',labels:tiposLabels,values:tiposVals,hole:.45,
+    marker:{colors:['#19428C','#25D366','#E8460A','#534AB7','#888780']},
+    textinfo:'label+percent'
+  }],plotLayout({margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',y:-0.15}}),{responsive:true,displayModeBar:false});
+
+  // Ciclo por ejecutivo
+  const execCiclo=usuarios.map(u=>{
+    const uOps=ops.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&o.fecha_inicio_gestion&&o.updated_at);
+    if(!uOps.length) return {nombre:u.nombre.split(' ')[0],dias:0};
+    const prom=Math.round(uOps.reduce((s,o)=>s+diasGestion(o.fecha_inicio_gestion,o.updated_at.split('T')[0]),0)/uOps.length);
+    return {nombre:u.nombre.split(' ')[0],dias:prom};
+  }).filter(e=>e.dias>0).sort((a,b)=>a.dias-b.dias);
+
+  if(execCiclo.length){
+    Plotly.newPlot('chart-ciclo',[{
+      type:'bar',orientation:'h',
+      y:execCiclo.map(e=>e.nombre),x:execCiclo.map(e=>e.dias),
+      marker:{color:'#534AB7'},text:execCiclo.map(e=>e.dias+'d'),textposition:'outside'
+    }],plotLayout({margin:{l:70,r:40,t:10,b:30},xaxis:{title:'Días'}}),{responsive:true,displayModeBar:false});
+  } else {
+    document.getElementById('chart-ciclo').innerHTML='<div class="empty" style="padding:60px 0">Sin datos de ciclo aún</div>';
+  }
+
+  // Tabla ejecutivos
+  const tablaEl=document.getElementById('tabla-ejecutivos');
+  const execData=usuarios.map(u=>{
+    const uLeads=opsMes(mesActual,anioActual).filter(o=>o.usuario_id===u.id).length;
+    const uLeadsAnt=opsMes(mesAnterior,anioAnterior).filter(o=>o.usuario_id===u.id).length;
+    const uCierres=cerradosMes(mesActual,anioActual).filter(o=>o.usuario_id===u.id).length;
+    const uGest=gest.filter(g=>g.usuario_id===u.id&&g.fecha&&new Date(g.fecha).getMonth()+1===mesActual).length;
+    const uTasa=uLeads>0?Math.round(uCierres/uLeads*100):0;
+    const uMerc=ops.filter(o=>o.usuario_id===u.id&&o.de_mercadeo).length;
+    const dEl=delta(uLeads,uLeadsAnt);
+    return {u,uLeads,uLeadsAnt,uCierres,uGest,uTasa,uMerc,dEl};
+  }).sort((a,b)=>b.uCierres-a.uCierres||b.uLeads-a.uLeads);
+
+  tablaEl.innerHTML=`
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:12px">
+      <thead>
+        <tr style="background:var(--surface2);border-bottom:0.5px solid var(--border)">
+          <th style="text-align:left;padding:9px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Ejecutivo</th>
+          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Línea</th>
+          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Leads</th>
+          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">vs ant.</th>
+          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Cierres</th>
+          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Conv.</th>
+          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Gestiones</th>
+          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Mercadeo</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${execData.map(e=>`
+          <tr style="border-bottom:0.5px solid var(--border)">
+            <td style="padding:10px 12px;font-weight:500">${e.u.nombre}</td>
+            <td style="text-align:center;padding:10px 8px"><span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;background:${e.u.linea==='fleet'?'var(--sat-blue-light)':'var(--coral-light)'};color:${e.u.linea==='fleet'?'var(--sat-blue)':'var(--coral-dark)'}">${e.u.linea}</span></td>
+            <td style="text-align:center;padding:10px 8px;font-size:14px;font-weight:300;color:var(--sat-blue)">${e.uLeads}</td>
+            <td style="text-align:center;padding:10px 8px"><span style="font-size:11px;font-weight:600;color:${e.dEl.cls==='pos'?'var(--green)':e.dEl.cls==='neg'?'var(--red)':'var(--text3)'}">${e.dEl.pct!==null?(e.dEl.pct>0?'+':'')+e.dEl.pct+'%':'—'}</span></td>
+            <td style="text-align:center;padding:10px 8px;font-size:14px;font-weight:300;color:var(--green)">${e.uCierres}</td>
+            <td style="text-align:center;padding:10px 8px"><span style="font-size:12px;font-weight:500;color:var(--sat-orange)">${e.uTasa}%</span></td>
+            <td style="text-align:center;padding:10px 8px;color:var(--text2)">${e.uGest}</td>
+            <td style="text-align:center;padding:10px 8px;color:var(--text3)">${e.uMerc}</td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    </div>`;
+}
 // ── EXPORTAR EXCEL (gerencia) ─────────────────────────────────────────────────
 async function exportarExcel(){
   const {data:ops}=await sb.from('oportunidades').select('*,usuarios(nombre,cargo,linea)').order('fecha',{ascending:false});
