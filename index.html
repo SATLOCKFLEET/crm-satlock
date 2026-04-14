@@ -2095,6 +2095,15 @@ let _kpiPeriodo = 'mes'; // 'mes' | 'trimestre'
 
 async function renderKPIs(container){
   container.innerHTML='<div class="loading">Cargando analytics...</div>';
+  // Cargar Plotly dinámicamente si no está disponible
+  if(!window.Plotly){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdn.plot.ly/plotly-2.35.2.min.js';
+      s.onload=res; s.onerror=rej;
+      document.head.appendChild(s);
+    });
+  }
   const hoy=new Date();
   const mesActual=hoy.getMonth()+1;
   const anioActual=hoy.getFullYear();
