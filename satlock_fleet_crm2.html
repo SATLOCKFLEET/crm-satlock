@@ -1,0 +1,1822 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Satlock Fleet CRM 2.0</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --surface: #111318;
+    --surface2: #181c23;
+    --border: #1e2530;
+    --accent: #00e5a0;
+    --accent2: #0066ff;
+    --warn: #ff6b35;
+    --text: #e8eaf0;
+    --text2: #7a8396;
+    --text3: #4a5268;
+    --green: #00e5a0;
+    --yellow: #ffd166;
+    --red: #ff4757;
+    --blue: #0066ff;
+    --radius: 6px;
+    --font-mono: 'DM Mono', monospace;
+    --font-display: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* LOGIN SCREEN */
+  #login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 32px;
+    background: var(--bg);
+    position: relative;
+  }
+
+  #login-screen::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 20%, rgba(0,229,160,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 50% at 80% 80%, rgba(0,102,255,0.05) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .login-logo {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--text3);
+    text-transform: uppercase;
+  }
+
+  .login-title {
+    font-family: var(--font-display);
+    font-size: 42px;
+    font-weight: 800;
+    line-height: 1;
+    text-align: center;
+  }
+
+  .login-title span {
+    color: var(--accent);
+  }
+
+  .login-sub {
+    color: var(--text2);
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
+
+  .btn-google {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 14px 28px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+  }
+
+  .btn-google:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,229,160,0.05);
+  }
+
+  .btn-google svg { width: 18px; height: 18px; }
+
+  /* TOP BAR */
+  #topbar {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 52px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .topbar-brand {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 15px;
+    letter-spacing: 1px;
+  }
+
+  .topbar-brand span { color: var(--accent); }
+
+  .topbar-role {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text3);
+    text-transform: uppercase;
+    border-left: 1px solid var(--border);
+    padding-left: 20px;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  .user-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 11px;
+    color: var(--bg);
+  }
+
+  .btn-logout {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text3);
+    padding: 5px 12px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    transition: all 0.2s;
+  }
+
+  .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+  /* NAV */
+  #nav {
+    display: none;
+    align-items: center;
+    gap: 2px;
+    padding: 0 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .nav-tab {
+    padding: 10px 16px;
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text3);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    font-family: var(--font-display);
+    font-weight: 600;
+  }
+
+  .nav-tab:hover { color: var(--text2); }
+  .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* MAIN */
+  #main { display: none; padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+  /* PANELS */
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* KPI ROW */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .kpi-card.green::before { background: var(--green); }
+  .kpi-card.blue::before { background: var(--blue); }
+  .kpi-card.yellow::before { background: var(--yellow); }
+  .kpi-card.red::before { background: var(--red); }
+
+  .kpi-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 10px;
+    font-family: var(--font-display);
+  }
+
+  .kpi-value {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .kpi-sub { font-size: 11px; color: var(--text3); }
+
+  /* GRID 2COL */
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  /* CARD */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .card-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text2);
+  }
+
+  .card-body { padding: 18px; }
+
+  /* TABLE */
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text3);
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-display);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(30,37,48,0.5);
+    font-size: 12px;
+    color: var(--text2);
+    white-space: nowrap;
+  }
+
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  tr:last-child td { border-bottom: none; }
+
+  /* BADGE */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+    font-family: var(--font-display);
+  }
+
+  .badge-green { background: rgba(0,229,160,0.12); color: var(--green); }
+  .badge-blue { background: rgba(0,102,255,0.12); color: #4d94ff; }
+  .badge-yellow { background: rgba(255,209,102,0.12); color: var(--yellow); }
+  .badge-red { background: rgba(255,71,87,0.12); color: var(--red); }
+  .badge-gray { background: rgba(122,131,150,0.12); color: var(--text3); }
+
+  /* FORM */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  @media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } }
+
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+
+  label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text3);
+    font-family: var(--font-display);
+    font-weight: 600;
+  }
+
+  input, select, textarea {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 9px 12px;
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.2s;
+    width: 100%;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+  }
+
+  input[readonly] {
+    color: var(--accent);
+    cursor: default;
+  }
+
+  select option { background: var(--surface2); }
+
+  textarea { resize: vertical; min-height: 80px; }
+
+  .form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .btn {
+    padding: 9px 20px;
+    border-radius: var(--radius);
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  .btn-primary:hover { background: #00c98a; }
+  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text2);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover { border-color: var(--text2); color: var(--text); }
+
+  .btn-sm {
+    padding: 5px 12px;
+    font-size: 10px;
+  }
+
+  /* PIPELINE FUNNEL */
+  .pipeline-bar { margin-bottom: 10px; }
+  .pipeline-label {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .pipeline-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .pipeline-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s ease;
+  }
+
+  /* FILTERS */
+  .filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filters select, .filters input {
+    width: auto;
+    min-width: 140px;
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+
+  /* MODAL */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: 90%;
+    max-width: 720px;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 14px;
+  }
+
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 20px;
+    line-height: 1;
+    padding: 0 4px;
+  }
+
+  .modal-body { padding: 20px; }
+
+  /* TOAST */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 18px;
+    font-size: 12px;
+    z-index: 999;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.success { border-color: var(--green); color: var(--green); }
+  #toast.error { border-color: var(--red); color: var(--red); }
+
+  /* LOADING */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--text3);
+    gap: 10px;
+    font-size: 12px;
+  }
+
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 15-5-1 */
+  .metodologia-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .met-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+  }
+
+  .met-num {
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .met-label { font-size: 10px; color: var(--text3); letter-spacing: 1.5px; text-transform: uppercase; font-family: var(--font-display); }
+
+  /* COT NUMBER */
+  .cot-badge {
+    background: rgba(0,229,160,0.08);
+    border: 1px solid rgba(0,229,160,0.2);
+    color: var(--accent);
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-family: var(--font-display);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    display: inline-block;
+  }
+
+  /* EMPTY STATE */
+  .empty {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--text3);
+  }
+
+  .empty-icon { font-size: 32px; margin-bottom: 12px; }
+  .empty-text { font-size: 12px; }
+
+  /* SECTION TITLE */
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .text-green { color: var(--green); }
+  .text-blue { color: #4d94ff; }
+  .text-yellow { color: var(--yellow); }
+  .text-red { color: var(--red); }
+  .text-muted { color: var(--text3); }
+
+  .mb-16 { margin-bottom: 16px; }
+  .mb-24 { margin-bottom: 24px; }
+
+  .flex-between { display: flex; align-items: center; justify-content: space-between; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-logo">Satlock SAS — Fleet Division</div>
+  <div>
+    <div class="login-title">Fleet<span>CRM</span><br>2.0</div>
+  </div>
+  <div class="login-sub">Acceso restringido · Equipo comercial satlock.com</div>
+  <button class="btn-google" onclick="handleGoogleLogin()">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+    Ingresar con Google
+  </button>
+  <div id="login-error" style="color:var(--red);font-size:11px;display:none;"></div>
+</div>
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <div class="topbar-left">
+    <div class="topbar-brand">Fleet<span>CRM</span></div>
+    <div class="topbar-role" id="role-label">—</div>
+  </div>
+  <div class="topbar-right">
+    <div class="user-chip">
+      <div class="user-avatar" id="user-avatar">?</div>
+      <span id="user-name">—</span>
+    </div>
+    <button class="btn-logout" onclick="handleLogout()">Salir</button>
+  </div>
+</div>
+
+<!-- NAV -->
+<div id="nav">
+  <div class="nav-tab active" onclick="showPanel('panel-leads')" id="tab-leads">Mis Leads</div>
+  <div class="nav-tab" onclick="showPanel('panel-nuevo')" id="tab-nuevo">+ Nuevo Lead</div>
+  <div class="nav-tab" onclick="showPanel('panel-pipeline')" id="tab-pipeline">Pipeline</div>
+  <div class="nav-tab" onclick="showPanel('panel-metodologia')" id="tab-metodologia">15·5·1</div>
+  <div class="nav-tab admin-only" onclick="showPanel('panel-forecast')" id="tab-forecast" style="display:none">Forecast</div>
+  <div class="nav-tab admin-only" onclick="showPanel('panel-equipo')" id="tab-equipo" style="display:none">Equipo</div>
+  <div class="admin-only" id="linea-filter-wrap" style="display:none;margin-left:auto;padding:0 16px;display:none;align-items:center">
+    <select id="filter-linea" onchange="applyLineaFilter()" style="width:auto;min-width:130px;padding:6px 10px;font-size:11px;background:var(--bg);border:1px solid var(--border);color:var(--text2);border-radius:4px;font-family:var(--font-mono)">
+      <option value="">Fleet + Carga</option>
+      <option value="Fleet">Solo Fleet</option>
+      <option value="Carga">Solo Carga</option>
+    </select>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+
+  <!-- PANEL: MIS LEADS -->
+  <div class="panel active" id="panel-leads">
+    <div class="flex-between mb-24">
+      <div class="section-title" style="margin:0;flex:1">Mis leads activos</div>
+      <button class="btn btn-primary btn-sm" onclick="showPanel('panel-nuevo')">+ Nuevo lead</button>
+    </div>
+    <div class="filters">
+      <input type="text" placeholder="Buscar cliente..." id="filter-search" oninput="renderLeadsTable()">
+      <select id="filter-estado" onchange="renderLeadsTable()">
+        <option value="">Todos los estados</option>
+      </select>
+      <select id="filter-producto" onchange="renderLeadsTable()">
+        <option value="">Todos los productos</option>
+      </select>
+    </div>
+    <div class="card">
+      <div id="leads-table-wrap">
+        <div class="loading"><div class="spinner"></div>Cargando datos...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: NUEVO LEAD -->
+  <div class="panel" id="panel-nuevo">
+    <div class="section-title mb-24">Registrar nuevo lead</div>
+    <div class="card">
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>N° Cotización</label>
+            <input type="text" id="f-cot" readonly>
+          </div>
+          <div class="form-group">
+            <label>Fecha apertura</label>
+            <input type="date" id="f-fecha">
+          </div>
+          <div class="form-group">
+            <label>País</label>
+            <select id="f-pais">
+              <option>Colombia</option>
+              <option>Ecuador</option>
+              <option>Chile</option>
+              <option>Perú</option>
+              <option>México</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Ciudad</label>
+            <input type="text" id="f-ciudad" placeholder="Ej: Bogotá">
+          </div>
+          <div class="form-group">
+            <label>NIT / RUC</label>
+            <input type="text" id="f-nit" placeholder="000000000-0">
+          </div>
+          <div class="form-group">
+            <label>Nombre cliente</label>
+            <input type="text" id="f-cliente" placeholder="Razón social">
+          </div>
+          <div class="form-group">
+            <label>Contacto</label>
+            <input type="text" id="f-contacto" placeholder="Nombre del contacto">
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="f-email" placeholder="contacto@empresa.com">
+          </div>
+          <div class="form-group">
+            <label>Teléfono</label>
+            <input type="text" id="f-telefono" placeholder="+57 300 000 0000">
+          </div>
+          <div class="form-group">
+            <label>Link cotización</label>
+            <input type="url" id="f-link" placeholder="https://...">
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <select id="f-categoria">
+              <option value="">Seleccionar...</option>
+              <option>Fleet</option>
+              <option>Carga</option>
+              <option>Fleet + Carga</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Producto</label>
+            <select id="f-producto">
+              <option value="">Seleccionar...</option>
+              <optgroup label="Fleet">
+                <option>Control Track</option>
+                <option>Satellital Track</option>
+                <option>Track Vision</option>
+                <option>Safe Track</option>
+                <option>MOSAT</option>
+              </optgroup>
+              <optgroup label="Carga">
+                <option>MAC</option>
+                <option>SGT</option>
+                <option>GCT</option>
+                <option>TAGS</option>
+                <option>LCT</option>
+                <option>Integraciones</option>
+                <option>Inside Cargo</option>
+                <option>Central In House</option>
+                <option>AMT</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Tipo de negocio</label>
+            <select id="f-tipo">
+              <option value="">Seleccionar...</option>
+              <option>Comodato 12</option>
+              <option>Comodato 24</option>
+              <option>Comodato 36</option>
+              <option>Venta Única</option>
+              <option>Plataforma Mensual</option>
+              <option>Plataforma Trimestral</option>
+              <option>Plataforma Semestral</option>
+              <option>Plataforma Anual</option>
+              <option>Instalación por Confirmar</option>
+              <option>MOSAT Adicional al Servicio</option>
+              <option>CMI - Central Monitoreo</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Estado de negocio</label>
+            <select id="f-estado">
+              <option value="">Seleccionar...</option>
+              <option>Prospecto</option>
+              <option>Cotizado</option>
+              <option>En negociación</option>
+              <option>Ganado</option>
+              <option>Perdido</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label># de equipos</label>
+            <input type="number" id="f-equipos" placeholder="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>Valor unitario venta</label>
+            <input type="number" id="f-vunit" placeholder="0" min="0" oninput="calcTotal()">
+          </div>
+          <div class="form-group">
+            <label>Valor total factura</label>
+            <input type="number" id="f-vtotal" placeholder="Se calcula automático" readonly>
+          </div>
+          <div class="form-group">
+            <label>Venta cruzada</label>
+            <select id="f-vcruzada">
+              <option value="">No</option>
+              <option>Fleet → Carga</option>
+              <option>Carga → Fleet</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Fecha cierre estimada</label>
+            <input type="date" id="f-fcierre">
+          </div>
+          <div class="form-group">
+            <label>Responsable</label>
+            <input type="text" id="f-responsable" placeholder="Nombre ejecutivo" readonly>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-secondary" onclick="clearForm()">Limpiar</button>
+          <button class="btn btn-primary" id="btn-guardar" onclick="guardarLead()">Guardar en Sheets</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: PIPELINE -->
+  <div class="panel" id="panel-pipeline">
+    <div class="section-title mb-24">Pipeline comercial</div>
+    <div class="kpi-row" id="pipeline-kpis"></div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Embudo por estado</div></div>
+        <div class="card-body" id="pipeline-funnel"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Por producto</div></div>
+        <div class="card-body" id="pipeline-producto"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Detalle pipeline</div>
+        <button class="btn btn-secondary btn-sm" onclick="loadData()">↺ Actualizar</button>
+      </div>
+      <div class="table-wrap">
+        <table id="pipeline-table">
+          <thead>
+            <tr>
+              <th>COT</th><th>Cliente</th><th>Producto</th><th>Tipo</th>
+              <th>Equipos</th><th>Valor Total</th><th>Estado</th><th>Responsable</th><th>Cierre</th>
+            </tr>
+          </thead>
+          <tbody id="pipeline-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: 15-5-1 -->
+  <div class="panel" id="panel-metodologia">
+    <div class="section-title mb-24">Metodología 15·5·1</div>
+    <div id="met-selector" class="mb-16">
+      <select id="met-ejecutivo" onchange="renderMetodologia()" style="max-width:220px">
+        <option value="">Mi resumen</option>
+      </select>
+    </div>
+    <div class="metodologia-grid">
+      <div class="met-card">
+        <div class="met-num text-blue" id="met-15">—</div>
+        <div class="met-label">Prospectos (15)</div>
+      </div>
+      <div class="met-card">
+        <div class="met-num text-yellow" id="met-5">—</div>
+        <div class="met-label">Activos (5)</div>
+      </div>
+      <div class="met-card">
+        <div class="met-num text-green" id="met-1">—</div>
+        <div class="met-label">Para Cierre (1)</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Leads por etapa</div></div>
+      <div class="card-body" id="met-detalle"></div>
+    </div>
+  </div>
+
+  <!-- PANEL: FORECAST (admin) -->
+  <div class="panel" id="panel-forecast">
+    <div class="section-title mb-24">Forecast ejecutivo</div>
+    <div class="kpi-row" id="forecast-kpis"></div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header"><div class="card-title">Pipeline por ejecutivo</div></div>
+        <div class="card-body" id="forecast-ejecutivos"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">Negocios por tipo</div></div>
+        <div class="card-body" id="forecast-tipos"></div>
+      </div>
+    </div>
+    <div class="card mb-24">
+      <div class="card-header"><div class="card-title">Oportunidades de alto valor</div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>COT</th><th>Cliente</th><th>Responsable</th><th>Producto</th><th>Valor</th><th>Estado</th><th>Cierre</th></tr></thead>
+          <tbody id="forecast-top-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: EQUIPO (admin) -->
+  <div class="panel" id="panel-equipo">
+    <div class="section-title mb-24">Resumen por ejecutivo</div>
+    <div id="equipo-cards" class="kpi-row"></div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Todos los registros</div></div>
+      <div class="filters">
+        <input type="text" placeholder="Buscar..." id="filter-all-search" oninput="renderAllTable()">
+        <select id="filter-all-ejecutivo" onchange="renderAllTable()"><option value="">Todos los ejecutivos</option></select>
+        <select id="filter-all-estado" onchange="renderAllTable()"><option value="">Todos los estados</option></select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>COT</th><th>Cliente</th><th>Ejecutivo</th><th>Producto</th><th>Tipo</th><th>Equipos</th><th>Valor</th><th>Estado</th><th>Apertura</th></tr></thead>
+          <tbody id="all-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MODAL EDITAR -->
+<div class="modal-overlay" id="modal-editar">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Editar lead</div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script>
+// ============================================================
+// CONFIG — reemplazar con sus valores reales
+// ============================================================
+const CONFIG = {
+  CLIENT_ID: '199555753228-hiaq3ph3i1bekuu1530a3ib180hlv91d.apps.googleusercontent.com',
+  SHEET_ID: '1T9LSGylhJEJifJnOXBhE2cFM8zMzV76U',
+  SHEET_NAME: '2026',
+  SCOPES: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+  ADMIN_EMAILS: [], // Emails con acceso completo (Yezid, Vivian, David)
+  DISCOVERY_DOCS: ['https://sheets.googleapis.com/$discovery/rest?version=v4']
+};
+
+// ============================================================
+// STATE
+// ============================================================
+let state = {
+  user: null,
+  role: 'ejecutivo', // ejecutivo | jefe | liderazgo
+  data: [],
+  rowOffset: 2, // Fila 1 = encabezados
+  tokenClient: null,
+  gapiInited: false,
+  gisInited: false,
+};
+
+// ============================================================
+// COLUMNAS (orden exacto de su hoja)
+// ============================================================
+const COLS = {
+  PAIS: 0,
+  RESPONSABLE: 1,
+  VENTA_CRUZADA: 2,
+  CIUDAD: 3,
+  NIT: 4,
+  CLIENTE: 5,
+  CONTACTO: 6,
+  EMAIL: 7,
+  TELEFONO: 8,
+  NUM_COT: 9,
+  LINK_COT: 10,
+  CATEGORIA: 11,
+  PRODUCTO: 12,
+  TIPO_NEGOCIO: 13,
+  NUM_EQUIPOS: 14,
+  VALOR_UNIT: 15,
+  VALOR_TOTAL: 16,
+  ESTADO: 17,
+  FECHA_APERTURA: 18,
+  FECHA_CIERRE: 19,
+};
+
+const ESTADO_COLOR = {
+  'Prospecto': 'badge-blue',
+  'Cotizado': 'badge-yellow',
+  'En negociación': 'badge-yellow',
+  'Ganado': 'badge-green',
+  'Perdido': 'badge-red',
+};
+
+// ============================================================
+// GAPI INIT
+// ============================================================
+function gapiLoaded() {
+  gapi.load('client', async () => {
+    await gapi.client.init({
+      discoveryDocs: CONFIG.DISCOVERY_DOCS,
+    });
+    state.gapiInited = true;
+    maybeEnableLogin();
+  });
+}
+
+function gisLoaded() {
+  state.tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CONFIG.CLIENT_ID,
+    scope: CONFIG.SCOPES,
+    callback: handleTokenResponse,
+  });
+  state.gisInited = true;
+  maybeEnableLogin();
+}
+
+function maybeEnableLogin() {
+  if (state.gapiInited && state.gisInited) {
+    // Auto-restore si hay token en sessionStorage
+    const saved = sessionStorage.getItem('satlock_token');
+    if (saved) {
+      gapi.client.setToken(JSON.parse(saved));
+      loadUserInfo();
+    }
+  }
+}
+
+async function handleGoogleLogin() {
+  if (!state.gapiInited || !state.gisInited) {
+    showToast('Cargando librerías de Google, espere un momento...', 'error');
+    return;
+  }
+  state.tokenClient.requestAccessToken({ prompt: 'consent' });
+}
+
+async function handleTokenResponse(resp) {
+  if (resp.error) {
+    showToast('Error de autenticación: ' + resp.error, 'error');
+    return;
+  }
+  sessionStorage.setItem('satlock_token', JSON.stringify(gapi.client.getToken()));
+  await loadUserInfo();
+}
+
+async function loadUserInfo() {
+  try {
+    const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: 'Bearer ' + gapi.client.getToken().access_token }
+    });
+    const info = await resp.json();
+    state.user = info;
+    determineRole(info.email);
+    enterApp();
+  } catch(e) {
+    showToast('No se pudo obtener información del usuario', 'error');
+  }
+}
+
+const JEFES = [
+  'yezid.bautista@satlock.com',
+  'vivian.diaz@satlock.com',
+  'david.herrera@satlock.com',
+];
+
+function determineRole(email) {
+  state.role = JEFES.includes(email.toLowerCase()) ? 'jefe' : 'ejecutivo';
+}
+
+function enterApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('topbar').style.display = 'flex';
+  document.getElementById('nav').style.display = 'flex';
+  document.getElementById('main').style.display = 'block';
+
+  const name = state.user.name || state.user.email.split('@')[0];
+  document.getElementById('user-name').textContent = name;
+  document.getElementById('user-avatar').textContent = name.charAt(0).toUpperCase();
+
+  const roleLabels = { ejecutivo: 'Ejecutivo Comercial', jefe: 'Jefe Comercial Fleet', liderazgo: 'Liderazgo Comercial' };
+  document.getElementById('role-label').textContent = roleLabels[state.role];
+
+  // Mostrar tabs de admin
+  if (state.role === 'jefe') {
+    document.querySelectorAll('.admin-only').forEach(el => {
+      el.style.display = el.id === 'linea-filter-wrap' ? 'flex' : 'flex';
+    });
+  }
+
+  // Prellenar responsable en formulario
+  document.getElementById('f-responsable').value = state.user.name || state.user.email.split('@')[0];
+
+  // Fecha hoy
+  const hoy = new Date().toISOString().split('T')[0];
+  document.getElementById('f-fecha').value = hoy;
+
+  loadData();
+}
+
+function handleLogout() {
+  google.accounts.oauth2.revoke(gapi.client.getToken().access_token);
+  gapi.client.setToken('');
+  sessionStorage.removeItem('satlock_token');
+  state.user = null;
+  state.data = [];
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('topbar').style.display = 'none';
+  document.getElementById('nav').style.display = 'none';
+  document.getElementById('main').style.display = 'none';
+}
+
+// ============================================================
+// FILTRO DE LÍNEA (solo jefes)
+// ============================================================
+function applyLineaFilter() {
+  renderLeadsTable();
+  renderPipeline();
+  renderMetodologia();
+  if (state.role === 'jefe') {
+    renderForecast();
+    renderEquipo();
+  }
+}
+
+function getFilteredData() {
+  const linea = document.getElementById('filter-linea')?.value || '';
+  if (!linea) return state.data;
+  return state.data.filter(r => {
+    if (linea === 'Fleet') return r.categoria === 'Fleet' || (!r.categoria && r.producto && ['Control Track','Satellital Track','Track Vision','Safe Track','MOSAT'].includes(r.producto));
+    if (linea === 'Carga') return r.categoria === 'Carga' || (!r.categoria && r.producto && ['MAC','SGT','GCT','TAGS','LCT','Integraciones','Inside Cargo','Central In House','AMT'].includes(r.producto));
+    return true;
+  });
+}
+
+// ============================================================
+// DATA
+// ============================================================
+async function loadData() {
+  try {
+    const range = `${CONFIG.SHEET_NAME}!A2:T`;
+    const resp = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: CONFIG.SHEET_ID,
+      range: range,
+    });
+    const rows = resp.result.values || [];
+    state.data = rows.map((row, i) => ({
+      rowIndex: i + 2, // 1-indexed, fila real en sheet
+      raw: row,
+      pais: row[COLS.PAIS] || '',
+      responsable: row[COLS.RESPONSABLE] || '',
+      ventaCruzada: row[COLS.VENTA_CRUZADA] || '',
+      ciudad: row[COLS.CIUDAD] || '',
+      nit: row[COLS.NIT] || '',
+      cliente: row[COLS.CLIENTE] || '',
+      contacto: row[COLS.CONTACTO] || '',
+      email: row[COLS.EMAIL] || '',
+      telefono: row[COLS.TELEFONO] || '',
+      numCot: row[COLS.NUM_COT] || '',
+      linkCot: row[COLS.LINK_COT] || '',
+      categoria: row[COLS.CATEGORIA] || '',
+      producto: row[COLS.PRODUCTO] || '',
+      tipoNegocio: row[COLS.TIPO_NEGOCIO] || '',
+      numEquipos: parseInt(row[COLS.NUM_EQUIPOS]) || 0,
+      valorUnit: parseFloat(row[COLS.VALOR_UNIT]) || 0,
+      valorTotal: parseFloat(row[COLS.VALOR_TOTAL]) || 0,
+      estado: row[COLS.ESTADO] || '',
+      fechaApertura: row[COLS.FECHA_APERTURA] || '',
+      fechaCierre: row[COLS.FECHA_CIERRE] || '',
+    }));
+
+    populateFilters();
+    renderLeadsTable();
+    renderPipeline();
+    renderMetodologia();
+    if (state.role === 'jefe' || state.role === 'liderazgo') {
+      renderForecast();
+      renderEquipo();
+    }
+    generateNextCotNumber();
+
+  } catch(e) {
+    console.error(e);
+    showToast('Error al leer la hoja. Verifique permisos y nombre de pestaña.', 'error');
+  }
+}
+
+// ============================================================
+// FILTERS POPULATION
+// ============================================================
+function populateFilters() {
+  const estados = [...new Set(state.data.map(r => r.estado).filter(Boolean))];
+  const productos = [...new Set(state.data.map(r => r.producto).filter(Boolean))];
+  const ejecutivos = [...new Set(state.data.map(r => r.responsable).filter(Boolean))];
+
+  const selEstado = document.getElementById('filter-estado');
+  selEstado.innerHTML = '<option value="">Todos los estados</option>';
+  estados.forEach(e => selEstado.innerHTML += `<option>${e}</option>`);
+
+  const selProducto = document.getElementById('filter-producto');
+  selProducto.innerHTML = '<option value="">Todos los productos</option>';
+  productos.forEach(p => selProducto.innerHTML += `<option>${p}</option>`);
+
+  const selAllEjec = document.getElementById('filter-all-ejecutivo');
+  if (selAllEjec) {
+    selAllEjec.innerHTML = '<option value="">Todos los ejecutivos</option>';
+    ejecutivos.forEach(e => selAllEjec.innerHTML += `<option>${e}</option>`);
+  }
+
+  const selAllEstado = document.getElementById('filter-all-estado');
+  if (selAllEstado) {
+    selAllEstado.innerHTML = '<option value="">Todos los estados</option>';
+    estados.forEach(e => selAllEstado.innerHTML += `<option>${e}</option>`);
+  }
+
+  const selMet = document.getElementById('met-ejecutivo');
+  if (selMet) {
+    selMet.innerHTML = '<option value="">Mi resumen</option>';
+    ejecutivos.forEach(e => selMet.innerHTML += `<option>${e}</option>`);
+  }
+}
+
+// ============================================================
+// RENDER: LEADS TABLE
+// ============================================================
+function myLeads() {
+  const userName = state.user?.name || '';
+  const userEmail = state.user?.email?.split('@')[0] || '';
+  if (state.role === 'ejecutivo') {
+    return state.data.filter(r =>
+      r.responsable.toLowerCase().includes(userName.toLowerCase()) ||
+      r.responsable.toLowerCase().includes(userEmail.toLowerCase())
+    );
+  }
+  return state.data;
+}
+
+function renderLeadsTable() {
+  const search = document.getElementById('filter-search')?.value.toLowerCase() || '';
+  const estado = document.getElementById('filter-estado')?.value || '';
+  const producto = document.getElementById('filter-producto')?.value || '';
+
+  let rows = myLeads();
+  if (search) rows = rows.filter(r => r.cliente.toLowerCase().includes(search) || r.numCot.toLowerCase().includes(search));
+  if (estado) rows = rows.filter(r => r.estado === estado);
+  if (producto) rows = rows.filter(r => r.producto === producto);
+
+  const wrap = document.getElementById('leads-table-wrap');
+
+  if (!rows.length) {
+    wrap.innerHTML = `<div class="empty"><div class="empty-icon">◎</div><div class="empty-text">No hay leads que coincidan</div></div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>COT</th><th>Cliente</th><th>Ciudad</th><th>Producto</th>
+          <th>Tipo</th><th>Equipos</th><th>Valor Total</th><th>Estado</th>
+          <th>Apertura</th><th>Cierre</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td><span class="text-green">${r.numCot}</span></td>
+            <td style="color:var(--text)">${r.cliente}</td>
+            <td>${r.ciudad}</td>
+            <td>${r.producto}</td>
+            <td>${r.tipoNegocio}</td>
+            <td style="text-align:right">${r.numEquipos}</td>
+            <td style="text-align:right">${formatCOP(r.valorTotal)}</td>
+            <td><span class="badge ${ESTADO_COLOR[r.estado] || 'badge-gray'}">${r.estado}</span></td>
+            <td class="text-muted">${r.fechaApertura}</td>
+            <td class="text-muted">${r.fechaCierre}</td>
+            <td><button class="btn btn-secondary btn-sm" onclick="openEditModal(${r.rowIndex})">Editar</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    </div>`;
+}
+
+// ============================================================
+// RENDER: PIPELINE
+// ============================================================
+function renderPipeline() {
+  const data = state.role === 'ejecutivo' ? myLeads() : getFilteredData();
+  const noGanados = data.filter(r => r.estado !== 'Perdido');
+
+  const totalPipeline = noGanados.reduce((s, r) => s + r.valorTotal, 0);
+  const ganados = data.filter(r => r.estado === 'Ganado').reduce((s, r) => s + r.valorTotal, 0);
+  const enNegociacion = data.filter(r => r.estado === 'En negociación').reduce((s, r) => s + r.valorTotal, 0);
+  const cotizados = data.filter(r => r.estado === 'Cotizado').length;
+
+  document.getElementById('pipeline-kpis').innerHTML = `
+    <div class="kpi-card green">
+      <div class="kpi-label">Pipeline total</div>
+      <div class="kpi-value text-green">${formatCOP(totalPipeline)}</div>
+      <div class="kpi-sub">${noGanados.length} oportunidades activas</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">En negociación</div>
+      <div class="kpi-value text-blue">${formatCOP(enNegociacion)}</div>
+    </div>
+    <div class="kpi-card yellow">
+      <div class="kpi-label">Cotizados</div>
+      <div class="kpi-value text-yellow">${cotizados}</div>
+      <div class="kpi-sub">pendientes de respuesta</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Ganado</div>
+      <div class="kpi-value text-green">${formatCOP(ganados)}</div>
+    </div>
+  `;
+
+  // Funnel
+  const estados = ['Prospecto', 'Cotizado', 'En negociación', 'Ganado'];
+  const maxCount = Math.max(...estados.map(e => data.filter(r => r.estado === e).length), 1);
+  const colors = { 'Prospecto': 'var(--blue)', 'Cotizado': 'var(--yellow)', 'En negociación': '#ff9f43', 'Ganado': 'var(--green)' };
+
+  document.getElementById('pipeline-funnel').innerHTML = estados.map(e => {
+    const count = data.filter(r => r.estado === e).length;
+    const pct = (count / maxCount * 100).toFixed(0);
+    return `<div class="pipeline-bar">
+      <div class="pipeline-label"><span>${e}</span><span>${count} leads</span></div>
+      <div class="pipeline-track"><div class="pipeline-fill" style="width:${pct}%;background:${colors[e]}"></div></div>
+    </div>`;
+  }).join('');
+
+  // Por producto
+  const byProd = {};
+  data.forEach(r => { if (r.producto) byProd[r.producto] = (byProd[r.producto] || 0) + r.valorTotal; });
+  const sortedProd = Object.entries(byProd).sort((a,b) => b[1]-a[1]).slice(0, 6);
+  const maxVal = Math.max(...sortedProd.map(p => p[1]), 1);
+  document.getElementById('pipeline-producto').innerHTML = sortedProd.map(([prod, val]) => {
+    const pct = (val / maxVal * 100).toFixed(0);
+    return `<div class="pipeline-bar">
+      <div class="pipeline-label"><span>${prod}</span><span>${formatCOP(val)}</span></div>
+      <div class="pipeline-track"><div class="pipeline-fill" style="width:${pct}%;background:var(--accent2)"></div></div>
+    </div>`;
+  }).join('');
+
+  // Tabla detalle
+  const tbody = document.getElementById('pipeline-tbody');
+  tbody.innerHTML = noGanados.sort((a,b) => b.valorTotal - a.valorTotal).map(r => `
+    <tr>
+      <td><span class="text-green">${r.numCot}</span></td>
+      <td style="color:var(--text)">${r.cliente}</td>
+      <td>${r.producto}</td>
+      <td>${r.tipoNegocio}</td>
+      <td style="text-align:right">${r.numEquipos}</td>
+      <td style="text-align:right;color:var(--text)">${formatCOP(r.valorTotal)}</td>
+      <td><span class="badge ${ESTADO_COLOR[r.estado] || 'badge-gray'}">${r.estado}</span></td>
+      <td class="text-muted">${r.responsable}</td>
+      <td class="text-muted">${r.fechaCierre}</td>
+    </tr>
+  `).join('');
+}
+
+// ============================================================
+// RENDER: METODOLOGÍA 15·5·1
+// ============================================================
+function renderMetodologia() {
+  const selEjec = document.getElementById('met-ejecutivo')?.value;
+  let data = state.role === 'ejecutivo' ? myLeads() : getFilteredData();
+  if (selEjec) data = data.filter(r => r.responsable === selEjec);
+
+  const prospectos = data.filter(r => r.estado === 'Prospecto').length;
+  const activos = data.filter(r => ['Cotizado', 'En negociación'].includes(r.estado)).length;
+  const cierre = data.filter(r => r.estado === 'En negociación' && r.valorTotal > 0).length;
+
+  document.getElementById('met-15').textContent = prospectos;
+  document.getElementById('met-5').textContent = activos;
+  document.getElementById('met-1').textContent = cierre;
+
+  const estadoGroups = {};
+  data.forEach(r => {
+    if (!estadoGroups[r.estado]) estadoGroups[r.estado] = [];
+    estadoGroups[r.estado].push(r);
+  });
+
+  document.getElementById('met-detalle').innerHTML = Object.entries(estadoGroups).map(([est, leads]) => `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span class="badge ${ESTADO_COLOR[est] || 'badge-gray'}">${est}</span>
+        <span class="text-muted" style="font-size:11px">${leads.length} leads · ${formatCOP(leads.reduce((s,r)=>s+r.valorTotal,0))}</span>
+      </div>
+      ${leads.slice(0,5).map(r => `
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">
+          <span style="color:var(--text)">${r.cliente}</span>
+          <span class="text-muted">${formatCOP(r.valorTotal)}</span>
+        </div>
+      `).join('')}
+      ${leads.length > 5 ? `<div class="text-muted" style="font-size:11px;padding-top:6px">+${leads.length-5} más</div>` : ''}
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// RENDER: FORECAST (admin/liderazgo)
+// ============================================================
+function renderForecast() {
+  const data = getFilteredData();
+  const totalPipeline = data.filter(r => r.estado !== 'Perdido').reduce((s,r) => s+r.valorTotal, 0);
+  const ganados = data.filter(r => r.estado === 'Ganado').reduce((s,r) => s+r.valorTotal, 0);
+  const negociacion = data.filter(r => r.estado === 'En negociación').reduce((s,r) => s+r.valorTotal, 0);
+  const perdidos = data.filter(r => r.estado === 'Perdido').length;
+
+  document.getElementById('forecast-kpis').innerHTML = `
+    <div class="kpi-card green">
+      <div class="kpi-label">Pipeline total</div>
+      <div class="kpi-value text-green">${formatCOP(totalPipeline)}</div>
+      <div class="kpi-sub">${data.filter(r=>r.estado!=='Perdido').length} oportunidades</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label">Facturado / Ganado</div>
+      <div class="kpi-value text-green">${formatCOP(ganados)}</div>
+    </div>
+    <div class="kpi-card blue">
+      <div class="kpi-label">En negociación</div>
+      <div class="kpi-value text-blue">${formatCOP(negociacion)}</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label">Perdidos</div>
+      <div class="kpi-value text-red">${perdidos}</div>
+      <div class="kpi-sub">negocios cerrados en negativo</div>
+    </div>
+  `;
+
+  // Por ejecutivo
+  const byEjec = {};
+  data.forEach(r => {
+    if (!r.responsable) return;
+    if (!byEjec[r.responsable]) byEjec[r.responsable] = { total: 0, ganado: 0, count: 0 };
+    byEjec[r.responsable].total += r.valorTotal;
+    if (r.estado === 'Ganado') byEjec[r.responsable].ganado += r.valorTotal;
+    byEjec[r.responsable].count++;
+  });
+
+  const maxEjec = Math.max(...Object.values(byEjec).map(e => e.total), 1);
+  document.getElementById('forecast-ejecutivos').innerHTML = Object.entries(byEjec)
+    .sort((a,b) => b[1].total - a[1].total)
+    .map(([ejec, vals]) => {
+      const pct = (vals.total / maxEjec * 100).toFixed(0);
+      return `<div class="pipeline-bar">
+        <div class="pipeline-label">
+          <span>${ejec}</span>
+          <span>${formatCOP(vals.total)} · <span class="text-muted">${vals.count} leads</span></span>
+        </div>
+        <div class="pipeline-track"><div class="pipeline-fill" style="width:${pct}%;background:var(--accent)"></div></div>
+      </div>`;
+    }).join('');
+
+  // Por tipo negocio
+  const byTipo = {};
+  data.forEach(r => { if (r.tipoNegocio) byTipo[r.tipoNegocio] = (byTipo[r.tipoNegocio] || 0) + r.valorTotal; });
+  const maxTipo = Math.max(...Object.values(byTipo), 1);
+  document.getElementById('forecast-tipos').innerHTML = Object.entries(byTipo)
+    .sort((a,b) => b[1]-a[1])
+    .map(([tipo, val]) => {
+      const pct = (val / maxTipo * 100).toFixed(0);
+      return `<div class="pipeline-bar">
+        <div class="pipeline-label"><span>${tipo}</span><span>${formatCOP(val)}</span></div>
+        <div class="pipeline-track"><div class="pipeline-fill" style="width:${pct}%;background:var(--blue)"></div></div>
+      </div>`;
+    }).join('');
+
+  // Top oportunidades
+  const top = data.filter(r => r.estado !== 'Perdido').sort((a,b) => b.valorTotal-a.valorTotal).slice(0,10);
+  document.getElementById('forecast-top-tbody').innerHTML = top.map(r => `
+    <tr>
+      <td><span class="text-green">${r.numCot}</span></td>
+      <td style="color:var(--text)">${r.cliente}</td>
+      <td class="text-muted">${r.responsable}</td>
+      <td>${r.producto}</td>
+      <td style="color:var(--text)">${formatCOP(r.valorTotal)}</td>
+      <td><span class="badge ${ESTADO_COLOR[r.estado]||'badge-gray'}">${r.estado}</span></td>
+      <td class="text-muted">${r.fechaCierre}</td>
+    </tr>
+  `).join('');
+}
+
+// ============================================================
+// RENDER: EQUIPO
+// ============================================================
+function renderEquipo() {
+  const byEjec = {};
+  getFilteredData().forEach(r => {
+    if (!r.responsable) return;
+    if (!byEjec[r.responsable]) byEjec[r.responsable] = { total: 0, ganado: 0, count: 0, estados: {} };
+    byEjec[r.responsable].total += r.valorTotal;
+    if (r.estado === 'Ganado') byEjec[r.responsable].ganado += r.valorTotal;
+    byEjec[r.responsable].count++;
+    byEjec[r.responsable].estados[r.estado] = (byEjec[r.responsable].estados[r.estado] || 0) + 1;
+  });
+
+  document.getElementById('equipo-cards').innerHTML = Object.entries(byEjec).map(([ejec, v]) => `
+    <div class="kpi-card blue">
+      <div class="kpi-label">${ejec}</div>
+      <div class="kpi-value text-blue">${formatCOP(v.total)}</div>
+      <div class="kpi-sub">${v.count} leads · ganado: ${formatCOP(v.ganado)}</div>
+    </div>
+  `).join('');
+
+  renderAllTable();
+}
+
+function renderAllTable() {
+  const search = document.getElementById('filter-all-search')?.value.toLowerCase() || '';
+  const ejec = document.getElementById('filter-all-ejecutivo')?.value || '';
+  const estado = document.getElementById('filter-all-estado')?.value || '';
+
+  let rows = state.data;
+  if (search) rows = rows.filter(r => r.cliente.toLowerCase().includes(search) || r.numCot.toLowerCase().includes(search));
+  if (ejec) rows = rows.filter(r => r.responsable === ejec);
+  if (estado) rows = rows.filter(r => r.estado === estado);
+
+  document.getElementById('all-tbody').innerHTML = rows.map(r => `
+    <tr>
+      <td><span class="text-green">${r.numCot}</span></td>
+      <td style="color:var(--text)">${r.cliente}</td>
+      <td class="text-muted">${r.responsable}</td>
+      <td>${r.producto}</td>
+      <td>${r.tipoNegocio}</td>
+      <td style="text-align:right">${r.numEquipos}</td>
+      <td style="text-align:right;color:var(--text)">${formatCOP(r.valorTotal)}</td>
+      <td><span class="badge ${ESTADO_COLOR[r.estado]||'badge-gray'}">${r.estado}</span></td>
+      <td class="text-muted">${r.fechaApertura}</td>
+    </tr>
+  `).join('');
+}
+
+// ============================================================
+// COT NUMBER GENERATOR
+// ============================================================
+function generateNextCotNumber() {
+  const existing = state.data.map(r => r.numCot).filter(Boolean);
+  // Formato: COT-YYYYMM-NNNN
+  const now = new Date();
+  const prefix = `COT-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}-`;
+  const current = existing.filter(c => c.startsWith(prefix)).map(c => parseInt(c.split('-')[2]) || 0);
+  const next = current.length ? Math.max(...current) + 1 : 1;
+  document.getElementById('f-cot').value = `${prefix}${String(next).padStart(4,'0')}`;
+}
+
+// ============================================================
+// FORM: GUARDAR LEAD
+// ============================================================
+function calcTotal() {
+  const equipos = parseInt(document.getElementById('f-equipos').value) || 0;
+  const vUnit = parseFloat(document.getElementById('f-vunit').value) || 0;
+  document.getElementById('f-vtotal').value = (equipos * vUnit) || 0;
+}
+
+document.getElementById('f-equipos').addEventListener('input', calcTotal);
+
+async function guardarLead() {
+  const btn = document.getElementById('btn-guardar');
+  const fields = {
+    pais: 'f-pais', responsable: 'f-responsable', vcruzada: 'f-vcruzada',
+    ciudad: 'f-ciudad', nit: 'f-nit', cliente: 'f-cliente', contacto: 'f-contacto',
+    email: 'f-email', telefono: 'f-telefono', cot: 'f-cot', link: 'f-link',
+    categoria: 'f-categoria', producto: 'f-producto', tipo: 'f-tipo',
+    equipos: 'f-equipos', vunit: 'f-vunit', vtotal: 'f-vtotal',
+    estado: 'f-estado', fecha: 'f-fecha', fcierre: 'f-fcierre',
+  };
+
+  const vals = {};
+  for (const [k, id] of Object.entries(fields)) {
+    vals[k] = document.getElementById(id)?.value || '';
+  }
+
+  if (!vals.cliente) { showToast('El nombre del cliente es obligatorio', 'error'); return; }
+  if (!vals.estado) { showToast('Seleccione el estado del negocio', 'error'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+
+  const row = [
+    vals.pais, vals.responsable, vals.vcruzada, vals.ciudad, vals.nit,
+    vals.cliente, vals.contacto, vals.email, vals.telefono, vals.cot,
+    vals.link, vals.categoria, vals.producto, vals.tipo,
+    vals.equipos, vals.vunit, vals.vtotal, vals.estado, vals.fecha, vals.fcierre
+  ];
+
+  try {
+    await gapi.client.sheets.spreadsheets.values.append({
+      spreadsheetId: CONFIG.SHEET_ID,
+      range: `${CONFIG.SHEET_NAME}!A:T`,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [row] }
+    });
+
+    showToast('Lead guardado exitosamente', 'success');
+    clearForm();
+    await loadData();
+    showPanel('panel-leads');
+  } catch(e) {
+    console.error(e);
+    showToast('Error al guardar. Verifique permisos de escritura en la hoja.', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Guardar en Sheets';
+  }
+}
+
+function clearForm() {
+  const ids = ['f-nit','f-cliente','f-contacto','f-email','f-telefono','f-link','f-equipos','f-vunit','f-fcierre'];
+  ids.forEach(id => document.getElementById(id).value = '');
+  ['f-pais','f-vcruzada','f-categoria','f-producto','f-tipo','f-estado'].forEach(id => {
+    document.getElementById(id).selectedIndex = 0;
+  });
+  document.getElementById('f-vtotal').value = '';
+  document.getElementById('f-fecha').value = new Date().toISOString().split('T')[0];
+  generateNextCotNumber();
+}
+
+// ============================================================
+// MODAL EDITAR
+// ============================================================
+function openEditModal(rowIndex) {
+  const r = state.data.find(d => d.rowIndex === rowIndex);
+  if (!r) return;
+
+  const tipoOptions = ['Comodato 12','Comodato 24','Comodato 36','Venta Única','Plataforma Mensual','Plataforma Trimestral','Plataforma Semestral','Plataforma Anual','Instalación por Confirmar','MOSAT Adicional al Servicio','CMI - Central Monitoreo'];
+  const estadoOptions = ['Prospecto','Cotizado','En negociación','Ganado','Perdido'];
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="form-grid">
+      <div class="form-group"><label>N° Cotización</label><input type="text" id="e-cot" value="${r.numCot}" readonly></div>
+      <div class="form-group"><label>Estado</label>
+        <select id="e-estado">${estadoOptions.map(o => `<option ${r.estado===o?'selected':''}>${o}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label>Cliente</label><input type="text" id="e-cliente" value="${r.cliente}"></div>
+      <div class="form-group"><label>Contacto</label><input type="text" id="e-contacto" value="${r.contacto}"></div>
+      <div class="form-group"><label>Teléfono</label><input type="text" id="e-telefono" value="${r.telefono}"></div>
+      <div class="form-group"><label>Email</label><input type="email" id="e-email" value="${r.email}"></div>
+      <div class="form-group"><label>Tipo negocio</label>
+        <select id="e-tipo">${tipoOptions.map(o => `<option ${r.tipoNegocio===o?'selected':''}>${o}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label># Equipos</label><input type="number" id="e-equipos" value="${r.numEquipos}"></div>
+      <div class="form-group"><label>Valor unitario</label><input type="number" id="e-vunit" value="${r.valorUnit}"></div>
+      <div class="form-group"><label>Valor total</label><input type="number" id="e-vtotal" value="${r.valorTotal}"></div>
+      <div class="form-group"><label>Fecha cierre</label><input type="date" id="e-fcierre" value="${r.fechaCierre}"></div>
+      <div class="form-group"><label>Link cotización</label><input type="url" id="e-link" value="${r.linkCot}"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="actualizarLead(${rowIndex})">Actualizar</button>
+    </div>
+  `;
+
+  document.getElementById('modal-editar').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal-editar').classList.remove('open');
+}
+
+async function actualizarLead(rowIndex) {
+  const r = state.data.find(d => d.rowIndex === rowIndex);
+  if (!r) return;
+
+  const updates = {
+    [COLS.CLIENTE + 1]: document.getElementById('e-cliente').value,
+    [COLS.CONTACTO + 1]: document.getElementById('e-contacto').value,
+    [COLS.TELEFONO + 1]: document.getElementById('e-telefono').value,
+    [COLS.EMAIL + 1]: document.getElementById('e-email').value,
+    [COLS.TIPO_NEGOCIO + 1]: document.getElementById('e-tipo').value,
+    [COLS.NUM_EQUIPOS + 1]: document.getElementById('e-equipos').value,
+    [COLS.VALOR_UNIT + 1]: document.getElementById('e-vunit').value,
+    [COLS.VALOR_TOTAL + 1]: document.getElementById('e-vtotal').value,
+    [COLS.ESTADO + 1]: document.getElementById('e-estado').value,
+    [COLS.FECHA_CIERRE + 1]: document.getElementById('e-fcierre').value,
+    [COLS.LINK_COT + 1]: document.getElementById('e-link').value,
+  };
+
+  const requests = Object.entries(updates).map(([col, val]) => ({
+    range: `${CONFIG.SHEET_NAME}!${colLetter(parseInt(col)-1)}${rowIndex}`,
+    values: [[val]]
+  }));
+
+  try {
+    await gapi.client.sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: CONFIG.SHEET_ID,
+      resource: {
+        valueInputOption: 'USER_ENTERED',
+        data: requests
+      }
+    });
+    showToast('Lead actualizado', 'success');
+    closeModal();
+    await loadData();
+  } catch(e) {
+    console.error(e);
+    showToast('Error al actualizar', 'error');
+  }
+}
+
+// ============================================================
+// UTILS
+// ============================================================
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  const tabId = 'tab-' + id.replace('panel-', '');
+  if (document.getElementById(tabId)) document.getElementById(tabId).classList.add('active');
+}
+
+function formatCOP(val) {
+  if (!val) return '$ 0';
+  return '$ ' + new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(val);
+}
+
+function colLetter(index) {
+  let result = '';
+  index++;
+  while (index > 0) {
+    index--;
+    result = String.fromCharCode(65 + (index % 26)) + result;
+    index = Math.floor(index / 26);
+  }
+  return result;
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  setTimeout(() => { t.className = ''; }, 3500);
+}
+</script>
+
+<!-- Google APIs -->
+<script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+<script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+
+</body>
+</html>
