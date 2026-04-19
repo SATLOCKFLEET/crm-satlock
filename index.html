@@ -2812,13 +2812,69 @@ async function renderConsolidado(container){
     </div>
     <div style="font-size:11px;color:var(--text3);margin-bottom:16px">Puntaje: contactos ×40% + cotizaciones ×35% + cierres ×25%</div>
 
-    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:10px">Línea Fleet — podio</div>
-    ${flota.length?renderPodio(flota):''}
-    ${flota.length?renderExecCards(flota):'<div class="empty">Sin ejecutivos Fleet</div>'}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <div style="display:flex;gap:4px">
+        <button class="fbtn active" id="cf-fleet" onclick="filtrarConsolidado('fleet',this)">Fleet</button>
+        <button class="fbtn" id="cf-carga" onclick="filtrarConsolidado('carga',this)">Carga</button>
+        <button class="fbtn" id="cf-todos" onclick="filtrarConsolidado('todos',this)">Fleet + Carga</button>
+      </div>
+      <select class="fsel" id="cf-ejecutivo" onchange="filtrarConsolidadoEjec(this.value)" style="font-size:11px;padding:5px 10px;max-width:200px">
+        <option value="">Todos los ejecutivos</option>
+        ${[...flota,...carga].map(e=>`<option value="${e.u.id}">${e.u.nombre}</option>`).join('')}
+      </select>
+    </div>
+    <div id="consolidado-body"></div>`;
 
-    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:20px 0 10px">Línea Carga — podio</div>
-    ${carga.length?renderPodio(carga):''}
-    ${carga.length?renderExecCards(carga):'<div class="empty">Sin ejecutivos de Carga</div>'}`;
+  window._consolidadoFlota=flota;
+  window._consolidadoCarga=carga;
+  renderConsolidadoBody('fleet','');
+}
+
+function filtrarConsolidado(linea,btn){
+  document.querySelectorAll('#cf-fleet,#cf-carga,#cf-todos').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.getElementById('cf-ejecutivo').value='';
+  renderConsolidadoBody(linea,'');
+}
+
+function filtrarConsolidadoEjec(uid){
+  // Al filtrar por ejecutivo desactivar botones de línea
+  document.querySelectorAll('#cf-fleet,#cf-carga,#cf-todos').forEach(b=>b.classList.remove('active'));
+  renderConsolidadoBody('todos',uid);
+}
+
+function renderConsolidadoBody(linea,uid){
+  const body=document.getElementById('consolidado-body');
+  if(!body) return;
+  let flota=window._consolidadoFlota||[];
+  let carga=window._consolidadoCarga||[];
+
+  // Filtrar por ejecutivo específico
+  if(uid){
+    flota=flota.filter(e=>e.u.id===uid);
+    carga=carga.filter(e=>e.u.id===uid);
+  }
+
+  let html='';
+  if(linea==='fleet'||linea==='todos'){
+    if(flota.length){
+      html+=`<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:10px">Línea Fleet — podio</div>`;
+      html+=renderPodio(flota);
+      html+=renderExecCards(flota);
+    } else if(linea==='fleet'){
+      html+='<div class="empty">Sin ejecutivos Fleet</div>';
+    }
+  }
+  if(linea==='carga'||linea==='todos'){
+    if(carga.length){
+      html+=`<div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:20px 0 10px">Línea Carga — podio</div>`;
+      html+=renderPodio(carga);
+      html+=renderExecCards(carga);
+    } else if(linea==='carga'){
+      html+='<div class="empty">Sin ejecutivos Carga</div>';
+    }
+  }
+  body.innerHTML=html||'<div class="empty">Sin resultados</div>';
 }
 </script>
 </body>
