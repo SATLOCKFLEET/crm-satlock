@@ -734,7 +734,7 @@ function renderNueva(container){
     <div class="form-grid">
       <div class="fg"><div class="flbl">Fecha</div><input class="finput" type="date" id="f-fecha"/></div>
       <div class="fg"><div class="flbl">Estado inicial</div>
-        <select class="fsel" id="f-estado">
+        <select class="fsel" id="f-estado" onchange="sincronizarAvanceEstado()">
           <option value="en_proceso">En proceso</option>
           <option value="propuesta_enviada">Propuesta enviada</option>
           <option value="cerrado">Cerrado</option>
@@ -825,7 +825,7 @@ function renderNueva(container){
       <div class="fg full"><div class="flbl">Asunto / descripción</div>
         <input class="finput" id="f-asunto" placeholder="Descripción del negocio"/></div>
       <div class="fg full"><div class="flbl">Avance (%)</div>
-        <input type="range" class="finput" id="f-avance" min="0" max="100" value="20" oninput="document.getElementById('f-avance-val').textContent=this.value+'%'"/>
+        <input type="range" class="finput" id="f-avance" min="0" max="100" value="20" oninput="document.getElementById('f-avance-val').textContent=this.value+'%';actualizarColorAvance()"/>
         <span id="f-avance-val" style="font-size:11px;color:var(--text3)">20%</span></div>
       <div class="fg full"><div class="flbl">Próxima acción</div>
         <input class="finput" id="f-prox" placeholder="Ej: Llamada de seguimiento 18 abr"/></div>
@@ -843,6 +843,7 @@ function renderNueva(container){
 
   document.getElementById('f-fecha').value = fechaHoyLocal();
   actualizarProductosForm();
+  actualizarColorAvance();
 }
 
 function selOrigenLead(idx){
@@ -911,6 +912,36 @@ function actualizarProductosForm(){
     <button type="button" class="tipo-btn" id="prod-btn-${p.replace(/[^a-z0-9]/gi,'')}" onclick="selProducto('${p}')" style="border-radius:6px">${p}</button>
   `).join('');
   document.getElementById('f-producto-val').value='';
+}
+
+function sincronizarAvanceEstado(){
+  const estado = document.getElementById('f-estado')?.value;
+  const slider = document.getElementById('f-avance');
+  const label = document.getElementById('f-avance-val');
+  const mapaAvance = {
+    'en_proceso': 20,
+    'propuesta_enviada': 60,
+    'cerrado': 100,
+    'perdido': 0
+  };
+  const val = mapaAvance[estado]||20;
+  if(slider){ slider.value = val; }
+  if(label){ label.textContent = val+'%'; }
+  actualizarColorAvance();
+}
+
+function actualizarColorAvance(){
+  const slider = document.getElementById('f-avance');
+  const label = document.getElementById('f-avance-val');
+  if(!slider||!label) return;
+  const val = parseInt(slider.value);
+  let color;
+  if(val<=25) color='var(--red)';
+  else if(val<=60) color='var(--amber)';
+  else if(val<100) color='var(--sat-blue)';
+  else color='var(--green)';
+  label.style.color = color;
+  slider.style.accentColor = color;
 }
 
 function toggleBloqueVentas(){
