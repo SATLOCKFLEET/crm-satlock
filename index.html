@@ -711,28 +711,26 @@ function getProductosPorLinea(linea){
   return linea==='carga'?PRODUCTOS_CARGA:PRODUCTOS_FLEET;
 }
 function renderNueva(container){
-  const esAmbas = PERFIL.linea==='ambas';
-  const lineaInicial = esAmbas?'carga':PERFIL.linea;
-  const productos = getProductosPorLinea(lineaInicial);
   container.innerHTML=`
   <div class="form-card">
     <div class="form-title">Registrar oportunidad comercial</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-      <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:12px 14px;background:var(--sat-blue-light);border:1.5px solid var(--sat-blue);border-radius:var(--radius-sm)">
-        <input type="checkbox" id="f-lead-nuevo" style="width:18px;height:18px;accent-color:var(--sat-blue);flex-shrink:0"/>
-        <div>
-          <div style="font-size:12px;font-weight:500;color:var(--sat-blue)">Lead nuevo</div>
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">Cuenta en la estrategia 15·5·1</div>
-        </div>
-      </label>
-      <label style="display:flex;align-items:center;gap:12px;cursor:pointer;padding:12px 14px;background:#fdeee8;border:1.5px solid var(--sat-orange);border-radius:var(--radius-sm)">
-        <input type="checkbox" id="f-de-mercadeo" style="width:18px;height:18px;accent-color:var(--sat-orange);flex-shrink:0"/>
-        <div>
-          <div style="font-size:12px;font-weight:500;color:var(--sat-orange)">Viene de Mercadeo</div>
-          <div style="font-size:10px;color:var(--text3);margin-top:2px">Lead asignado por el área de mercadeo</div>
-        </div>
-      </label>
+
+    <!-- ORIGEN DEL LEAD -->
+    <div style="margin-bottom:16px">
+      <div class="flbl" style="margin-bottom:8px">Origen del lead</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap" id="origen-btns">
+        ${['Lead propio / en frío','Feria / Evento / Stand','Estudio de Mercado','Mercadeo','Mantenimiento / Postventa'].map((o,i)=>`
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;background:var(--surface2);border:1.5px solid var(--border);border-radius:20px;transition:all .12s" id="origen-label-${i}">
+            <input type="radio" name="f-origen" value="${o}" id="f-origen-${i}" style="accent-color:var(--sat-blue);width:14px;height:14px" onchange="selOrigenLead(${i})"/>
+            <span style="font-size:12px;font-weight:500">${o}</span>
+          </label>`).join('')}
+      </div>
+      <div id="lead-nuevo-hint" style="display:none;margin-top:8px;font-size:11px;color:var(--sat-blue);background:var(--sat-blue-light);padding:6px 10px;border-radius:6px">
+        Este lead contará automáticamente en la estrategia 15·5·1
+      </div>
     </div>
+
+    <!-- DATOS BÁSICOS -->
     <div class="form-grid">
       <div class="fg"><div class="flbl">Fecha</div><input class="finput" type="date" id="f-fecha"/></div>
       <div class="fg"><div class="flbl">Estado inicial</div>
@@ -742,45 +740,151 @@ function renderNueva(container){
           <option value="cerrado">Cerrado</option>
           <option value="perdido">Perdido</option>
         </select></div>
-      ${esAmbas?`
-      <div class="fg"><div class="flbl">Línea comercial</div>
-        <select class="fsel" id="f-linea" onchange="actualizarProductosForm()">
-          <option value="carga">Carga</option>
-          <option value="fleet">Fleet</option>
-        </select></div>`:'<input type="hidden" id="f-linea" value="'+PERFIL.linea+'"/>'}
       <div class="fg"><div class="flbl">Empresa cliente</div><input class="finput" id="f-empresa" placeholder="Nombre empresa"/></div>
+      <div class="fg"><div class="flbl">NIT / RUC</div><input class="finput" id="f-nit" placeholder="Ej: 900123456-1"/></div>
       <div class="fg"><div class="flbl">Nombre contacto</div><input class="finput" id="f-contacto" placeholder="Nombre completo"/></div>
+      <div class="fg"><div class="flbl">Cargo del contacto</div><input class="finput" id="f-cargo" placeholder="Ej: Gerente de Flota"/></div>
       <div class="fg"><div class="flbl">Teléfono</div><input class="finput" id="f-tel" placeholder="Cel / fijo"/></div>
       <div class="fg"><div class="flbl">Correo</div><input class="finput" type="email" id="f-correo" placeholder="email@empresa.com"/></div>
-      <div class="fg"><div class="flbl">Cargo del contacto</div><input class="finput" id="f-cargo" placeholder="Ej: Gerente de Flota"/></div>
-      <div class="fg"><div class="flbl">N° propuesta interna</div><input class="finput" id="f-numprop" placeholder="Ej: PROP-2026-041" autocomplete="off"/></div>
-      <div class="fg"><div class="flbl">Link propuesta en Drive</div><input class="finput" id="f-linkdrive" placeholder="https://drive.google.com/..."/></div>
-      <div class="fg"><div class="flbl">Producto / Solución</div>
-        <select class="fsel" id="f-producto">
-          <option value="">Seleccionar...</option>
-          ${productos.map(p=>`<option>${p}</option>`).join('')}
+    </div>
+
+    <!-- LÍNEA Y TIPO DE NEGOCIO -->
+    <div class="form-grid" style="margin-bottom:14px">
+      <div class="fg"><div class="flbl">Línea comercial</div>
+        <select class="fsel" id="f-linea" onchange="actualizarProductosForm()">
+          <option value="fleet">Fleet</option>
+          <option value="carga">Carga</option>
         </select></div>
-      <div class="fg"><div class="flbl">Asunto / descripción</div><input class="finput" id="f-asunto" placeholder="Ej: JC450 — 90 vehículos, GPS + ADAS"/></div>
-      <div class="fg"><div class="flbl">Valor estimado (COP)</div><div style="position:relative"><span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3);pointer-events:none">$</span><input class="finput" type="text" id="f-valor" placeholder="0" oninput="formatearMoneda(this)" style="padding-left:20px" autocomplete="off"/></div></div>
+      <div class="fg"><div class="flbl">Tipo de negocio</div>
+        <div style="display:flex;gap:10px;padding-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+            <input type="checkbox" id="f-venta-unica" style="accent-color:var(--sat-blue);width:14px;height:14px"/> Venta única
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+            <input type="checkbox" id="f-recurrente" style="accent-color:var(--sat-blue);width:14px;height:14px"/> Recurrente
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRODUCTO -->
+    <div class="fg" style="margin-bottom:14px">
+      <div class="flbl">Producto / Solución</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px" id="producto-btns"></div>
+      <input type="hidden" id="f-producto-val"/>
+    </div>
+
+    <!-- UNIDADES Y VALOR -->
+    <div class="form-grid" style="margin-bottom:14px" id="valor-section">
+      <div class="fg"><div class="flbl">Cantidad de unidades</div>
+        <input class="finput" type="number" id="f-unidades" min="1" placeholder="Ej: 10" oninput="calcularTamanoNegocio()"/></div>
+      <div class="fg"><div class="flbl">Valor por unidad (COP)</div>
+        <div style="position:relative">
+          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3)">$</span>
+          <input class="finput" type="text" id="f-valor-unit" placeholder="0" oninput="formatearMoneda(this);calcularTamanoNegocio()" style="padding-left:20px"/>
+        </div></div>
+      <div class="fg"><div class="flbl">Tamaño del negocio (COP)</div>
+        <div style="position:relative">
+          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3)">$</span>
+          <input class="finput" type="text" id="f-tamano" placeholder="0" readonly style="padding-left:20px;background:var(--sat-blue-light);color:var(--sat-blue);font-weight:500;cursor:default"/>
+        </div></div>
+    </div>
+
+    <!-- PROPUESTA Y DETALLES -->
+    <div class="form-grid">
+      <div class="fg"><div class="flbl">N° propuesta</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="finput" id="f-numprop" readonly style="background:var(--sat-blue-light);color:var(--sat-blue);font-weight:500;font-family:'Courier New',monospace;cursor:default" placeholder="Se genera automáticamente"/>
+          <button class="btn-sec" onclick="generarNumeroPropuesta()" style="font-size:11px;padding:7px 10px;white-space:nowrap">Generar</button>
+        </div></div>
+      <div class="fg"><div class="flbl">Link propuesta en Drive</div>
+        <input class="finput" id="f-linkdrive" placeholder="https://drive.google.com/..."/></div>
+      <div class="fg full"><div class="flbl">Asunto / descripción</div>
+        <input class="finput" id="f-asunto" placeholder="Descripción del negocio"/></div>
       <div class="fg full"><div class="flbl">Avance (%)</div>
         <input type="range" class="finput" id="f-avance" min="0" max="100" value="20" oninput="document.getElementById('f-avance-val').textContent=this.value+'%'"/>
         <span id="f-avance-val" style="font-size:11px;color:var(--text3)">20%</span></div>
-      <div class="fg"><div class="flbl">Próxima acción</div><input class="finput" id="f-prox" placeholder="Ej: Llamada de seguimiento 18 abr"/></div>
-      <div class="fg"><div class="flbl">Fecha próxima acción</div><input class="finput" type="date" id="f-fprox"/></div>
-      <div class="fg full"><div class="flbl">Notas</div><textarea class="ftxt" id="f-notas" placeholder="Observaciones, acuerdos, compromisos..."></textarea></div>
+      <div class="fg full"><div class="flbl">Próxima acción</div>
+        <input class="finput" id="f-prox" placeholder="Ej: Llamada de seguimiento 18 abr"/></div>
+      <div class="fg"><div class="flbl">Fecha próxima acción</div>
+        <input class="finput" type="date" id="f-fprox"/></div>
+      <div class="fg full"><div class="flbl">Notas</div>
+        <textarea class="ftxt" id="f-notas" placeholder="Observaciones, acuerdos, compromisos..."></textarea></div>
     </div>
+
     <div class="form-actions">
       <button class="btn-sec" onclick="limpiarForm()">Limpiar</button>
       <button class="btn-pri" onclick="guardarOp()">Guardar</button>
     </div>
   </div>`;
+
   document.getElementById('f-fecha').value = fechaHoyLocal();
+  actualizarProductosForm();
+}
+
+function selOrigenLead(idx){
+  const labels = document.querySelectorAll('[id^="origen-label-"]');
+  labels.forEach((l,i)=>{
+    if(i===idx){
+      l.style.background='var(--sat-blue-light)';
+      l.style.borderColor='var(--sat-blue)';
+    } else {
+      l.style.background='var(--surface2)';
+      l.style.borderColor='var(--border)';
+    }
+  });
+  const hint = document.getElementById('lead-nuevo-hint');
+  const val = document.querySelector('input[name="f-origen"]:checked')?.value||'';
+  hint.style.display = (val==='Lead propio / en frío'||val==='Feria / Evento / Stand'||val==='Estudio de Mercado') ? 'block' : 'none';
+}
+
+function calcularTamanoNegocio(){
+  const unidades = parseInt(document.getElementById('f-unidades')?.value||'0');
+  const valorStr = (document.getElementById('f-valor-unit')?.dataset?.raw||document.getElementById('f-valor-unit')?.value||'0').replace(/[^0-9]/g,'');
+  const valor = parseFloat(valorStr)||0;
+  const total = unidades * valor;
+  const el = document.getElementById('f-tamano');
+  if(el) el.value = total>0 ? '$ '+total.toLocaleString('es-CO') : '';
+}
+
+async function generarNumeroPropuesta(){
+  // Consultar el último consecutivo en Supabase
+  const {data} = await sb.from('oportunidades')
+    .select('num_propuesta')
+    .like('num_propuesta','CRM%')
+    .order('num_propuesta',{ascending:false})
+    .limit(1);
+  let consecutivo = 1;
+  if(data&&data.length&&data[0].num_propuesta){
+    const match = data[0].num_propuesta.match(/CRM(\d{4})/);
+    if(match) consecutivo = parseInt(match[1])+1;
+  }
+  const hoy = new Date();
+  const dd=String(hoy.getDate()).padStart(2,'0');
+  const mm=String(hoy.getMonth()+1).padStart(2,'0');
+  const yy=String(hoy.getFullYear()).slice(-2);
+  const num = 'CRM'+String(consecutivo).padStart(4,'0')+dd+mm+yy;
+  document.getElementById('f-numprop').value = num;
 }
 function actualizarProductosForm(){
-  const linea=document.getElementById('f-linea').value;
-  const productos=getProductosPorLinea(linea);
-  const sel=document.getElementById('f-producto');
-  sel.innerHTML='<option value="">Seleccionar...</option>'+productos.map(p=>`<option>${p}</option>`).join('');
+  const linea=document.getElementById('f-linea')?.value||'fleet';
+  const PRODS_FLEET=['VL103','JC181','JC261','JC371','JC450','SmartoneC','LL309','LL301','PL601','SC1000','TAG705','TAG704','TAC708','TAG713'];
+  const PRODS_CARGA=['MAC','GCT','INTEGRACIÓN','SIC','CMI','AMT','LCT','SGT'];
+  const productos = linea==='carga' ? PRODS_CARGA : PRODS_FLEET;
+  const container = document.getElementById('producto-btns');
+  if(!container) return;
+  container.innerHTML = productos.map(p=>`
+    <button type="button" class="tipo-btn" id="prod-btn-${p.replace(/[^a-z0-9]/gi,'')}" onclick="selProducto('${p}')" style="border-radius:6px">${p}</button>
+  `).join('');
+  document.getElementById('f-producto-val').value='';
+}
+
+function selProducto(prod){
+  document.querySelectorAll('#producto-btns .tipo-btn').forEach(b=>b.className='tipo-btn');
+  const id='prod-btn-'+prod.replace(/[^a-z0-9]/gi,'');
+  const btn=document.getElementById(id);
+  if(btn) btn.classList.add('sel-llamada');
+  document.getElementById('f-producto-val').value=prod;
 }
 function formatearMoneda(el){
   let v=el.value.replace(/[^0-9]/g,'');
@@ -794,10 +898,11 @@ async function guardarOp(){
   const contacto=document.getElementById('f-contacto').value.trim();
   if(!empresa||!contacto){alert('Complete al menos empresa y contacto.');return;}
   const asunto=document.getElementById('f-asunto').value.trim();
-  const productoEl=document.getElementById('f-producto');
-  const producto=productoEl?productoEl.options[productoEl.selectedIndex]?.value||'':'';
-  const esLeadNuevo=document.getElementById('f-lead-nuevo')?.checked||false;
-  const deMercadeo=document.getElementById('f-de-mercadeo')?.checked||false;
+  const producto=document.getElementById('f-producto-val')?.value||'';
+  const esLeadNuevo=esLeadPropio||deMercadeo;
+  const origenVal=document.querySelector('input[name="f-origen"]:checked')?.value||'';
+  const deMercadeo=origenVal==='Mercadeo';
+  const esLeadPropio=['Lead propio / en frío','Feria / Evento / Stand','Estudio de Mercado'].includes(origenVal);
   const estadoInicial=document.getElementById('f-estado').value;
   const fechaHoy=document.getElementById('f-fecha').value||fechaHoyLocal();
   const {error}=await sb.from('oportunidades').insert({
@@ -820,6 +925,11 @@ async function guardarOp(){
     valor_estimado:parseFloat((document.getElementById('f-valor').dataset.raw||document.getElementById('f-valor').value.replace(/[^0-9]/g,'')))||null,
     es_lead_nuevo:esLeadNuevo,
     de_mercadeo:deMercadeo,
+    origen_lead:origenVal,
+    nit:document.getElementById('f-nit')?.value||'',
+    venta_unica:document.getElementById('f-venta-unica')?.checked||false,
+    recurrente:document.getElementById('f-recurrente')?.checked||false,
+    unidades:parseInt(document.getElementById('f-unidades')?.value||'0')||null,
     fecha_inicio_gestion:fechaHoy
   });
   if(error){alert('Error al guardar: '+error.message);return;}
