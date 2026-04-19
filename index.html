@@ -941,13 +941,14 @@ async function guardarOp(){
   const nit=document.getElementById('f-nit')?.value.trim()||'';
 
   // Validar campos obligatorios
-  const origen=document.querySelector('input[name="f-origen"]:checked')?.value||'';
-  const producto=document.getElementById('f-producto-val')?.value||'';
+  // Validar campos obligatorios
+  const origenCheck=document.querySelector('input[name="f-origen"]:checked')?.value||'';
+  const productoCheck=document.getElementById('f-producto-val')?.value||'';
   const tipoUnica=document.getElementById('f-venta-unica')?.checked;
   const tipoRec=document.getElementById('f-recurrente')?.checked;
   if(!empresa||!contacto){alert('Complete empresa y contacto.');return;}
-  if(!origen){alert('Seleccione el origen del lead.');return;}
-  if(!producto){alert('Seleccione el producto.');return;}
+  if(!origenCheck){alert('Seleccione el origen del lead.');return;}
+  if(!productoCheck){alert('Seleccione el producto.');return;}
   if(!tipoUnica&&!tipoRec){alert('Seleccione al menos un tipo de negocio (Venta única o Recurrente).');return;}
 
   // Verificar NIT duplicado
@@ -962,13 +963,11 @@ async function guardarOp(){
     }
   }
 
-  if(!empresa||!contacto){alert('Complete al menos empresa y contacto.');return;}
   const asunto=document.getElementById('f-asunto').value.trim();
-  const producto=document.getElementById('f-producto-val')?.value||'';
-  const esLeadNuevo=esLeadPropio||deMercadeo;
   const origenVal=document.querySelector('input[name="f-origen"]:checked')?.value||'';
-  const deMercadeo=false; // Mercadeo se gestiona por campo separado en edición
+  const deMercadeo=false;
   const esLeadPropio=['Lead propio / en frío','Feria / Evento / Stand','Estudio de Mercado'].includes(origenVal);
+  const esLeadNuevo=esLeadPropio;
   const estadoInicial=document.getElementById('f-estado').value;
   const fechaHoy=document.getElementById('f-fecha').value||fechaHoyLocal();
   const {error}=await sb.from('oportunidades').insert({
