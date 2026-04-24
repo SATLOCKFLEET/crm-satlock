@@ -921,8 +921,12 @@ function renderNueva(container){
         <div class="form-grid">
           <div class="fg full"><div class="flbl">Título de la tarea</div>
             <input class="finput" id="t-titulo" placeholder="Ej: Enviar informe de ventas a Gerencia"/></div>
-          <div class="fg full"><div class="flbl">Descripción</div>
-            <textarea class="ftxt" id="t-descripcion" placeholder="Detalle de la tarea..." style="min-height:60px"></textarea></div>
+          <div class="fg"><div class="flbl">Cliente (opcional)</div>
+            <input class="finput" id="t-cliente" placeholder="Empresa relacionada"/></div>
+          <div class="fg"><div class="flbl">Contacto (opcional)</div>
+            <input class="finput" id="t-contacto" placeholder="Nombre del contacto"/></div>
+          <div class="fg full"><div class="flbl">Descripción de la tarea</div>
+            <textarea class="ftxt" id="t-descripcion" placeholder="Detalle de la tarea, objetivo, entregable esperado..." style="min-height:70px"></textarea></div>
           <div class="fg"><div class="flbl">Fecha límite</div>
             <input class="finput" type="date" id="t-fecha"/></div>
           <div class="fg"><div class="flbl">Prioridad</div>
@@ -976,8 +980,11 @@ async function guardarRegistro(){
     const fecha=document.getElementById('t-fecha')?.value||fechaHoyLocal();
     const descripcion=document.getElementById('t-descripcion')?.value.trim()||'';
     const prioridad=document.getElementById('t-prioridad')?.value||'media';
+    const cliente=document.getElementById('t-cliente')?.value.trim()||'';
+    const contacto=document.getElementById('t-contacto')?.value.trim()||'';
     const {error}=await sb.from('tareas_admin').insert({
-      usuario_id:USER.id, titulo, descripcion, fecha_limite:fecha, prioridad, done:false
+      usuario_id:USER.id, titulo, descripcion, fecha_limite:fecha, prioridad, done:false,
+      cliente, contacto
     });
     if(error){alert('Error: '+error.message);return;}
     alert('Tarea guardada correctamente.');
@@ -2478,40 +2485,105 @@ async function completarTareaAdmin(id){
 }
 
 async function editarTareaAdmin(id){
+  // Cargar tarea y su historial de seguimiento
   const t=(window._tareasAdmin||[]).find(x=>x.id===id);
   if(!t) return;
+  const {data:seguimientos}=await sb.from('seguimiento_tareas')
+    .select('*').eq('tarea_id',id).order('created_at',{ascending:false});
+
+  const seg=seguimientos||[];
+  const timelineHtml=seg.length?seg.map(s=>`
+    <div style="display:flex;gap:10px;padding:7px 0;border-bottom:0.5px solid var(--border)">
+      <div style="width:28px;height:28px;border-radius:50%;background:var(--purple-light);color:#534AB7;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">📝</div>
+      <div style="flex:1">
+        <div style="font-size:10px;color:var(--text3);font-family:'Courier New',monospace">${new Date(s.created_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})}</div>
+        <div style="font-size:12px;color:var(--text);margin-top:2px">${s.nota}</div>
+      </div>
+    </div>`).join('')
+  :'<div style="font-size:11px;color:var(--text3);padding:8px 0">Sin seguimientos registrados aún.</div>';
+
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';overlay.id='modal-tarea';
   overlay.innerHTML=`
-    <div class="modal-box" style="max-width:420px">
-      <div class="modal-title">Editar tarea
-        <button class="modal-close" onclick="document.getElementById('modal-tarea').remove()">✕</button>
+    <div class="modal-box ficha">
+      <div class="modal-title" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div style="display:flex;width:100%;justify-content:space-between;align-items:center">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:18px">📋</span>
+            <span style="font-size:14px;font-weight:500">${t.titulo||'Tarea'}</span>
+          </div>
+          <button class="modal-close" onclick="document.getElementById('modal-tarea').remove()">✕</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;padding-left:26px">
+          ${t.cliente?`<span style="font-size:11px;color:var(--text3)">${t.cliente}</span>`:''}
+          ${t.contacto?`<span style="font-size:11px;color:var(--text3)">· ${t.contacto}</span>`:''}
+          <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${t.prioridad==='alta'?'var(--red-light)':t.prioridad==='media'?'var(--sat-orange-light)':'var(--surface2)'};color:${t.prioridad==='alta'?'var(--red)':t.prioridad==='media'?'var(--sat-orange)':'var(--text3)'}">${t.prioridad}</span>
+          ${t.fecha_limite?`<span style="font-size:10px;color:var(--text3)">Vence: ${t.fecha_limite.split('-').reverse().join('/')}</span>`:''}
+        </div>
       </div>
-      <div class="form-grid">
-        <div class="fg full"><div class="flbl">Título</div><input class="finput" id="mt-titulo" value="${(t.titulo||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg full"><div class="flbl">Descripción</div><textarea class="ftxt" id="mt-desc" style="min-height:56px">${t.descripcion||''}</textarea></div>
-        <div class="fg"><div class="flbl">Fecha límite</div><input class="finput" type="date" id="mt-fecha" value="${t.fecha_limite||''}"/></div>
-        <div class="fg"><div class="flbl">Prioridad</div>
-          <select class="fsel" id="mt-prio">
-            <option value="alta"${t.prioridad==='alta'?' selected':''}>Alta</option>
-            <option value="media"${t.prioridad==='media'?' selected':''}>Media</option>
-            <option value="baja"${t.prioridad==='baja'?' selected':''}>Baja</option>
-          </select></div>
+
+      <div class="ficha-tabs">
+        <button class="ficha-tab active" onclick="switchFichaTab('tarea-act',this)">Seguimiento</button>
+        <button class="ficha-tab" onclick="switchFichaTab('tarea-edit',this)">Editar</button>
       </div>
-      <div class="form-actions" style="justify-content:space-between;margin-top:12px">
-        <button class="btn-sec" style="color:var(--red);border-color:var(--red)" onclick="completarTareaAdmin('${id}');document.getElementById('modal-tarea').remove()">✓ Marcar como lista</button>
-        <div style="display:flex;gap:8px">
+
+      <!-- Panel seguimiento -->
+      <div class="ficha-panel active" id="fp-tarea-act">
+        <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Registrar avance</div>
+          <textarea class="ftxt" id="st-nota" placeholder="Describe el avance, resultado o próximo paso de esta tarea..." style="min-height:60px;font-size:12px;margin-bottom:8px"></textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div style="display:flex;gap:8px">
+              <button onclick="completarTareaAdmin('${id}');document.getElementById('modal-tarea').remove()" style="font-family:inherit;font-size:11px;padding:6px 12px;border:0.5px solid var(--green);border-radius:var(--radius-sm);background:var(--green-light);color:var(--green);cursor:pointer">✓ Marcar como completada</button>
+            </div>
+            <button class="btn-pri" onclick="guardarSeguimientoTarea('${id}')" style="font-size:11px;padding:6px 14px">Guardar avance</button>
+          </div>
+        </div>
+        <div style="max-height:300px;overflow-y:auto">${timelineHtml}</div>
+      </div>
+
+      <!-- Panel editar -->
+      <div class="ficha-panel" id="fp-tarea-edit">
+        <div class="form-grid">
+          <div class="fg full"><div class="flbl">Título</div><input class="finput" id="mt-titulo" value="${(t.titulo||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Cliente</div><input class="finput" id="mt-cliente" value="${(t.cliente||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Contacto</div><input class="finput" id="mt-contacto" value="${(t.contacto||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg full"><div class="flbl">Descripción</div><textarea class="ftxt" id="mt-desc" style="min-height:56px">${t.descripcion||''}</textarea></div>
+          <div class="fg"><div class="flbl">Fecha límite</div><input class="finput" type="date" id="mt-fecha" value="${t.fecha_limite||''}"/></div>
+          <div class="fg"><div class="flbl">Prioridad</div>
+            <select class="fsel" id="mt-prio">
+              <option value="alta"${t.prioridad==='alta'?' selected':''}>Alta</option>
+              <option value="media"${t.prioridad==='media'?' selected':''}>Media</option>
+              <option value="baja"${t.prioridad==='baja'?' selected':''}>Baja</option>
+            </select></div>
+        </div>
+        <div class="form-actions" style="margin-top:12px">
           <button class="btn-sec" onclick="document.getElementById('modal-tarea').remove()">Cancelar</button>
-          <button class="btn-pri" onclick="guardarEdicionTarea('${id}')">Guardar</button>
+          <button class="btn-pri" onclick="guardarEdicionTarea('${id}')">Guardar cambios</button>
         </div>
       </div>
     </div>`;
   document.body.appendChild(overlay);
 }
 
+async function guardarSeguimientoTarea(tareaId){
+  const nota=document.getElementById('st-nota')?.value.trim();
+  if(!nota){alert('Escriba una nota del avance.');return;}
+  const {error}=await sb.from('seguimiento_tareas').insert({
+    tarea_id:tareaId, usuario_id:USER.id, nota
+  });
+  if(error){alert('Error: '+error.message);return;}
+  document.getElementById('st-nota').value='';
+  // Refrescar el modal
+  document.getElementById('modal-tarea').remove();
+  editarTareaAdmin(tareaId);
+}
+
 async function guardarEdicionTarea(id){
   const update={
     titulo:document.getElementById('mt-titulo')?.value.trim(),
+    cliente:document.getElementById('mt-cliente')?.value.trim()||'',
+    contacto:document.getElementById('mt-contacto')?.value.trim()||'',
     descripcion:document.getElementById('mt-desc')?.value.trim(),
     fecha_limite:document.getElementById('mt-fecha')?.value||null,
     prioridad:document.getElementById('mt-prio')?.value||'media'
