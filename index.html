@@ -2796,7 +2796,7 @@ async function renderConsolidado(container){
     return {u,tc,tq,tci,cerrados,proceso,puntaje,metas,color,diasProm};
   }
 
-  function renderPodio(execs){
+function renderPodio(execs){
     const sorted=[...execs].sort((a,b)=>b.puntaje-a.puntaje);
     if(!sorted.length) return '';
     const order=sorted.length>=3?[sorted[1],sorted[0],sorted[2]]:[sorted[0]];
@@ -2821,7 +2821,7 @@ async function renderConsolidado(container){
     </div>`;
   }
 
-  function renderExecCards(execs){
+function renderExecCards(execs){
     if(!execs.length) return '<div class="empty">Sin datos este período</div>';
     return `<div class="exec-grid-151">${execs.map(e=>{
       const pctC=Math.min(100,Math.round(e.tc/e.metas.c*100));
