@@ -2685,7 +2685,7 @@ function renderDiarioLista(q, filtro){
       const vencida=t.fecha_limite&&t.fecha_limite<hoyStr2;
       const esHoy=t.fecha_limite===hoyStr2;
       const prioColor={alta:'var(--red)',media:'var(--sat-orange)',baja:'var(--border2)'};
-      return `<div class="tarea-row${vencida?' vencida':esHoy?' hoy':''}" style="cursor:pointer" onclick="editarTareaAdmin('${t.id}')">
+      return `<div class="tarea-row${vencida?' vencida':esHoy?' hoy':''}" style="cursor:pointer" data-tarea-id="${t.id}" onclick="editarTareaAdmin(this.dataset.tareaId)">
         <div class="tarea-header">
           <div class="tarea-icono">📋</div>
           <div style="flex:1;min-width:0">
