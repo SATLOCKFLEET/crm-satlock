@@ -1227,7 +1227,7 @@ async function abrirEditar(id){
             </div>
             <div>
               <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Próxima gestión</div>
-              <input class="finput" type="date" id="f-gest-prox" value="${(gestiones[0]?.proxima_gestion||proxGestionDefault())}" style="font-size:12px;padding:7px 10px" oninput="this.style.borderColor='var(--sat-orange)'"/>
+              <input class="finput" type="date" id="f-gest-prox" value="${proxGestionDefault()}" style="font-size:12px;padding:7px 10px"/>
             </div>
             <div>
               <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Nota</div>
