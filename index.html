@@ -794,6 +794,8 @@ function renderNueva(container){
       </label>
     </div>
 
+    <!-- FORMULARIO LEAD -->
+    <div id="form-lead">
     <!-- ORIGEN DEL LEAD -->
     <div style="margin-bottom:16px">
       <div class="flbl" style="margin-bottom:8px">Origen del lead</div>
@@ -914,6 +916,7 @@ function renderNueva(container){
         <textarea class="ftxt" id="f-notas" placeholder="Observaciones, acuerdos, compromisos..."></textarea></div>
     </div>
 
+    </div><!-- /form-lead -->
     <!-- FORMULARIO TAREA (oculto por defecto) -->
     <div id="form-tarea" style="display:none">
       <div style="background:var(--purple-light);border:1px solid #534AB7;border-radius:var(--radius);padding:14px;margin-bottom:14px">
@@ -927,6 +930,10 @@ function renderNueva(container){
             <input class="finput" id="t-contacto" placeholder="Nombre del contacto"/></div>
           <div class="fg full"><div class="flbl">Descripción de la tarea</div>
             <textarea class="ftxt" id="t-descripcion" placeholder="Detalle de la tarea, objetivo, entregable esperado..." style="min-height:70px"></textarea></div>
+          <div class="fg"><div class="flbl">N° cotización (opcional)</div>
+            <input class="finput" id="t-num-cot" placeholder="Ej: CRM0001240426"/></div>
+          <div class="fg"><div class="flbl">Link propuesta en Drive</div>
+            <input class="finput" id="t-link" placeholder="https://drive.google.com/..."/></div>
           <div class="fg"><div class="flbl">Fecha límite</div>
             <input class="finput" type="date" id="t-fecha"/></div>
           <div class="fg"><div class="flbl">Prioridad</div>
@@ -953,13 +960,8 @@ function renderNueva(container){
 function toggleTipoRegistro(){
   const tipo = document.querySelector('input[name="f-tipo-reg"]:checked')?.value;
   const esLead = tipo === 'lead';
-  // Mostrar/ocultar secciones
-  ['origen-btns','lead-nuevo-hint','producto-btns','valor-section'].forEach(id=>{
-    const el=document.getElementById(id);
-    if(el) el.closest('.fg,.form-grid,[style*="margin-bottom:14px"],[style*="margin-bottom:16px"]')?.style && (el.closest('[style]').style.display=esLead?'':'none');
-  });
-  document.getElementById('form-tarea').style.display = esLead?'none':'';
-  // Actualizar estilo de las tarjetas de selección
+  document.getElementById('form-lead').style.display = esLead ? '' : 'none';
+  document.getElementById('form-tarea').style.display = esLead ? 'none' : '';
   const labelLead=document.getElementById('tipo-lead-label');
   const labelTarea=document.getElementById('tipo-tarea-label');
   if(labelLead){
@@ -982,9 +984,11 @@ async function guardarRegistro(){
     const prioridad=document.getElementById('t-prioridad')?.value||'media';
     const cliente=document.getElementById('t-cliente')?.value.trim()||'';
     const contacto=document.getElementById('t-contacto')?.value.trim()||'';
+    const num_cotizacion=document.getElementById('t-num-cot')?.value.trim()||'';
+    const link_propuesta=document.getElementById('t-link')?.value.trim()||'';
     const {error}=await sb.from('tareas_admin').insert({
       usuario_id:USER.id, titulo, descripcion, fecha_limite:fecha, prioridad, done:false,
-      cliente, contacto
+      cliente, contacto, num_cotizacion, link_propuesta
     });
     if(error){alert('Error: '+error.message);return;}
     alert('Tarea guardada correctamente.');
@@ -2517,6 +2521,8 @@ async function editarTareaAdmin(id){
         <div style="display:flex;gap:6px;flex-wrap:wrap;padding-left:26px">
           ${t.cliente?`<span style="font-size:11px;color:var(--text3)">${t.cliente}</span>`:''}
           ${t.contacto?`<span style="font-size:11px;color:var(--text3)">· ${t.contacto}</span>`:''}
+          ${t.num_cotizacion?`<span style="font-size:10px;font-family:'Courier New',monospace;color:var(--sat-blue)">${t.num_cotizacion}</span>`:''}
+          ${t.link_propuesta?`<a href="${t.link_propuesta}" target="_blank" style="font-size:10px;color:var(--sat-blue)">Ver propuesta ↗</a>`:''}
           <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${t.prioridad==='alta'?'var(--red-light)':t.prioridad==='media'?'var(--sat-orange-light)':'var(--surface2)'};color:${t.prioridad==='alta'?'var(--red)':t.prioridad==='media'?'var(--sat-orange)':'var(--text3)'}">${t.prioridad}</span>
           ${t.fecha_limite?`<span style="font-size:10px;color:var(--text3)">Vence: ${t.fecha_limite.split('-').reverse().join('/')}</span>`:''}
         </div>
@@ -2585,6 +2591,8 @@ async function guardarEdicionTarea(id){
     cliente:document.getElementById('mt-cliente')?.value.trim()||'',
     contacto:document.getElementById('mt-contacto')?.value.trim()||'',
     descripcion:document.getElementById('mt-desc')?.value.trim(),
+    num_cotizacion:document.getElementById('mt-num-cot')?.value.trim()||'',
+    link_propuesta:document.getElementById('mt-link')?.value.trim()||'',
     fecha_limite:document.getElementById('mt-fecha')?.value||null,
     prioridad:document.getElementById('mt-prio')?.value||'media'
   };
