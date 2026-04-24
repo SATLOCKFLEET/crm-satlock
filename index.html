@@ -484,6 +484,12 @@ try{
   sb=createClient(SUPA_URL,SUPA_KEY);
 }catch(e){console.error('Error Supabase:',e);}
 
+function proxGestionDefault(){
+  const d=new Date();
+  d.setDate(d.getDate()+30);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
 function fechaHoyLocal(){
   // Usar getFullYear/Month/Date que respetan el timezone LOCAL del browser
   const d=new Date();
