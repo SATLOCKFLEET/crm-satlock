@@ -1260,7 +1260,7 @@ async function abrirEditar(id){
           <div><span style="color:var(--text3)">Valor estimado</span><div style="font-weight:500;color:var(--green);margin-top:2px">${r.valor_estimado?'$ '+parseFloat(r.valor_estimado).toLocaleString('es-CO'):'—'}</div></div>
           <div><span style="color:var(--text3)">N° propuesta</span><div style="font-family:'Courier New',monospace;margin-top:2px">${r.num_propuesta||'—'}</div></div>
           <div style="grid-column:1/-1"><span style="color:var(--text3)">Asunto</span><div style="margin-top:2px">${r.asunto||'—'}</div></div>
-          <div style="grid-column:1/-1"><span style="color:var(--text3)">Próxima acción</span><div style="margin-top:2px;color:var(--sat-orange)">${r.proxima_accion||'—'}${r.fecha_proxima_accion?' ('+r.fecha_proxima_accion.split('-').reverse().join('/')+')':''}</div></div>
+          <div style="grid-column:1/-1"><span style="color:var(--text3)">Próxima acción</span><div style="margin-top:2px;color:var(--sat-orange)">${r.proxima_accion||'—'}${r.fecha_proxima_accion?` (${r.fecha_proxima_accion.split('-').reverse().join('/')})`:''}</div></div>
           ${r.link_drive?`<div style="grid-column:1/-1"><a href="${r.link_drive}" target="_blank" style="color:var(--sat-blue);font-size:12px">Ver propuesta en Drive ↗</a></div>`:''}
           <div style="grid-column:1/-1"><span style="color:var(--text3)">Notas</span><div style="margin-top:2px;white-space:pre-wrap">${r.notas||'—'}</div></div>
           <div><span style="color:var(--text3)">Apertura</span><div style="margin-top:2px">${r.fecha_inicio_gestion||r.fecha||'—'}</div></div>
