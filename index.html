@@ -997,6 +997,14 @@ async function guardarRegistro(){
       cliente, contacto, num_cotizacion, link_propuesta
     });
     if(error){alert('Error: '+error.message);return;}
+    // Crear evento en Google Calendar si está conectado y tiene fecha
+    if(gcalToken && fecha){
+      try{
+        await crearEventoGcalConInvitados(
+          '📋 '+titulo, fecha, '09:00', descripcion||'', 60, []
+        );
+      }catch(e){ console.warn('No se pudo crear en GCal:', e); }
+    }
     alert('Tarea guardada correctamente.');
     limpiarForm();
     switchTab(2); // Ir a Mi día
@@ -2441,21 +2449,36 @@ async function renderDiario(container){
   window._tareasAdmin = tareasRes.data||[];
 
   container.innerHTML=`
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px">
       <div>
         <div style="font-size:14px;font-weight:500;color:var(--text)">Mi día</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Clientes activos que requieren atención — haz clic en cualquiera para abrir la ficha completa</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Vista de actividad diaria — haz clic en cualquier tarjeta para abrir la ficha</div>
       </div>
-      <div style="display:flex;gap:4px;flex-wrap:wrap">
+      <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
         <button class="fbtn active" id="dfiltro-todos" onclick="setFiltroDiario('todos',this)">Todos</button>
         <button class="fbtn" id="dfiltro-urgentes" onclick="setFiltroDiario('urgentes',this)">Urgentes</button>
         <button class="fbtn" id="dfiltro-hoy" onclick="setFiltroDiario('hoy',this)">Hoy</button>
         <button class="fbtn" id="dfiltro-semana" onclick="setFiltroDiario('semana',this)">Esta semana</button>
+        <input class="diario-search" type="text" placeholder="Buscar..." oninput="filtrarDiario(this.value)" id="diario-search" style="width:160px"/>
       </div>
     </div>
-    <div id="diario-resumen" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
-    <input class="diario-search" type="text" placeholder="Buscar cliente..." oninput="filtrarDiario(this.value)" id="diario-search" style="margin-bottom:12px;width:220px"/>
-    <div id="diario-lista"></div>`;
+    <div id="diario-resumen" style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start" id="midia-grid">
+      <div>
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--sat-blue);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          Gestión de leads
+          <span id="leads-count" style="font-size:10px;font-weight:400;background:var(--sat-blue-light);color:var(--sat-blue);padding:1px 6px;border-radius:10px"></span>
+        </div>
+        <div id="diario-lista"></div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#534AB7;margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          Tareas administrativas
+          <span id="tareas-count" style="font-size:10px;font-weight:400;background:var(--purple-light);color:#534AB7;padding:1px 6px;border-radius:10px"></span>
+        </div>
+        <div id="tareas-lista-midia"></div>
+      </div>
+    </div>`;
 
   renderDiarioLista('', 'todos');
 }
@@ -2707,6 +2730,48 @@ function renderDiarioLista(q, filtro){
       </div>`;
     }).join('')}`:'';
 
+  // Actualizar contadores
+  const leadsCount=document.getElementById('leads-count');
+  const tareasCount=document.getElementById('tareas-count');
+  if(leadsCount) leadsCount.textContent=ops.length;
+
+  // ── Renderizar tareas en columna derecha ──
+  const tareasListaEl=document.getElementById('tareas-lista-midia');
+  if(tareasListaEl){
+    const tareasAll=window._tareasAdmin||[];
+    let tareasFiltered=[...tareasAll];
+    const hoyStr3=fechaHoyLocal();
+    const semStr=(() => { const d=new Date(); d.setDate(d.getDate()+7); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
+    if(filtro==='urgentes') tareasFiltered=tareasFiltered.filter(t=>t.fecha_limite&&t.fecha_limite<hoyStr3);
+    else if(filtro==='hoy') tareasFiltered=tareasFiltered.filter(t=>t.fecha_limite===hoyStr3);
+    else if(filtro==='semana') tareasFiltered=tareasFiltered.filter(t=>t.fecha_limite&&t.fecha_limite<=semStr);
+    if(q){ const ql=q.toLowerCase(); tareasFiltered=tareasFiltered.filter(t=>t.titulo.toLowerCase().includes(ql)||(t.cliente||'').toLowerCase().includes(ql)); }
+    if(tareasCount) tareasCount.textContent=tareasFiltered.length;
+    if(!tareasFiltered.length){
+      tareasListaEl.innerHTML='<div class="empty" style="font-size:11px">Sin tareas con este filtro</div>';
+    } else {
+      tareasListaEl.innerHTML=tareasFiltered.map(t=>{
+        const vencida=t.fecha_limite&&t.fecha_limite<hoyStr3;
+        const esHoy=t.fecha_limite===hoyStr3;
+        const prioColor={alta:'var(--red)',media:'var(--sat-orange)',baja:'var(--border2)'};
+        return `<div class="tarea-row${vencida?' vencida':esHoy?' hoy':''}" style="cursor:pointer" data-tarea-id="${t.id}" onclick="editarTareaAdmin(this.dataset.tareaId)">
+          <div class="tarea-header">
+            <div class="tarea-icono">📋</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:500;color:var(--text)">${t.titulo}</div>
+              ${t.cliente?`<div style="font-size:11px;color:var(--text2);margin-top:1px">${t.cliente}${t.contacto?' · '+t.contacto:''}</div>`:''}
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">
+              <span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${vencida?'var(--red-light)':esHoy?'var(--sat-orange-light)':'var(--purple-light)'};color:${vencida?'var(--red)':esHoy?'var(--sat-orange)':'#534AB7'}">${vencida?'Vencida':esHoy?'Hoy':t.fecha_limite?.split('-').reverse().join('/')||'Sin fecha'}</span>
+              <span style="font-size:10px;color:${prioColor[t.prioridad]||'var(--text3)'}">● ${t.prioridad}</span>
+            </div>
+            <button onclick="event.stopPropagation();completarTareaAdmin('${t.id}')" style="margin-left:6px;font-family:inherit;font-size:10px;padding:3px 8px;border:0.5px solid var(--green);border-radius:var(--radius-sm);background:var(--green-light);color:var(--green);cursor:pointer">✓</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+
   lista.innerHTML=ops.map(op=>{
     const sem=semaforoDiario(op.id,op.fecha_inicio_gestion,op.estado);
     const ult=ultimaGestion(op.id);
@@ -2731,7 +2796,7 @@ function renderDiarioLista(q, filtro){
         </div>
       </div>
     </div>`;
-  }).join('') + tareasHtml;
+  }).join('');
 }
 
 // ── KPIs & ANALYTICS ──────────────────────────────────────────────────────────
