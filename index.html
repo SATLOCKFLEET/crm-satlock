@@ -381,6 +381,20 @@ tbody tr:hover{background:var(--surface2)}
 .period-toggle{display:flex;gap:4px;margin-bottom:16px}
 .period-btn{font-family:inherit;font-size:11px;padding:4px 12px;border-radius:20px;border:0.5px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer}
 .period-btn.active{background:var(--sat-blue);color:#fff;border-color:var(--sat-blue)}
+
+/* ── Trazabilidad de oportunidad ── */
+.traz-timeline{display:flex;flex-direction:column;gap:0;position:relative;padding-left:24px;margin-bottom:12px}
+.traz-timeline::before{content:'';position:absolute;left:7px;top:4px;bottom:4px;width:1px;background:var(--border)}
+.traz-entry{position:relative;padding:6px 0 6px 12px;border-bottom:0.5px solid var(--border)}
+.traz-entry:last-child{border-bottom:none}
+.traz-dot{position:absolute;left:-17px;top:10px;width:8px;height:8px;border-radius:50%;background:var(--sat-blue);border:2px solid var(--surface)}
+.traz-dot.cierre{background:var(--green)}
+.traz-dot.perdido{background:var(--red)}
+.traz-dot.propuesta{background:var(--sat-orange)}
+.traz-fecha{font-size:10px;color:var(--text3);font-family:'Courier New',monospace;margin-bottom:2px}
+.traz-campo{font-size:11px;color:var(--text2);margin-bottom:1px}
+.traz-campo strong{color:var(--text)}
+.traz-nota{font-size:11px;color:var(--text);margin-top:3px;padding:4px 8px;background:var(--surface2);border-radius:4px;border-left:2px solid var(--sat-blue)}
 </style>
 </head>
 <body>
@@ -1076,21 +1090,46 @@ async function registrarQCOAuto(contactos,cotizaciones,cierres){
 }
 
 // ── EDICIÓN Y BORRADO DE OPORTUNIDADES ───────────────────────────────────────
-async function abrirEditar(id){
+async async function abrirEditar(id){
   const {data:r}=await sb.from('oportunidades').select('*').eq('id',id).single();
   if(!r) return;
+  // Cargar historial de trazabilidad
+  const {data:historial}=await sb.from('trazabilidad').select('*').eq('oportunidad_id',id).order('created_at',{ascending:false});
   const esAmbas=PERFIL.linea==='ambas';
   const lineaReg=r.linea||PERFIL.linea;
   const productos=getProductosPorLinea(lineaReg);
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.id='modal-editar';
+
+  // Render del historial
+  const TRAZ_LABELS={estado:'Estado',avance:'Avance',producto:'Producto',asunto:'Asunto',proxima_accion:'Próxima acción',notas:'Nota',valor_estimado:'Valor estimado'};
+  const dotClass=(estado)=>estado==='cerrado'?'cierre':estado==='perdido'?'perdido':estado==='propuesta_enviada'?'propuesta':'';
+  const historialHtml=(historial&&historial.length)?`
+    <div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+        Historial de seguimiento
+        <span style="font-size:10px;font-weight:400;background:var(--sat-blue-light);color:var(--sat-blue);padding:1px 6px;border-radius:10px">${historial.length} cambios</span>
+      </div>
+      <div class="traz-timeline">
+        ${historial.map(h=>`
+          <div class="traz-entry">
+            <div class="traz-dot ${dotClass(h.estado_nuevo||'')}"></div>
+            <div class="traz-fecha">${new Date(h.created_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
+            ${h.campo?`<div class="traz-campo">${TRAZ_LABELS[h.campo]||h.campo}: <strong>${h.valor_anterior||'—'}</strong> → <strong>${h.valor_nuevo||'—'}</strong></div>`:''}
+            ${h.nota?`<div class="traz-nota">${h.nota}</div>`:''}
+          </div>`).join('')}
+      </div>
+    </div>`:'<div style="font-size:11px;color:var(--text3);margin-bottom:16px">Sin historial de seguimiento aún.</div>';
+
   overlay.innerHTML=`
-    <div class="modal-box">
+    <div class="modal-box" style="max-width:600px">
       <div class="modal-title">
-        Editar oportunidad
+        Seguimiento — ${r.empresa||'Oportunidad'}
         <button class="modal-close" onclick="document.getElementById('modal-editar').remove()">✕</button>
       </div>
+      ${historialHtml}
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:10px">Actualizar oportunidad</div>
       <div class="form-grid">
         <div class="fg"><div class="flbl">Fecha</div><input class="finput" id="e-fecha" type="date" value="${r.fecha||''}"/></div>
         <div class="fg"><div class="flbl">Estado</div>
@@ -1137,6 +1176,12 @@ function actualizarProductosEditar(){
   sel.innerHTML='<option value="">Seleccionar...</option>'+productos.map(p=>`<option>${p}</option>`).join('');
 }
 async function guardarEdicion(id){
+  // Obtener valores anteriores para detectar cambios
+  const {data:anterior}=await sb.from('oportunidades').select('estado,avance,producto,asunto,proxima_accion,notas,valor_estimado').eq('id',id).single();
+  const notaTraz=document.getElementById('e-nota-traz')?.value.trim()||'';
+  const nuevoEstado=document.getElementById('e-estado').value;
+  const nuevoAvance=nuevoEstado==='cerrado'?100:parseInt(document.getElementById('e-avance').value);
+
   const {error}=await sb.from('oportunidades').update({
     fecha:document.getElementById('e-fecha').value,
     linea:(document.getElementById('e-linea')?.value)||'fleet',
@@ -1159,6 +1204,28 @@ async function guardarEdicion(id){
     notas:document.getElementById('e-notas').value,
   }).eq('id',id);
   if(error){alert('Error: '+error.message);return;}
+
+  // Registrar trazabilidad — detectar cambios importantes
+  const trazItems=[];
+  const campos=[
+    {k:'estado',lbl:'estado',ant:anterior?.estado,nvo:nuevoEstado},
+    {k:'avance',lbl:'avance',ant:String(anterior?.avance||0)+'%',nvo:String(nuevoAvance)+'%'},
+    {k:'producto',lbl:'producto',ant:anterior?.producto,nvo:document.getElementById('e-producto')?.value},
+    {k:'proxima_accion',lbl:'proxima_accion',ant:anterior?.proxima_accion,nvo:document.getElementById('e-prox')?.value},
+  ];
+  for(const c of campos){
+    if(c.ant!==c.nvo&&(c.ant||c.nvo)){
+      trazItems.push({oportunidad_id:id,usuario_id:USER.id,campo:c.k,valor_anterior:c.ant||'',valor_nuevo:c.nvo||'',estado_nuevo:nuevoEstado,nota:notaTraz});
+    }
+  }
+  // Si solo hay nota sin cambios de campo, registrar igualmente
+  if(!trazItems.length&&notaTraz){
+    trazItems.push({oportunidad_id:id,usuario_id:USER.id,campo:null,valor_anterior:null,valor_nuevo:null,estado_nuevo:nuevoEstado,nota:notaTraz});
+  }
+  if(trazItems.length){
+    await sb.from('trazabilidad').insert(trazItems);
+  }
+
   document.getElementById('modal-editar').remove();
   switchTab(0);
 }
