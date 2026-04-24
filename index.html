@@ -2537,7 +2537,13 @@ async function editarTareaAdmin(id){
       <div class="ficha-panel active" id="fp-tarea-act">
         <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px">
           <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Registrar avance</div>
-          <textarea class="ftxt" id="st-nota" placeholder="Describe el avance, resultado o próximo paso de esta tarea..." style="min-height:60px;font-size:12px;margin-bottom:8px"></textarea>
+          <textarea class="ftxt" id="st-nota" placeholder="Describe el avance, resultado o próximo paso de esta tarea..." style="min-height:120px;font-size:12px;resize:vertical;width:100%;margin-bottom:10px"></textarea>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+            <div style="flex:1">
+              <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Próxima gestión</div>
+              <input class="finput" type="date" id="st-prox" value="${proxGestionDefault()}" style="font-size:12px;padding:7px 10px;width:100%"/>
+            </div>
+          </div>
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div style="display:flex;gap:8px">
               <button onclick="completarTareaAdmin('${id}');document.getElementById('modal-tarea').remove()" style="font-family:inherit;font-size:11px;padding:6px 12px;border:0.5px solid var(--green);border-radius:var(--radius-sm);background:var(--green-light);color:var(--green);cursor:pointer">✓ Marcar como completada</button>
@@ -2575,9 +2581,17 @@ async function editarTareaAdmin(id){
 async function guardarSeguimientoTarea(tareaId){
   const nota=document.getElementById('st-nota')?.value.trim();
   if(!nota){alert('Escriba una nota del avance.');return;}
+  const proxGest=document.getElementById('st-prox')?.value||null;
   const {error}=await sb.from('seguimiento_tareas').insert({
-    tarea_id:tareaId, usuario_id:USER.id, nota
+    tarea_id:tareaId, usuario_id:USER.id, nota,
+    proxima_gestion:proxGest||null
   });
+  // Actualizar fecha_limite de la tarea si se definió próxima gestión
+  if(proxGest){
+    await sb.from('tareas_admin').update({fecha_limite:proxGest}).eq('id',tareaId);
+    const idx=(window._tareasAdmin||[]).findIndex(t=>t.id===tareaId);
+    if(idx>-1) window._tareasAdmin[idx].fecha_limite=proxGest;
+  }
   if(error){alert('Error: '+error.message);return;}
   document.getElementById('st-nota').value='';
   // Refrescar el modal
