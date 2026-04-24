@@ -1124,7 +1124,7 @@ async function abrirEditar(id){
   // Cargar datos del lead, gestiones y trazabilidad en paralelo
   const [opRes, gestRes, trazRes] = await Promise.all([
     sb.from('oportunidades').select('*').eq('id',id).single(),
-    sb.from('gestiones').select('*,usuarios(nombre)').eq('oportunidad_id',id).order('fecha',{ascending:false}),
+    sb.from('gestiones').select('*,usuarios(nombre)').eq('oportunidad_id',id).order('created_at',{ascending:false}),
     sb.from('trazabilidad').select('*,usuarios(nombre)').eq('oportunidad_id',id).order('created_at',{ascending:false})
   ]);
   const r = opRes.data; if(!r) return;
@@ -1142,7 +1142,7 @@ async function abrirEditar(id){
 
   const timelineItems = [
     ...gestiones.map(g=>({
-      fecha: g.fecha+'T12:00:00',
+      fecha: g.created_at||g.fecha+'T12:00:00',
       tipo: g.tipo||'otro',
       cuerpo: g.nota||'',
       autor: g.usuarios?.nombre||'',
@@ -1364,6 +1364,9 @@ async function guardarGestionDesdeFicha(opId){
   // Reabrir la ficha para reflejar la nueva gestión
   document.getElementById('modal-editar').remove();
   abrirEditar(opId);
+  // Si el diario está visible, actualizarlo
+  const q=document.getElementById('diario-search')?.value||'';
+  renderDiarioLista(q);
 }
 function actualizarProductosEditar(){
   const linea=document.getElementById('e-linea').value;
