@@ -1356,7 +1356,7 @@ async function guardarGestionDesdeFicha(opId){
   const {data,error}=await sb.from('gestiones').insert({
     oportunidad_id:opId, usuario_id:USER.id, fecha, tipo, nota,
     proxima_gestion:proxGest||null
-  }).select().single();
+  }).select('oportunidad_id,fecha,tipo,nota,proxima_gestion,created_at').single();
   if(error){alert('Error: '+error.message);return;}
   // Actualizar diario en memoria
   if(!window._diarioGestiones) window._diarioGestiones=[];
@@ -2347,7 +2347,7 @@ async function renderDiario(container){
 function ultimaGestion(opId){
   const gg = (window._diarioGestiones||[]).filter(g=>g.oportunidad_id===opId);
   if(!gg.length) return null;
-  return gg.sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+  return gg.sort((a,b)=>new Date(b.created_at||b.fecha) - new Date(a.created_at||a.fecha))[0];
 }
 
 function semaforoDiario(opId, fechaInicio, estado){
