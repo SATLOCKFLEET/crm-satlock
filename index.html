@@ -831,6 +831,7 @@ function renderNueva(container){
       <div class="fg"><div class="flbl">NIT / RUC</div><input class="finput" id="f-nit" placeholder="Ej: 900123456-1"/></div>
       <div class="fg"><div class="flbl">Nombre contacto</div><input class="finput" id="f-contacto" placeholder="Nombre completo"/></div>
       <div class="fg"><div class="flbl">Cargo del contacto</div><input class="finput" id="f-cargo" placeholder="Ej: Gerente de Flota"/></div>
+      <div class="fg"><div class="flbl">Ciudad</div><input class="finput" id="f-ciudad" placeholder="Ej: Bogotá, Medellín, Guayaquil"/></div>
       <div class="fg"><div class="flbl">Teléfono</div><input class="finput" id="f-tel" placeholder="Cel / fijo"/></div>
       <div class="fg"><div class="flbl">Correo</div><input class="finput" type="email" id="f-correo" placeholder="email@empresa.com"/></div>
     </div>
@@ -1191,6 +1192,7 @@ async function guardarOp(){
     de_mercadeo:deMercadeo,
     origen_lead:origenVal,
     nit:nit,
+    ciudad:document.getElementById('f-ciudad')?.value.trim()||'',
     venta_unica:document.getElementById('f-venta-unica')?.checked||false,
     recurrente:document.getElementById('f-recurrente')?.checked||false,
     unidades:parseInt(document.getElementById('f-unidades')?.value||'0')||null,
@@ -1377,6 +1379,7 @@ async function abrirEditar(id){
           <div><span style="color:var(--text3)">NIT/RUC</span><div style="margin-top:2px">${r.nit||'—'}</div></div>
           <div><span style="color:var(--text3)">Contacto</span><div style="margin-top:2px">${r.contacto||'—'}</div></div>
           <div><span style="color:var(--text3)">Cargo</span><div style="margin-top:2px">${r.cargo_contacto||'—'}</div></div>
+          <div><span style="color:var(--text3)">Ciudad</span><div style="margin-top:2px">${r.ciudad||'—'}</div></div>
           <div><span style="color:var(--text3)">Teléfono</span><div style="margin-top:2px">${r.telefono||'—'}</div></div>
           <div><span style="color:var(--text3)">Correo</span><div style="margin-top:2px">${r.correo||'—'}</div></div>
           <div><span style="color:var(--text3)">Producto</span><div style="font-weight:500;margin-top:2px">${r.producto||'—'}</div></div>
@@ -1410,6 +1413,7 @@ async function abrirEditar(id){
           <div class="fg"><div class="flbl">Empresa</div><input class="finput" id="e-empresa" value="${(r.empresa||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Contacto</div><input class="finput" id="e-contacto" value="${(r.contacto||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Cargo</div><input class="finput" id="e-cargo" value="${(r.cargo_contacto||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Ciudad</div><input class="finput" id="e-ciudad" value="${(r.ciudad||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Teléfono</div><input class="finput" id="e-tel" value="${(r.telefono||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Correo</div><input class="finput" id="e-correo" type="email" value="${(r.correo||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">N° propuesta</div>
@@ -1516,6 +1520,7 @@ async function guardarEdicion(id){
     empresa:document.getElementById('e-empresa').value,
     contacto:document.getElementById('e-contacto').value,
     cargo_contacto:document.getElementById('e-cargo').value,
+    ciudad:document.getElementById('e-ciudad')?.value.trim()||'',
     telefono:document.getElementById('e-tel').value,
     correo:document.getElementById('e-correo').value,
     num_propuesta:document.getElementById('e-numprop').value,
@@ -2799,12 +2804,9 @@ function renderDiarioLista(q, filtro){
   }).join('');
 }
 
-// ── KPIs & ANALYTICS ──────────────────────────────────────────────────────────
-let _kpiPeriodo = 'mes'; // 'mes' | 'trimestre'
-
+// ── KPIs & ANALYTICS ────────────────────────────────────────────────────────
 async function renderKPIs(container){
   container.innerHTML='<div class="loading">Cargando analytics...</div>';
-  // Cargar Plotly dinámicamente si no está disponible
   if(!window.Plotly){
     await new Promise((res,rej)=>{
       const s=document.createElement('script');
@@ -2814,212 +2816,191 @@ async function renderKPIs(container){
     });
   }
   const hoy=new Date();
-  const mesActual=hoy.getMonth()+1;
-  const anioActual=hoy.getFullYear();
+  const mesActual=hoy.getMonth()+1, anioActual=hoy.getFullYear();
   const mesAnterior=mesActual===1?12:mesActual-1;
   const anioAnterior=mesActual===1?anioActual-1:anioActual;
 
-  // Cargar datos
-  const [opsRes, gesRes, qcoRes, usuRes] = await Promise.all([
+  const [opsRes,gestRes,usuRes]=await Promise.all([
     sb.from('oportunidades').select('*').order('created_at',{ascending:true}),
     sb.from('gestiones').select('oportunidad_id,usuario_id,fecha,tipo').order('fecha'),
-    sb.from('quince_cinco_uno').select('*').order('mes').order('anio'),
     sb.from('usuarios').select('id,nombre,linea,rol').neq('rol','gerencia')
   ]);
+  const ops=opsRes.data||[], gest=gestRes.data||[], usuarios=usuRes.data||[];
 
-  const ops = opsRes.data||[];
-  const gest = gesRes.data||[];
-  const qco = qcoRes.data||[];
-  const usuarios = usuRes.data||[];
-
-  // ── Helpers ──
   const opsMes=(m,a)=>ops.filter(o=>o.created_at&&new Date(o.created_at).getMonth()+1===m&&new Date(o.created_at).getFullYear()===a);
   const cerradosMes=(m,a)=>ops.filter(o=>o.estado==='cerrado'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===m&&new Date(o.updated_at).getFullYear()===a);
-  const perdidosMes=(m,a)=>ops.filter(o=>o.estado==='perdido'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===m&&new Date(o.updated_at).getFullYear()===a);
-  const delta=(act,ant)=>{
-    if(!ant) return {pct:null,cls:'neu'};
-    const d=Math.round((act-ant)/Math.max(ant,1)*100);
-    return {pct:d,cls:d>0?'pos':d<0?'neg':'neu'};
-  };
+  const delta=(act,ant)=>{ if(!ant) return {pct:null,cls:'neu'}; const d=Math.round((act-ant)/Math.max(ant,1)*100); return {pct:d,cls:d>0?'pos':d<0?'neg':'neu'}; };
 
-  // ── KPIs principales ──
-  const leadsAct=opsMes(mesActual,anioActual).length;
-  const leadsAnt=opsMes(mesAnterior,anioAnterior).length;
-  const cerradosAct=cerradosMes(mesActual,anioActual).length;
-  const cerradosAnt=cerradosMes(mesAnterior,anioAnterior).length;
+  const leadsAct=opsMes(mesActual,anioActual).length, leadsAnt=opsMes(mesAnterior,anioAnterior).length;
+  const cerradosAct=cerradosMes(mesActual,anioActual).length, cerradosAnt=cerradosMes(mesAnterior,anioAnterior).length;
   const totalActivos=ops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).length;
-  const perdidosAct=perdidosMes(mesActual,anioActual).length;
+  const perdidosAct=ops.filter(o=>o.estado==='perdido'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===mesActual).length;
   const tasa=leadsAct>0?Math.round(cerradosAct/leadsAct*100):0;
   const tasaAnt=leadsAnt>0?Math.round(cerradosAnt/leadsAnt*100):0;
-
-  // Tiempo promedio de ciclo (días creación→cierre)
-  const opsCerradasConFecha=ops.filter(o=>o.estado==='cerrado'&&o.fecha_inicio_gestion&&o.updated_at);
-  const cicloPromAct=opsCerradasConFecha.length
-    ?Math.round(opsCerradasConFecha.filter(o=>new Date(o.updated_at).getMonth()+1===mesActual)
-        .reduce((s,o)=>s+diasGestion(o.fecha_inicio_gestion,o.updated_at.split('T')[0]),0)
-        /Math.max(cerradosAct,1))
-    :0;
-
-  // Gestiones este mes
   const gestMes=gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesActual&&new Date(g.fecha).getFullYear()===anioActual).length;
   const gestAnt=gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesAnterior&&new Date(g.fecha).getFullYear()===anioAnterior).length;
-
-  // Mercadeo
   const mercadeoTotal=ops.filter(o=>o.de_mercadeo).length;
   const mercadeoCerrado=ops.filter(o=>o.de_mercadeo&&o.estado==='cerrado').length;
   const tasaMercadeo=mercadeoTotal>0?Math.round(mercadeoCerrado/mercadeoTotal*100):0;
 
-  const dL=delta(leadsAct,leadsAnt);
-  const dC=delta(cerradosAct,cerradosAnt);
-  const dG=delta(gestMes,gestAnt);
-  const dT=delta(tasa,tasaAnt);
+  // ── PIPELINE ──
+  const opsActivas=ops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado));
+  const pipelineTotal=opsActivas.reduce((s,o)=>{
+    const unica=(o.unidades||0)*(o.valor_unitario||0);
+    const rec=(o.unidades_recurrentes||0)*(o.valor_recurrente||0);
+    return s+unica+rec;
+  },0);
+  const pipelineUnico=opsActivas.reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+s,0);
+  const pipelineRec=opsActivas.reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
+
+  // Pipeline por producto
+  const prodMap={};
+  opsActivas.forEach(o=>{
+    if(!o.producto) return;
+    if(!prodMap[o.producto]) prodMap[o.producto]={unica:0,rec:0,count:0,unidades:0};
+    prodMap[o.producto].unica+=(o.unidades||0)*(o.valor_unitario||0);
+    prodMap[o.producto].rec+=(o.unidades_recurrentes||0)*(o.valor_recurrente||0);
+    prodMap[o.producto].count++;
+    prodMap[o.producto].unidades+=(o.unidades||0)+(o.unidades_recurrentes||0);
+  });
+  const prodEntries=Object.entries(prodMap).sort((a,b)=>(b[1].unica+b[1].rec)-(a[1].unica+a[1].rec));
+
+  // Recurrencia potencial total si se cierran todos
+  const recurrenciaPotencial=opsActivas.reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
+
+  // Mapa de calor por ciudad
+  const ciudadMap={};
+  opsActivas.forEach(o=>{ if(o.ciudad){ const c=o.ciudad.trim(); ciudadMap[c]=(ciudadMap[c]||0)+1; } });
 
   const mesNombre=new Date(anioActual,mesActual-1,1).toLocaleDateString('es-CO',{month:'long'});
   const mesAntNombre=new Date(anioAnterior,mesAnterior-1,1).toLocaleDateString('es-CO',{month:'long'});
+  const fmt=n=>n>=1000000?'$'+Math.round(n/1000000)+'M':n>=1000?'$'+Math.round(n/1000)+'K':'$'+Math.round(n);
+  const dL=delta(leadsAct,leadsAnt),dC=delta(cerradosAct,cerradosAnt),dG=delta(gestMes,gestAnt),dT=delta(tasa,tasaAnt);
 
   container.innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:14px;font-weight:500;color:var(--text)">KPIs & Analytics</div>
+        <div style="font-size:14px;font-weight:500">KPIs & Analytics</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">Comparativo ${mesNombre} vs ${mesAntNombre}</div>
       </div>
     </div>
 
-    <div class="kpi-section">
-      <div class="kpi-section-title">Resumen del mes</div>
-      <div class="kpi-cards">
-        <div class="kpi-card">
-          <div class="kpi-lbl">Nuevos leads</div>
-          <div class="kpi-val">${leadsAct}</div>
-          <div class="kpi-sub">${dL.pct!==null?`<span class="kpi-delta ${dL.cls}">${dL.pct>0?'+':''}${dL.pct}%</span> vs ${mesAntNombre}`:'Sin comparativo'}</div>
-        </div>
-        <div class="kpi-card green">
-          <div class="kpi-lbl">Cierres</div>
-          <div class="kpi-val" style="color:var(--green)">${cerradosAct}</div>
-          <div class="kpi-sub">${dC.pct!==null?`<span class="kpi-delta ${dC.cls}">${dC.pct>0?'+':''}${dC.pct}%</span> vs ${mesAntNombre}`:'Sin comparativo'}</div>
-        </div>
-        <div class="kpi-card orange">
-          <div class="kpi-lbl">Tasa conversión</div>
-          <div class="kpi-val" style="color:var(--sat-orange)">${tasa}%</div>
-          <div class="kpi-sub">${dT.pct!==null?`<span class="kpi-delta ${dT.cls}">${dT.pct>0?'+':''}${dT.pct}pp</span> vs ${mesAntNombre}`:'Sin comparativo'}</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-lbl">Pipeline activo</div>
-          <div class="kpi-val" style="color:var(--sat-blue)">${totalActivos}</div>
-          <div class="kpi-sub">en proceso + prop. enviada</div>
-        </div>
-        <div class="kpi-card red">
-          <div class="kpi-lbl">Perdidos este mes</div>
-          <div class="kpi-val" style="color:var(--red)">${perdidosAct}</div>
-          <div class="kpi-sub">leads no convertidos</div>
-        </div>
-        <div class="kpi-card purple">
-          <div class="kpi-lbl">Ciclo promedio</div>
-          <div class="kpi-val" style="color:#534AB7">${cicloPromAct||'—'}<span style="font-size:14px">${cicloPromAct?'d':''}</span></div>
-          <div class="kpi-sub">días creación → cierre</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-lbl">Gestiones registradas</div>
-          <div class="kpi-val">${gestMes}</div>
-          <div class="kpi-sub">${dG.pct!==null?`<span class="kpi-delta ${dG.cls}">${dG.pct>0?'+':''}${dG.pct}%</span> vs ${mesAntNombre}`:'Sin comparativo'}</div>
-        </div>
-        <div class="kpi-card orange">
-          <div class="kpi-lbl">Conv. leads Mercadeo</div>
-          <div class="kpi-val" style="color:var(--sat-orange)">${tasaMercadeo}%</div>
-          <div class="kpi-sub">${mercadeoCerrado} cerrados de ${mercadeoTotal}</div>
-        </div>
-      </div>
+    <!-- SECCIÓN 1: Resumen del mes -->
+    <div class="kpi-section"><div class="kpi-section-title">Resumen del mes</div>
+    <div class="kpi-cards">
+      <div class="kpi-card"><div class="kpi-lbl">Nuevos leads</div><div class="kpi-val">${leadsAct}</div><div class="kpi-sub">${dL.pct!==null?`<span class="kpi-delta ${dL.cls}">${dL.pct>0?'+':''}${dL.pct}%</span> vs ${mesAntNombre}`:'—'}</div></div>
+      <div class="kpi-card green"><div class="kpi-lbl">Cierres</div><div class="kpi-val" style="color:var(--green)">${cerradosAct}</div><div class="kpi-sub">${dC.pct!==null?`<span class="kpi-delta ${dC.cls}">${dC.pct>0?'+':''}${dC.pct}%</span> vs ${mesAntNombre}`:'—'}</div></div>
+      <div class="kpi-card orange"><div class="kpi-lbl">Tasa conversión</div><div class="kpi-val" style="color:var(--sat-orange)">${tasa}%</div><div class="kpi-sub">${dT.pct!==null?`<span class="kpi-delta ${dT.cls}">${dT.pct>0?'+':''}${dT.pct}pp`:'—'}</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Pipeline activo</div><div class="kpi-val" style="color:var(--sat-blue)">${totalActivos}</div><div class="kpi-sub">en proceso + prop. enviada</div></div>
+      <div class="kpi-card red"><div class="kpi-lbl">Perdidos este mes</div><div class="kpi-val" style="color:var(--red)">${perdidosAct}</div><div class="kpi-sub">leads no convertidos</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Gestiones</div><div class="kpi-val">${gestMes}</div><div class="kpi-sub">${dG.pct!==null?`<span class="kpi-delta ${dG.cls}">${dG.pct>0?'+':''}${dG.pct}%</span> vs ${mesAntNombre}`:'—'}</div></div>
+      <div class="kpi-card orange"><div class="kpi-lbl">Conv. Mercadeo</div><div class="kpi-val" style="color:var(--sat-orange)">${tasaMercadeo}%</div><div class="kpi-sub">${mercadeoCerrado} cerrados de ${mercadeoTotal}</div></div>
+    </div></div>
+
+    <!-- SECCIÓN 2: Pipeline en valor -->
+    <div class="kpi-section"><div class="kpi-section-title">Pipeline en valor</div>
+    <div class="kpi-cards">
+      <div class="kpi-card" style="border-top-color:#534AB7"><div class="kpi-lbl">Pipeline total activo</div><div class="kpi-val" style="font-size:22px;color:#534AB7">${fmt(pipelineTotal)}</div><div class="kpi-sub">leads en proceso + prop. enviada</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Venta única potencial</div><div class="kpi-val" style="font-size:22px;color:var(--sat-blue)">${fmt(pipelineUnico)}</div><div class="kpi-sub">si se cierran todos los leads activos</div></div>
+      <div class="kpi-card green"><div class="kpi-lbl">Recurrencia mensual potencial</div><div class="kpi-val" style="font-size:22px;color:var(--green)">${fmt(recurrenciaPotencial)}</div><div class="kpi-sub">ingresos recurrentes / mes al cerrar</div></div>
+    </div></div>
+
+    <!-- SECCIÓN 3: Pipeline por producto -->
+    <div class="kpi-section"><div class="kpi-section-title">Pipeline por producto</div>
+    <div id="chart-prod-pipeline" class="chart-wrap" style="margin-bottom:12px"><div class="chart-title">Valor de pipeline por producto (activos)</div><div id="chart-prod" style="height:260px"></div></div>
+    <div class="chart-wrap"><div class="chart-title">Unidades en pipeline por producto</div><div id="chart-prod-units" style="height:220px"></div></div>
     </div>
 
+    <!-- SECCIÓN 4: Embudo y evolución -->
+    <div class="kpi-section"><div class="kpi-section-title">Embudo y evolución</div>
     <div class="charts-grid">
-      <div class="chart-wrap">
-        <div class="chart-title">Embudo de conversión — mes actual</div>
-        <div id="chart-embudo" style="height:220px"></div>
-      </div>
-      <div class="chart-wrap">
-        <div class="chart-title">Evolución mensual de leads y cierres</div>
-        <div id="chart-evolucion" style="height:220px"></div>
-      </div>
-      <div class="chart-wrap">
-        <div class="chart-title">Gestiones por tipo de contacto</div>
-        <div id="chart-tipos" style="height:220px"></div>
-      </div>
-      <div class="chart-wrap">
-        <div class="chart-title">Ciclo de venta por ejecutivo (días promedio)</div>
-        <div id="chart-ciclo" style="height:220px"></div>
-      </div>
+      <div class="chart-wrap"><div class="chart-title">Embudo de conversión — mes actual</div><div id="chart-embudo" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Leads y cierres — últimos 6 meses</div><div id="chart-evolucion" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Tipos de contacto — mes actual</div><div id="chart-tipos" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Ciclo de venta por ejecutivo (días)</div><div id="chart-ciclo" style="height:220px"></div></div>
+    </div></div>
+
+    <!-- SECCIÓN 5: Mapa de calor -->
+    <div class="kpi-section"><div class="kpi-section-title">Distribución geográfica — Colombia y Ecuador</div>
+    <div id="chart-mapa-wrap" class="chart-wrap"><div class="chart-title">Leads activos por ciudad</div><div id="chart-mapa" style="height:400px"></div></div>
     </div>
 
-    <div class="kpi-section" style="margin-top:16px">
-      <div class="kpi-section-title">Rendimiento por ejecutivo — mes actual</div>
-      <div id="tabla-ejecutivos"></div>
-    </div>`;
+    <!-- SECCIÓN 6: Tabla ejecutivos -->
+    <div class="kpi-section"><div class="kpi-section-title">Rendimiento por ejecutivo — mes actual</div>
+    <div id="tabla-ejecutivos"></div></div>`;
 
-  // ── Gráficos ──
   const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const plotBg='rgba(0,0,0,0)';
   const plotFont={family:'inherit',size:11,color:isDark?'#a0a098':'#5a5a56'};
-  const plotLayout=(extra={})=>({
-    paper_bgcolor:plotBg,plot_bgcolor:plotBg,
-    font:plotFont,margin:{l:40,r:10,t:10,b:40},
-    showlegend:false,
-    ...extra
-  });
+  const pLayout=(extra={})=>({paper_bgcolor:plotBg,plot_bgcolor:plotBg,font:plotFont,margin:{l:40,r:10,t:10,b:40},showlegend:false,...extra});
+
+  // Gráfico pipeline por producto (barras valor)
+  if(prodEntries.length){
+    const labels=prodEntries.map(e=>e[0]);
+    const valUnica=prodEntries.map(e=>e[1].unica);
+    const valRec=prodEntries.map(e=>e[1].rec);
+    Plotly.newPlot('chart-prod',[
+      {name:'Venta única',x:labels,y:valUnica,type:'bar',marker:{color:'#19428C'},text:valUnica.map(fmt),textposition:'outside'},
+      {name:'Recurrente/mes',x:labels,y:valRec,type:'bar',marker:{color:'#639922'},text:valRec.map(fmt),textposition:'outside'}
+    ],pLayout({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.25},margin:{l:50,r:10,t:20,b:80},yaxis:{tickformat:'$,.0f'}}),{responsive:true,displayModeBar:false});
+
+    // Gráfico unidades por producto
+    Plotly.newPlot('chart-prod-units',[{
+      type:'bar',orientation:'h',
+      y:prodEntries.map(e=>e[0]),
+      x:prodEntries.map(e=>e[1].unidades),
+      marker:{color:'#534AB7'},
+      text:prodEntries.map(e=>e[1].unidades+' u'),textposition:'outside'
+    }],pLayout({margin:{l:80,r:60,t:10,b:30}}),{responsive:true,displayModeBar:false});
+  } else {
+    document.getElementById('chart-prod').innerHTML='<div class="empty" style="padding:40px 0">Sin datos de pipeline con valores aún</div>';
+    document.getElementById('chart-prod-units').innerHTML='';
+  }
 
   // Embudo
-  const embudo=['Leads','En proceso','Prop. enviada','Cerrados'];
-  const embudoVals=[
-    opsMes(mesActual,anioActual).length,
-    ops.filter(o=>o.estado==='en_proceso').length,
-    ops.filter(o=>o.estado==='propuesta_enviada').length,
-    cerradosAct
-  ];
   Plotly.newPlot('chart-embudo',[{
-    type:'funnel',y:embudo,x:embudoVals,
-    textinfo:'value+percent initial',
-    marker:{color:['#19428C','#378ADD','#BA7517','#639922']}
-  }],plotLayout({margin:{l:100,r:20,t:10,b:10}}),{responsive:true,displayModeBar:false});
+    type:'funnel',y:['Leads','En proceso','Prop. enviada','Cerrados'],
+    x:[opsMes(mesActual,anioActual).length,ops.filter(o=>o.estado==='en_proceso').length,ops.filter(o=>o.estado==='propuesta_enviada').length,cerradosAct],
+    textinfo:'value+percent initial',marker:{color:['#19428C','#378ADD','#BA7517','#639922']}
+  }],pLayout({margin:{l:100,r:20,t:10,b:10}}),{responsive:true,displayModeBar:false});
 
-  // Evolución últimos 6 meses
+  // Evolución 6 meses
   const meses6=[];
-  for(let i=5;i>=0;i--){
-    const d=new Date(anioActual,mesActual-1-i,1);
-    meses6.push({m:d.getMonth()+1,a:d.getFullYear(),lbl:d.toLocaleDateString('es-CO',{month:'short'})});
-  }
+  for(let i=5;i>=0;i--){ const d=new Date(anioActual,mesActual-1-i,1); meses6.push({m:d.getMonth()+1,a:d.getFullYear(),lbl:d.toLocaleDateString('es-CO',{month:'short'})}); }
   Plotly.newPlot('chart-evolucion',[
-    {name:'Leads',x:meses6.map(m=>m.lbl),y:meses6.map(m=>opsMes(m.m,m.a).length),
-     type:'bar',marker:{color:'#19428C'},opacity:.8},
-    {name:'Cierres',x:meses6.map(m=>m.lbl),y:meses6.map(m=>cerradosMes(m.m,m.a).length),
-     type:'bar',marker:{color:'#639922'},opacity:.9}
-  ],plotLayout({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.2}}),{responsive:true,displayModeBar:false});
+    {name:'Leads',x:meses6.map(m=>m.lbl),y:meses6.map(m=>opsMes(m.m,m.a).length),type:'bar',marker:{color:'#19428C'},opacity:.8},
+    {name:'Cierres',x:meses6.map(m=>m.lbl),y:meses6.map(m=>cerradosMes(m.m,m.a).length),type:'bar',marker:{color:'#639922'},opacity:.9}
+  ],pLayout({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.2}}),{responsive:true,displayModeBar:false});
 
-  // Tipos de gestión
-  const tiposCount={llamada:0,whatsapp:0,correo:0,presencial:0,otro:0};
-  gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesActual).forEach(g=>{tiposCount[g.tipo||'otro']++;});
-  const tiposLabels=['Llamada','WhatsApp','Correo','Presencial','Otro'];
-  const tiposVals=Object.values(tiposCount);
-  Plotly.newPlot('chart-tipos',[{
-    type:'pie',labels:tiposLabels,values:tiposVals,hole:.45,
-    marker:{colors:['#19428C','#25D366','#E8460A','#534AB7','#888780']},
-    textinfo:'label+percent'
-  }],plotLayout({margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',y:-0.15}}),{responsive:true,displayModeBar:false});
+  // Tipos contacto
+  const tc={llamada:0,whatsapp:0,correo:0,presencial:0,otro:0};
+  gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesActual).forEach(g=>{tc[g.tipo||'otro']++;});
+  Plotly.newPlot('chart-tipos',[{type:'pie',labels:['Llamada','WhatsApp','Correo','Presencial','Otro'],values:Object.values(tc),hole:.45,marker:{colors:['#19428C','#25D366','#E8460A','#534AB7','#888780']},textinfo:'label+percent'}],pLayout({margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',y:-0.15}}),{responsive:true,displayModeBar:false});
 
   // Ciclo por ejecutivo
   const execCiclo=usuarios.map(u=>{
     const uOps=ops.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&o.fecha_inicio_gestion&&o.updated_at);
     if(!uOps.length) return {nombre:u.nombre.split(' ')[0],dias:0};
-    const prom=Math.round(uOps.reduce((s,o)=>s+diasGestion(o.fecha_inicio_gestion,o.updated_at.split('T')[0]),0)/uOps.length);
-    return {nombre:u.nombre.split(' ')[0],dias:prom};
+    return {nombre:u.nombre.split(' ')[0],dias:Math.round(uOps.reduce((s,o)=>s+diasGestion(o.fecha_inicio_gestion,o.updated_at.split('T')[0]),0)/uOps.length)};
   }).filter(e=>e.dias>0).sort((a,b)=>a.dias-b.dias);
-
   if(execCiclo.length){
-    Plotly.newPlot('chart-ciclo',[{
-      type:'bar',orientation:'h',
-      y:execCiclo.map(e=>e.nombre),x:execCiclo.map(e=>e.dias),
-      marker:{color:'#534AB7'},text:execCiclo.map(e=>e.dias+'d'),textposition:'outside'
-    }],plotLayout({margin:{l:70,r:40,t:10,b:30},xaxis:{title:'Días'}}),{responsive:true,displayModeBar:false});
+    Plotly.newPlot('chart-ciclo',[{type:'bar',orientation:'h',y:execCiclo.map(e=>e.nombre),x:execCiclo.map(e=>e.dias),marker:{color:'#534AB7'},text:execCiclo.map(e=>e.dias+'d'),textposition:'outside'}],pLayout({margin:{l:70,r:40,t:10,b:30},xaxis:{title:'Días'}}),{responsive:true,displayModeBar:false});
   } else {
     document.getElementById('chart-ciclo').innerHTML='<div class="empty" style="padding:60px 0">Sin datos de ciclo aún</div>';
+  }
+
+  // Mapa de calor por ciudad (burbuja)
+  const ciudades=Object.entries(ciudadMap).sort((a,b)=>b[1]-a[1]);
+  if(ciudades.length){
+    Plotly.newPlot('chart-mapa',[{
+      type:'bar',orientation:'h',
+      y:ciudades.map(c=>c[0]),
+      x:ciudades.map(c=>c[1]),
+      marker:{color:ciudades.map(c=>c[1]),colorscale:'Blues',showscale:true},
+      text:ciudades.map(c=>c[1]+' leads'),textposition:'outside'
+    }],pLayout({margin:{l:120,r:60,t:10,b:30},yaxis:{automargin:true}}),{responsive:true,displayModeBar:false});
+  } else {
+    document.getElementById('chart-mapa').innerHTML='<div class="empty" style="padding:60px 0">Sin datos de ciudad aún. Agregue la ciudad al registrar leads.</div>';
   }
 
   // Tabla ejecutivos
@@ -3030,42 +3011,28 @@ async function renderKPIs(container){
     const uCierres=cerradosMes(mesActual,anioActual).filter(o=>o.usuario_id===u.id).length;
     const uGest=gest.filter(g=>g.usuario_id===u.id&&g.fecha&&new Date(g.fecha).getMonth()+1===mesActual).length;
     const uTasa=uLeads>0?Math.round(uCierres/uLeads*100):0;
-    const uMerc=ops.filter(o=>o.usuario_id===u.id&&o.de_mercadeo).length;
+    const uPipeline=ops.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
     const dEl=delta(uLeads,uLeadsAnt);
-    return {u,uLeads,uLeadsAnt,uCierres,uGest,uTasa,uMerc,dEl};
+    return {u,uLeads,uLeadsAnt,uCierres,uGest,uTasa,uPipeline,dEl};
   }).sort((a,b)=>b.uCierres-a.uCierres||b.uLeads-a.uLeads);
 
-  tablaEl.innerHTML=`
-    <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead>
-        <tr style="background:var(--surface2);border-bottom:0.5px solid var(--border)">
-          <th style="text-align:left;padding:9px 12px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Ejecutivo</th>
-          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Línea</th>
-          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Leads</th>
-          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">vs ant.</th>
-          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Cierres</th>
-          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Conv.</th>
-          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Gestiones</th>
-          <th style="text-align:center;padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Mercadeo</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${execData.map(e=>`
-          <tr style="border-bottom:0.5px solid var(--border)">
-            <td style="padding:10px 12px;font-weight:500">${e.u.nombre}</td>
-            <td style="text-align:center;padding:10px 8px"><span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;background:${e.u.linea==='fleet'?'var(--sat-blue-light)':'var(--coral-light)'};color:${e.u.linea==='fleet'?'var(--sat-blue)':'var(--coral-dark)'}">${e.u.linea}</span></td>
-            <td style="text-align:center;padding:10px 8px;font-size:14px;font-weight:300;color:var(--sat-blue)">${e.uLeads}</td>
-            <td style="text-align:center;padding:10px 8px"><span style="font-size:11px;font-weight:600;color:${e.dEl.cls==='pos'?'var(--green)':e.dEl.cls==='neg'?'var(--red)':'var(--text3)'}">${e.dEl.pct!==null?(e.dEl.pct>0?'+':'')+e.dEl.pct+'%':'—'}</span></td>
-            <td style="text-align:center;padding:10px 8px;font-size:14px;font-weight:300;color:var(--green)">${e.uCierres}</td>
-            <td style="text-align:center;padding:10px 8px"><span style="font-size:12px;font-weight:500;color:var(--sat-orange)">${e.uTasa}%</span></td>
-            <td style="text-align:center;padding:10px 8px;color:var(--text2)">${e.uGest}</td>
-            <td style="text-align:center;padding:10px 8px;color:var(--text3)">${e.uMerc}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-    </div>`;
+  tablaEl.innerHTML=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="background:var(--surface2);border-bottom:0.5px solid var(--border)">
+      ${['Ejecutivo','Línea','Leads','vs ant.','Cierres','Conv.','Gestiones','Pipeline'].map(h=>`<th style="text-align:${h==='Ejecutivo'?'left':'center'};padding:9px ${h==='Ejecutivo'?'12':'8'}px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">${h}</th>`).join('')}
+    </tr></thead>
+    <tbody>${execData.map(e=>`<tr style="border-bottom:0.5px solid var(--border)">
+      <td style="padding:10px 12px;font-weight:500">${e.u.nombre}</td>
+      <td style="text-align:center;padding:10px 8px"><span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;background:${e.u.linea==='fleet'?'var(--sat-blue-light)':'var(--coral-light)'};color:${e.u.linea==='fleet'?'var(--sat-blue)':'var(--coral-dark)'}">${e.u.linea}</span></td>
+      <td style="text-align:center;font-size:14px;font-weight:300;color:var(--sat-blue)">${e.uLeads}</td>
+      <td style="text-align:center"><span style="font-size:11px;font-weight:600;color:${e.dEl.cls==='pos'?'var(--green)':e.dEl.cls==='neg'?'var(--red)':'var(--text3)'}">${e.dEl.pct!==null?(e.dEl.pct>0?'+':'')+e.dEl.pct+'%':'—'}</span></td>
+      <td style="text-align:center;font-size:14px;font-weight:300;color:var(--green)">${e.uCierres}</td>
+      <td style="text-align:center;font-weight:500;color:var(--sat-orange)">${e.uTasa}%</td>
+      <td style="text-align:center;color:var(--text2)">${e.uGest}</td>
+      <td style="text-align:center;font-weight:500;color:#534AB7">${fmt(e.uPipeline)}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
 }
+
 // ── EXPORTAR EXCEL (gerencia) ─────────────────────────────────────────────────
 async function exportarExcel(){
   const {data:ops}=await sb.from('oportunidades').select('*,usuarios(nombre,cargo,linea)').order('fecha',{ascending:false});
