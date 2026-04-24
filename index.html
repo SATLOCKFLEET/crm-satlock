@@ -1090,7 +1090,7 @@ async function registrarQCOAuto(contactos,cotizaciones,cierres){
 }
 
 // ── EDICIÓN Y BORRADO DE OPORTUNIDADES ───────────────────────────────────────
-async async function abrirEditar(id){
+async function abrirEditar(id){
   const {data:r}=await sb.from('oportunidades').select('*').eq('id',id).single();
   if(!r) return;
   // Cargar historial de trazabilidad
