@@ -1143,6 +1143,7 @@ async function abrirEditar(id){
   const timelineItems = [
     ...gestiones.map(g=>({
       fecha: g.created_at||g.fecha+'T12:00:00',
+      ts: new Date(g.created_at||g.fecha).getTime(),
       tipo: g.tipo||'otro',
       cuerpo: g.nota||'',
       autor: g.usuarios?.nombre||'',
@@ -1152,6 +1153,7 @@ async function abrirEditar(id){
     })),
     ...trazabilidad.map(t=>({
       fecha: t.created_at,
+      ts: new Date(t.created_at).getTime(),
       tipo: t.nota&&!t.campo?'nota':'cambio',
       campo: t.campo,
       anterior: t.valor_anterior,
@@ -1161,7 +1163,7 @@ async function abrirEditar(id){
       esGestion: false,
       id: t.id
     }))
-  ].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+  ].sort((a,b)=>b.ts-a.ts);
 
   const timelineHtml = timelineItems.length ? timelineItems.map((it,idx)=>`
     <div class="timeline-entry">
