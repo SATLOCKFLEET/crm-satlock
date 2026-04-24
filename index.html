@@ -498,7 +498,10 @@ function fechaHoyLocal(){
 }
 const GCAL_CLIENT_ID = '1087906833348-1hlh2iepi4nfhuivoa07vqilk9il2igi.apps.googleusercontent.com';
 const GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar';
+const GCAL_WORKER = 'https://satlock-gcal-auth.yezid-bautista.workers.dev';
 let gcalToken = null;
+let gcalRefreshToken = localStorage.getItem('gcal_refresh_token')||null;
+let gcalTokenExpiry = parseInt(localStorage.getItem('gcal_token_expiry')||'0');
 let gcalTokenClient = null;
 const PRODUCTOS_FLEET = ['Control Track','Satellital Track','Track Vision','Safe Track','MOSAT','Satlock Carga (venta cruzada)'];
 const PRODUCTOS_CARGA = ['MAC','SGT','GCT','TAGS','LCT','Integraciones','Inside Cargo','Central In House','AMT','Fleet (venta cruzada)'];
@@ -599,6 +602,19 @@ async function logout(){
 document.addEventListener('keydown',(e)=>{
   if(e.key==='Escape') document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
 });
+// Renovar token de Google Calendar al cargar si hay refresh_token guardado
+setTimeout(async()=>{
+  if(localStorage.getItem('gcal_refresh_token')){
+    gcalRefreshToken = localStorage.getItem('gcal_refresh_token');
+    gcalTokenExpiry = parseInt(localStorage.getItem('gcal_token_expiry')||'0');
+    const renovado = await renovarTokenGcal();
+    if(renovado){
+      actualizarBtnGcal(true);
+      programarRenovacion();
+      console.log('GCal reconectado automáticamente');
+    }
+  }
+}, 1000);
 document.addEventListener('DOMContentLoaded',()=>{
   // Inicializar Google Auth (carga dinámica)
   setTimeout(initGoogleAuth, 500);
@@ -1569,9 +1585,23 @@ async function confirmarBorrar(id,empresa){
 // ── AGENDA ────────────────────────────────────────────────────────────────────
 
 // ── GOOGLE CALENDAR ───────────────────────────────────────────────────────────
-function initGoogleAuth(){
+async function initGoogleAuth(){
+  // Intentar renovar con refresh token guardado
+  if(gcalRefreshToken){
+    const ahora = Date.now();
+    if(gcalToken && gcalTokenExpiry > ahora + 60000){
+      // Token vigente
+      actualizarBtnGcal(true);
+      return;
+    }
+    // Renovar token
+    try {
+      const renovado = await renovarTokenGcal();
+      if(renovado){ actualizarBtnGcal(true); return; }
+    } catch(e){ console.warn('Error renovando token:', e); }
+  }
+
   if(!window.google || !window.google.accounts){
-    // Cargar script dinámicamente
     if(!document.querySelector('script[src*="accounts.google.com"]')){
       const s=document.createElement('script');
       s.src='https://accounts.google.com/gsi/client';
@@ -1581,20 +1611,69 @@ function initGoogleAuth(){
     }
     return;
   }
-  gcalTokenClient = google.accounts.oauth2.initTokenClient({
+
+  // Usar Code Client para obtener refresh_token
+  gcalTokenClient = google.accounts.oauth2.initCodeClient({
     client_id: GCAL_CLIENT_ID,
     scope: GCAL_SCOPES,
+    ux_mode: 'popup',
     callback: async(response)=>{
-      if(response.error) return;
-      gcalToken = response.access_token;
-      localStorage.setItem('gcal_token', gcalToken);
-      actualizarBtnGcal(true);
-      drawCal();
+      if(response.error){ console.error('GCal error:', response.error); return; }
+      try {
+        // Intercambiar code por tokens via Worker
+        const res = await fetch(GCAL_WORKER+'/token', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({code: response.code})
+        });
+        const tokens = await res.json();
+        if(tokens.access_token){
+          gcalToken = tokens.access_token;
+          if(tokens.refresh_token){
+            gcalRefreshToken = tokens.refresh_token;
+            localStorage.setItem('gcal_refresh_token', gcalRefreshToken);
+          }
+          gcalTokenExpiry = Date.now() + (tokens.expires_in||3600)*1000;
+          localStorage.setItem('gcal_token_expiry', gcalTokenExpiry);
+          actualizarBtnGcal(true);
+          drawCal();
+          // Programar renovación automática
+          programarRenovacion();
+        }
+      } catch(e){ console.error('Error obteniendo tokens:', e); }
     }
   });
-  // Intentar recuperar token guardado
-  const saved = localStorage.getItem('gcal_token');
-  if(saved){ gcalToken = saved; actualizarBtnGcal(true); }
+}
+
+async function renovarTokenGcal(){
+  if(!gcalRefreshToken) return false;
+  try {
+    const res = await fetch(GCAL_WORKER+'/refresh', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({refresh_token: gcalRefreshToken})
+    });
+    const tokens = await res.json();
+    if(tokens.access_token){
+      gcalToken = tokens.access_token;
+      gcalTokenExpiry = Date.now() + (tokens.expires_in||3600)*1000;
+      localStorage.setItem('gcal_token_expiry', gcalTokenExpiry);
+      console.log('Token GCal renovado automáticamente');
+      return true;
+    }
+    return false;
+  } catch(e){ return false; }
+}
+
+function programarRenovacion(){
+  // Renovar 5 minutos antes de que expire
+  const tiempoRestante = gcalTokenExpiry - Date.now() - 300000;
+  if(tiempoRestante > 0){
+    setTimeout(async()=>{
+      await renovarTokenGcal();
+      programarRenovacion();
+    }, tiempoRestante);
+  }
 }
 
 function conectarGcal(){
@@ -1605,13 +1684,13 @@ function conectarGcal(){
       if(!gcalTokenClient){
         alert('Google Calendar no pudo cargar. Verifique su conexión y recargue la página.');
       } else {
-        gcalTokenClient.requestAccessToken({prompt:'consent'});
+        gcalTokenClient.requestCode();
       }
     }, 1500);
     return;
   }
   if(gcalToken){ desconectarGcal(); return; }
-  gcalTokenClient.requestAccessToken({prompt:'consent'});
+  gcalTokenClient.requestCode();
 }
 
 function desconectarGcal(){
