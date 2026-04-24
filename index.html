@@ -424,6 +424,14 @@ tbody tr:hover{background:var(--surface2)}
 .timeline-tipo.cambio{color:var(--text3)}
 .timeline-body{font-size:12px;color:var(--text);line-height:1.5}
 .timeline-cambio{font-size:11px;color:var(--text2);background:var(--surface2);padding:3px 8px;border-radius:4px;margin-top:2px}
+
+/* ── Tareas administrativas ── */
+.tarea-row{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:8px;overflow:hidden;border-left:3px solid #534AB7}
+.tarea-row.vencida{border-left-color:var(--red)}
+.tarea-row.hoy{border-left-color:var(--sat-orange)}
+.tarea-row.done{border-left-color:var(--border);opacity:.6}
+.tarea-header{display:flex;align-items:center;gap:12px;padding:10px 14px}
+.tarea-icono{width:28px;height:28px;border-radius:6px;background:var(--purple-light);color:#534AB7;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -766,7 +774,25 @@ function getProductosPorLinea(linea){
 function renderNueva(container){
   container.innerHTML=`
   <div class="form-card">
-    <div class="form-title">Registrar oportunidad comercial</div>
+    <div class="form-title">Nueva oportunidad / Tarea</div>
+
+    <!-- TIPO DE REGISTRO -->
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid var(--sat-blue);border-radius:var(--radius);background:var(--sat-blue-light);flex:1" id="tipo-lead-label">
+        <input type="radio" name="f-tipo-reg" value="lead" checked onchange="toggleTipoRegistro()" style="accent-color:var(--sat-blue);width:14px;height:14px"/>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--sat-blue)">Lead comercial</div>
+          <div style="font-size:10px;color:var(--text3)">Oportunidad de negocio con un cliente</div>
+        </div>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1.5px solid var(--border);border-radius:var(--radius);background:var(--surface2);flex:1" id="tipo-tarea-label">
+        <input type="radio" name="f-tipo-reg" value="tarea" onchange="toggleTipoRegistro()" style="accent-color:#534AB7;width:14px;height:14px"/>
+        <div>
+          <div style="font-size:12px;font-weight:600;color:#534AB7">Tarea administrativa</div>
+          <div style="font-size:10px;color:var(--text3)">Gestión interna, informe, actualización</div>
+        </div>
+      </label>
+    </div>
 
     <!-- ORIGEN DEL LEAD -->
     <div style="margin-bottom:16px">
@@ -888,15 +914,78 @@ function renderNueva(container){
         <textarea class="ftxt" id="f-notas" placeholder="Observaciones, acuerdos, compromisos..."></textarea></div>
     </div>
 
+    <!-- FORMULARIO TAREA (oculto por defecto) -->
+    <div id="form-tarea" style="display:none">
+      <div style="background:var(--purple-light);border:1px solid #534AB7;border-radius:var(--radius);padding:14px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#534AB7;margin-bottom:12px">Datos de la tarea</div>
+        <div class="form-grid">
+          <div class="fg full"><div class="flbl">Título de la tarea</div>
+            <input class="finput" id="t-titulo" placeholder="Ej: Enviar informe de ventas a Gerencia"/></div>
+          <div class="fg full"><div class="flbl">Descripción</div>
+            <textarea class="ftxt" id="t-descripcion" placeholder="Detalle de la tarea..." style="min-height:60px"></textarea></div>
+          <div class="fg"><div class="flbl">Fecha límite</div>
+            <input class="finput" type="date" id="t-fecha"/></div>
+          <div class="fg"><div class="flbl">Prioridad</div>
+            <select class="fsel" id="t-prioridad">
+              <option value="alta">Alta</option>
+              <option value="media" selected>Media</option>
+              <option value="baja">Baja</option>
+            </select></div>
+        </div>
+      </div>
+    </div>
+
     <div class="form-actions">
       <button class="btn-sec" onclick="limpiarForm()">Limpiar</button>
-      <button class="btn-pri" onclick="guardarOp()">Guardar</button>
+      <button class="btn-pri" onclick="guardarRegistro()">Guardar</button>
     </div>
   </div>`;
 
   document.getElementById('f-fecha').value = fechaHoyLocal();
   actualizarProductosForm();
   actualizarColorAvance();
+}
+
+function toggleTipoRegistro(){
+  const tipo = document.querySelector('input[name="f-tipo-reg"]:checked')?.value;
+  const esLead = tipo === 'lead';
+  // Mostrar/ocultar secciones
+  ['origen-btns','lead-nuevo-hint','producto-btns','valor-section'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.closest('.fg,.form-grid,[style*="margin-bottom:14px"],[style*="margin-bottom:16px"]')?.style && (el.closest('[style]').style.display=esLead?'':'none');
+  });
+  document.getElementById('form-tarea').style.display = esLead?'none':'';
+  // Actualizar estilo de las tarjetas de selección
+  const labelLead=document.getElementById('tipo-lead-label');
+  const labelTarea=document.getElementById('tipo-tarea-label');
+  if(labelLead){
+    labelLead.style.background=esLead?'var(--sat-blue-light)':'var(--surface2)';
+    labelLead.style.borderColor=esLead?'var(--sat-blue)':'var(--border)';
+  }
+  if(labelTarea){
+    labelTarea.style.background=!esLead?'var(--purple-light)':'var(--surface2)';
+    labelTarea.style.borderColor=!esLead?'#534AB7':'var(--border)';
+  }
+}
+
+async function guardarRegistro(){
+  const tipo = document.querySelector('input[name="f-tipo-reg"]:checked')?.value||'lead';
+  if(tipo==='tarea'){
+    const titulo=document.getElementById('t-titulo')?.value.trim();
+    if(!titulo){alert('Escriba el título de la tarea.');return;}
+    const fecha=document.getElementById('t-fecha')?.value||fechaHoyLocal();
+    const descripcion=document.getElementById('t-descripcion')?.value.trim()||'';
+    const prioridad=document.getElementById('t-prioridad')?.value||'media';
+    const {error}=await sb.from('tareas_admin').insert({
+      usuario_id:USER.id, titulo, descripcion, fecha_limite:fecha, prioridad, done:false
+    });
+    if(error){alert('Error: '+error.message);return;}
+    alert('Tarea guardada correctamente.');
+    limpiarForm();
+    switchTab(2); // Ir a Mi día
+  } else {
+    await guardarOp();
+  }
 }
 
 function selOrigenLead(idx){
@@ -2312,23 +2401,27 @@ async function registrarQCO(){
 
 // ── MI DÍA (Actividad diaria) ────────────────────────────────────────────────
 async function renderDiario(container){
-  // Solo los leads propios del ejecutivo
-  let query = sb.from('oportunidades')
-    .select('id,empresa,contacto,cargo_contacto,estado,fecha_inicio_gestion,de_mercadeo,producto,proxima_accion,fecha_proxima_accion')
-    .in('estado',['en_proceso','propuesta_enviada'])
-    .order('empresa');
-  // Siempre filtrar por usuario propio en esta vista
-  query = query.eq('usuario_id', USER.id);
-  const {data:ops} = await query;
+  // Cargar en paralelo: leads propios + gestiones + tareas admin
+  const [opsRes, gestRes, tareasRes] = await Promise.all([
+    sb.from('oportunidades')
+      .select('id,empresa,contacto,cargo_contacto,estado,fecha_inicio_gestion,de_mercadeo,producto,proxima_accion,fecha_proxima_accion')
+      .in('estado',['en_proceso','propuesta_enviada'])
+      .eq('usuario_id', USER.id)
+      .order('empresa'),
+    sb.from('gestiones')
+      .select('oportunidad_id,fecha,tipo,nota,proxima_gestion,created_at')
+      .eq('usuario_id', USER.id)
+      .order('created_at',{ascending:false}),
+    sb.from('tareas_admin')
+      .select('*')
+      .eq('usuario_id', USER.id)
+      .eq('done', false)
+      .order('fecha_limite')
+  ]);
 
-  // Cargar última gestión de cada oportunidad
-  const {data:gestiones} = await sb.from('gestiones')
-    .select('oportunidad_id,fecha,tipo,nota,proxima_gestion,created_at')
-    .eq('usuario_id', USER.id)
-    .order('created_at',{ascending:false});
-
-  window._diarioOps = ops||[];
-  window._diarioGestiones = gestiones||[];
+  window._diarioOps = opsRes.data||[];
+  window._diarioGestiones = gestRes.data||[];
+  window._tareasAdmin = tareasRes.data||[];
 
   container.innerHTML=`
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
@@ -2376,6 +2469,59 @@ function semaforoDiario(opId, fechaInicio, estado){
   if(dias<=15) return {cls:'verde',diasFaltan:30-dias,label:`${30-dias}d restantes`,diasProx:null};
   if(dias<=30) return {cls:'amarillo',diasFaltan:30-dias,label:`${30-dias}d restantes ⚠`,diasProx:null};
   return {cls:'rojo',diasFaltan:dias-30,label:`${dias}d sin gestión !`,diasProx:null};
+}
+
+async function completarTareaAdmin(id){
+  await sb.from('tareas_admin').update({done:true}).eq('id',id);
+  window._tareasAdmin=(window._tareasAdmin||[]).filter(t=>t.id!==id);
+  renderDiarioLista(document.getElementById('diario-search')?.value||'',_diarioFiltro);
+}
+
+async function editarTareaAdmin(id){
+  const t=(window._tareasAdmin||[]).find(x=>x.id===id);
+  if(!t) return;
+  const overlay=document.createElement('div');
+  overlay.className='modal-overlay';overlay.id='modal-tarea';
+  overlay.innerHTML=`
+    <div class="modal-box" style="max-width:420px">
+      <div class="modal-title">Editar tarea
+        <button class="modal-close" onclick="document.getElementById('modal-tarea').remove()">✕</button>
+      </div>
+      <div class="form-grid">
+        <div class="fg full"><div class="flbl">Título</div><input class="finput" id="mt-titulo" value="${(t.titulo||'').replace(/"/g,'&quot;')}"/></div>
+        <div class="fg full"><div class="flbl">Descripción</div><textarea class="ftxt" id="mt-desc" style="min-height:56px">${t.descripcion||''}</textarea></div>
+        <div class="fg"><div class="flbl">Fecha límite</div><input class="finput" type="date" id="mt-fecha" value="${t.fecha_limite||''}"/></div>
+        <div class="fg"><div class="flbl">Prioridad</div>
+          <select class="fsel" id="mt-prio">
+            <option value="alta"${t.prioridad==='alta'?' selected':''}>Alta</option>
+            <option value="media"${t.prioridad==='media'?' selected':''}>Media</option>
+            <option value="baja"${t.prioridad==='baja'?' selected':''}>Baja</option>
+          </select></div>
+      </div>
+      <div class="form-actions" style="justify-content:space-between;margin-top:12px">
+        <button class="btn-sec" style="color:var(--red);border-color:var(--red)" onclick="completarTareaAdmin('${id}');document.getElementById('modal-tarea').remove()">✓ Marcar como lista</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn-sec" onclick="document.getElementById('modal-tarea').remove()">Cancelar</button>
+          <button class="btn-pri" onclick="guardarEdicionTarea('${id}')">Guardar</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function guardarEdicionTarea(id){
+  const update={
+    titulo:document.getElementById('mt-titulo')?.value.trim(),
+    descripcion:document.getElementById('mt-desc')?.value.trim(),
+    fecha_limite:document.getElementById('mt-fecha')?.value||null,
+    prioridad:document.getElementById('mt-prio')?.value||'media'
+  };
+  if(!update.titulo){alert('El título es obligatorio.');return;}
+  await sb.from('tareas_admin').update(update).eq('id',id);
+  const idx=(window._tareasAdmin||[]).findIndex(t=>t.id===id);
+  if(idx>-1) window._tareasAdmin[idx]={...window._tareasAdmin[idx],...update};
+  document.getElementById('modal-tarea').remove();
+  renderDiarioLista(document.getElementById('diario-search')?.value||'',_diarioFiltro);
 }
 
 let _diarioFiltro='todos';
@@ -2433,6 +2579,34 @@ function renderDiarioLista(q, filtro){
   if(!ops.length){ lista.innerHTML='<div class="empty">Sin clientes que requieran atención con este filtro.</div>'; return; }
 
   const TIPOS={llamada:'📞',whatsapp:'💬',correo:'✉',presencial:'🤝',otro:'•'};
+  // Agregar tareas administrativas al final
+  const tareas = window._tareasAdmin||[];
+  const hoyStr2 = fechaHoyLocal();
+  const tareasHtml = tareas.length ? `
+    <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#534AB7;margin:16px 0 8px;display:flex;align-items:center;gap:8px">
+      Tareas administrativas
+      <span style="font-size:10px;font-weight:400;background:var(--purple-light);color:#534AB7;padding:1px 6px;border-radius:10px">${tareas.length}</span>
+    </div>
+    ${tareas.map(t=>{
+      const vencida=t.fecha_limite&&t.fecha_limite<hoyStr2;
+      const esHoy=t.fecha_limite===hoyStr2;
+      const prioColor={alta:'var(--red)',media:'var(--sat-orange)',baja:'var(--border2)'};
+      return `<div class="tarea-row${vencida?' vencida':esHoy?' hoy':''}" style="cursor:pointer" onclick="editarTareaAdmin('${t.id}')">
+        <div class="tarea-header">
+          <div class="tarea-icono">📋</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:500;color:var(--text)">${t.titulo}</div>
+            ${t.descripcion?`<div style="font-size:11px;color:var(--text2);margin-top:2px">${t.descripcion.slice(0,80)}${t.descripcion.length>80?'...':''}</div>`:''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${vencida?'var(--red-light)':esHoy?'var(--sat-orange-light)':'var(--purple-light)'};color:${vencida?'var(--red)':esHoy?'var(--sat-orange)':'#534AB7'}">${vencida?'Vencida':esHoy?'Hoy':t.fecha_limite?.split('-').reverse().join('/')||'Sin fecha'}</span>
+            <span style="font-size:10px;color:${prioColor[t.prioridad]||'var(--text3)'}">● ${t.prioridad}</span>
+          </div>
+          <button onclick="event.stopPropagation();completarTareaAdmin('${t.id}')" style="margin-left:8px;font-family:inherit;font-size:11px;padding:4px 10px;border:0.5px solid var(--green);border-radius:var(--radius-sm);background:var(--green-light);color:var(--green);cursor:pointer">✓ Listo</button>
+        </div>
+      </div>`;
+    }).join('')}`:'';
+
   lista.innerHTML=ops.map(op=>{
     const sem=semaforoDiario(op.id,op.fecha_inicio_gestion,op.estado);
     const ult=ultimaGestion(op.id);
@@ -2457,7 +2631,7 @@ function renderDiarioLista(q, filtro){
         </div>
       </div>
     </div>`;
-  }).join('');
+  }).join('') + tareasHtml;
 }
 
 // ── KPIs & ANALYTICS ──────────────────────────────────────────────────────────
