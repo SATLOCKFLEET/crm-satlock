@@ -602,19 +602,8 @@ async function logout(){
 document.addEventListener('keydown',(e)=>{
   if(e.key==='Escape') document.querySelectorAll('.modal-overlay').forEach(m=>m.remove());
 });
-// Renovar token de Google Calendar al cargar si hay refresh_token guardado
-setTimeout(async()=>{
-  if(localStorage.getItem('gcal_refresh_token')){
-    gcalRefreshToken = localStorage.getItem('gcal_refresh_token');
-    gcalTokenExpiry = parseInt(localStorage.getItem('gcal_token_expiry')||'0');
-    const renovado = await renovarTokenGcal();
-    if(renovado){
-      actualizarBtnGcal(true);
-      programarRenovacion();
-      console.log('GCal reconectado automáticamente');
-    }
-  }
-}, 1000);
+// Inicializar Google Auth al cargar (renovación silenciosa si hay token guardado)
+setTimeout(()=>{ initGoogleAuth(); }, 1500);
 document.addEventListener('DOMContentLoaded',()=>{
   // Inicializar Google Auth (carga dinámica)
   setTimeout(initGoogleAuth, 500);
@@ -1586,19 +1575,15 @@ async function confirmarBorrar(id,empresa){
 
 // ── GOOGLE CALENDAR ───────────────────────────────────────────────────────────
 async function initGoogleAuth(){
-  // Intentar renovar con refresh token guardado
-  if(gcalRefreshToken){
-    const ahora = Date.now();
-    if(gcalToken && gcalTokenExpiry > ahora + 60000){
-      // Token vigente
-      actualizarBtnGcal(true);
-      return;
-    }
-    // Renovar token
-    try {
-      const renovado = await renovarTokenGcal();
-      if(renovado){ actualizarBtnGcal(true); return; }
-    } catch(e){ console.warn('Error renovando token:', e); }
+  // Verificar si el token guardado sigue vigente
+  const savedToken = localStorage.getItem('gcal_token');
+  const savedExpiry = parseInt(localStorage.getItem('gcal_token_expiry')||'0');
+  if(savedToken && savedExpiry > Date.now() + 60000){
+    gcalToken = savedToken;
+    gcalTokenExpiry = savedExpiry;
+    actualizarBtnGcal(true);
+    programarRenovacion();
+    return;
   }
 
   if(!window.google || !window.google.accounts){
@@ -1612,68 +1597,54 @@ async function initGoogleAuth(){
     return;
   }
 
-  // Usar Code Client para obtener refresh_token
-  gcalTokenClient = google.accounts.oauth2.initCodeClient({
+  // Token Client — implicit flow, sin popup si ya autorizó antes
+  gcalTokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GCAL_CLIENT_ID,
     scope: GCAL_SCOPES,
-    ux_mode: 'popup',
-    callback: async(response)=>{
+    prompt: '',
+    callback: (response)=>{
       if(response.error){ console.error('GCal error:', response.error); return; }
-      try {
-        // Intercambiar code por tokens via Worker
-        const res = await fetch(GCAL_WORKER+'/token', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({code: response.code})
-        });
-        const tokens = await res.json();
-        if(tokens.access_token){
-          gcalToken = tokens.access_token;
-          if(tokens.refresh_token){
-            gcalRefreshToken = tokens.refresh_token;
-            localStorage.setItem('gcal_refresh_token', gcalRefreshToken);
-          }
-          gcalTokenExpiry = Date.now() + (tokens.expires_in||3600)*1000;
-          localStorage.setItem('gcal_token_expiry', gcalTokenExpiry);
-          actualizarBtnGcal(true);
-          drawCal();
-          // Programar renovación automática
-          programarRenovacion();
-        }
-      } catch(e){ console.error('Error obteniendo tokens:', e); }
+      gcalToken = response.access_token;
+      gcalTokenExpiry = Date.now() + (response.expires_in||3600)*1000;
+      localStorage.setItem('gcal_token', gcalToken);
+      localStorage.setItem('gcal_token_expiry', String(gcalTokenExpiry));
+      actualizarBtnGcal(true);
+      drawCal();
+      programarRenovacion();
     }
   });
+  // Intentar renovar silenciosamente (sin popup)
+  gcalTokenClient.requestAccessToken({prompt:''});
 }
 
 async function renovarTokenGcal(){
-  if(!gcalRefreshToken) return false;
-  try {
-    const res = await fetch(GCAL_WORKER+'/refresh', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({refresh_token: gcalRefreshToken})
-    });
-    const tokens = await res.json();
-    if(tokens.access_token){
-      gcalToken = tokens.access_token;
-      gcalTokenExpiry = Date.now() + (tokens.expires_in||3600)*1000;
-      localStorage.setItem('gcal_token_expiry', gcalTokenExpiry);
+  // Con implicit flow renovamos silenciosamente via Token Client
+  return new Promise((resolve)=>{
+    if(!gcalTokenClient){ resolve(false); return; }
+    const oldCallback = gcalTokenClient.callback;
+    gcalTokenClient.callback = (response)=>{
+      gcalTokenClient.callback = oldCallback;
+      if(response.error){ resolve(false); return; }
+      gcalToken = response.access_token;
+      gcalTokenExpiry = Date.now() + (response.expires_in||3600)*1000;
+      localStorage.setItem('gcal_token', gcalToken);
+      localStorage.setItem('gcal_token_expiry', String(gcalTokenExpiry));
       console.log('Token GCal renovado automáticamente');
-      return true;
-    }
-    return false;
-  } catch(e){ return false; }
+      resolve(true);
+    };
+    gcalTokenClient.requestAccessToken({prompt:''});
+  });
 }
 
 function programarRenovacion(){
-  // Renovar 5 minutos antes de que expire
-  const tiempoRestante = gcalTokenExpiry - Date.now() - 300000;
-  if(tiempoRestante > 0){
-    setTimeout(async()=>{
+  const tiempoRestante = gcalTokenExpiry - Date.now() - 300000; // 5 min antes
+  const espera = Math.max(tiempoRestante, 60000); // mínimo 1 minuto
+  setTimeout(async()=>{
+    if(gcalToken){
       await renovarTokenGcal();
       programarRenovacion();
-    }, tiempoRestante);
-  }
+    }
+  }, espera);
 }
 
 function conectarGcal(){
@@ -1684,13 +1655,13 @@ function conectarGcal(){
       if(!gcalTokenClient){
         alert('Google Calendar no pudo cargar. Verifique su conexión y recargue la página.');
       } else {
-        gcalTokenClient.requestCode();
+        gcalTokenClient.requestAccessToken({prompt:'consent'});
       }
     }, 1500);
     return;
   }
   if(gcalToken){ desconectarGcal(); return; }
-  gcalTokenClient.requestCode();
+  gcalTokenClient.requestAccessToken({prompt:'consent'});
 }
 
 function desconectarGcal(){
