@@ -2805,230 +2805,264 @@ function renderDiarioLista(q, filtro){
 }
 
 // ── KPIs & ANALYTICS ────────────────────────────────────────────────────────
+let _kpiFilter = { periodo:'mes', linea:'todos', ejecutivo:'' };
+
 async function renderKPIs(container){
   container.innerHTML='<div class="loading">Cargando analytics...</div>';
   if(!window.Plotly){
-    await new Promise((res,rej)=>{
-      const s=document.createElement('script');
-      s.src='https://cdn.plot.ly/plotly-2.35.2.min.js';
-      s.onload=res; s.onerror=rej;
-      document.head.appendChild(s);
-    });
+    await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdn.plot.ly/plotly-2.35.2.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
   }
-  const hoy=new Date();
-  const mesActual=hoy.getMonth()+1, anioActual=hoy.getFullYear();
-  const mesAnterior=mesActual===1?12:mesActual-1;
-  const anioAnterior=mesActual===1?anioActual-1:anioActual;
-
   const [opsRes,gestRes,usuRes]=await Promise.all([
     sb.from('oportunidades').select('*').order('created_at',{ascending:true}),
     sb.from('gestiones').select('oportunidad_id,usuario_id,fecha,tipo').order('fecha'),
     sb.from('usuarios').select('id,nombre,linea,rol').neq('rol','gerencia')
   ]);
-  const ops=opsRes.data||[], gest=gestRes.data||[], usuarios=usuRes.data||[];
+  window._kpiOps=opsRes.data||[];
+  window._kpiGest=gestRes.data||[];
+  window._kpiUsuarios=usuRes.data||[];
 
-  const opsMes=(m,a)=>ops.filter(o=>o.created_at&&new Date(o.created_at).getMonth()+1===m&&new Date(o.created_at).getFullYear()===a);
-  const cerradosMes=(m,a)=>ops.filter(o=>o.estado==='cerrado'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===m&&new Date(o.updated_at).getFullYear()===a);
-  const delta=(act,ant)=>{ if(!ant) return {pct:null,cls:'neu'}; const d=Math.round((act-ant)/Math.max(ant,1)*100); return {pct:d,cls:d>0?'pos':d<0?'neg':'neu'}; };
+  const anio=new Date().getFullYear();
+  const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
-  const leadsAct=opsMes(mesActual,anioActual).length, leadsAnt=opsMes(mesAnterior,anioAnterior).length;
-  const cerradosAct=cerradosMes(mesActual,anioActual).length, cerradosAnt=cerradosMes(mesAnterior,anioAnterior).length;
-  const totalActivos=ops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).length;
-  const perdidosAct=ops.filter(o=>o.estado==='perdido'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===mesActual).length;
-  const tasa=leadsAct>0?Math.round(cerradosAct/leadsAct*100):0;
-  const tasaAnt=leadsAnt>0?Math.round(cerradosAnt/leadsAnt*100):0;
-  const gestMes=gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesActual&&new Date(g.fecha).getFullYear()===anioActual).length;
-  const gestAnt=gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesAnterior&&new Date(g.fecha).getFullYear()===anioAnterior).length;
-  const mercadeoTotal=ops.filter(o=>o.de_mercadeo).length;
-  const mercadeoCerrado=ops.filter(o=>o.de_mercadeo&&o.estado==='cerrado').length;
-  const tasaMercadeo=mercadeoTotal>0?Math.round(mercadeoCerrado/mercadeoTotal*100):0;
+  container.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+      <div style="font-size:14px;font-weight:500">KPIs & Analytics ${anio}</div>
+    </div>
+    <!-- FILTROS -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center;background:var(--surface2);padding:10px 14px;border-radius:var(--radius);border:0.5px solid var(--border)">
+      <div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Período</div>
+        <div style="display:flex;gap:3px;flex-wrap:wrap">
+          ${['mes','Q1','Q2','Q3','Q4','año'].map(p=>`<button class="fbtn${_kpiFilter.periodo===p?' active':''}" onclick="setKpiFilter('periodo','${p}')">${p==='mes'?'Mes actual':p==='año'?'Año':p}</button>`).join('')}
+        </div>
+      </div>
+      <div id="kpi-meses-wrap" style="${_kpiFilter.periodo==='mes'?'':'display:none'}">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Mes</div>
+        <select class="fsel" id="kpi-mes-sel" onchange="setKpiFilter('mes',this.value)" style="font-size:11px;padding:5px 8px">
+          ${MESES.map((m,i)=>`<option value="${i+1}"${(i+1===new Date().getMonth()+1)?' selected':''}>${m}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Línea</div>
+        <div style="display:flex;gap:3px">
+          ${['todos','fleet','carga'].map(l=>`<button class="fbtn${_kpiFilter.linea===l?' active':''}" onclick="setKpiFilter('linea','${l}')">${l==='todos'?'Todas':l.charAt(0).toUpperCase()+l.slice(1)}</button>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Ejecutivo</div>
+        <select class="fsel" id="kpi-exec-sel" onchange="setKpiFilter('ejecutivo',this.value)" style="font-size:11px;padding:5px 8px">
+          <option value="">Todos</option>
+          ${window._kpiUsuarios.map(u=>`<option value="${u.id}"${_kpiFilter.ejecutivo===u.id?' selected':''}>${u.nombre}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div id="kpi-content"></div>`;
 
-  // ── PIPELINE ──
-  const opsActivas=ops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado));
-  const pipelineTotal=opsActivas.reduce((s,o)=>{
-    const unica=(o.unidades||0)*(o.valor_unitario||0);
-    const rec=(o.unidades_recurrentes||0)*(o.valor_recurrente||0);
-    return s+unica+rec;
-  },0);
+  renderKPIContent();
+}
+
+function setKpiFilter(key, val){
+  _kpiFilter[key]=val;
+  // Actualizar botones activos
+  if(key==='periodo'){
+    document.querySelectorAll('#kpi-content ~ div .fbtn, .fbtn').forEach(b=>{});
+    const wrap=document.getElementById('kpi-meses-wrap');
+    if(wrap) wrap.style.display=val==='mes'?'':'none';
+  }
+  renderKPIContent();
+}
+
+function getKpiRango(){
+  const anio=new Date().getFullYear();
+  const p=_kpiFilter.periodo;
+  const mesSel=parseInt(document.getElementById('kpi-mes-sel')?.value||new Date().getMonth()+1);
+  if(p==='mes') return {meses:[mesSel],anio,label:['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][mesSel-1]+' '+anio};
+  if(p==='Q1') return {meses:[1,2,3],anio,label:'Q1 '+anio};
+  if(p==='Q2') return {meses:[4,5,6],anio,label:'Q2 '+anio};
+  if(p==='Q3') return {meses:[7,8,9],anio,label:'Q3 '+anio};
+  if(p==='Q4') return {meses:[10,11,12],anio,label:'Q4 '+anio};
+  return {meses:[1,2,3,4,5,6,7,8,9,10,11,12],anio,label:'Año '+anio};
+}
+
+function renderKPIContent(){
+  const content=document.getElementById('kpi-content');
+  if(!content) return;
+  const ops=window._kpiOps||[];
+  const gest=window._kpiGest||[];
+  const usuarios=window._kpiUsuarios||[];
+  const {meses,anio,label}=getKpiRango();
+  const fmt=n=>Math.round(n).toLocaleString('es-CO');
+
+  // Filtrar por línea y ejecutivo
+  let opsFilt=ops.filter(o=>{
+    if(_kpiFilter.linea!=='todos'&&o.linea!==_kpiFilter.linea) return false;
+    if(_kpiFilter.ejecutivo&&o.usuario_id!==_kpiFilter.ejecutivo) return false;
+    return true;
+  });
+  let gestFilt=gest.filter(g=>{
+    if(_kpiFilter.ejecutivo&&g.usuario_id!==_kpiFilter.ejecutivo) return false;
+    return true;
+  });
+
+  // Filtrar por período
+  const enPeriodo=(fecha)=>{ if(!fecha) return false; const d=new Date(fecha); return meses.includes(d.getMonth()+1)&&d.getFullYear()===anio; };
+  const leadsEnPeriodo=opsFilt.filter(o=>enPeriodo(o.created_at));
+  const cerradosEnPeriodo=opsFilt.filter(o=>o.estado==='cerrado'&&enPeriodo(o.updated_at));
+  const perdidosEnPeriodo=opsFilt.filter(o=>o.estado==='perdido'&&enPeriodo(o.updated_at));
+  const gestEnPeriodo=gestFilt.filter(g=>enPeriodo(g.fecha));
+  const opsActivas=opsFilt.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado));
+
+  // KPIs básicos
+  const tasa=leadsEnPeriodo.length>0?Math.round(cerradosEnPeriodo.length/leadsEnPeriodo.length*100):0;
   const pipelineUnico=opsActivas.reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+s,0);
   const pipelineRec=opsActivas.reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
+  const pipelineTotal=pipelineUnico+pipelineRec;
+
+  // Origen de leads
+  const origenMap={'Lead propio / en frío':0,'Feria / Evento / Stand':0,'Estudio de Mercado':0,'Mantenimiento / Postventa':0,'Sin especificar':0};
+  leadsEnPeriodo.forEach(o=>{ const k=o.origen_lead&&origenMap[o.origen_lead]!==undefined?o.origen_lead:'Sin especificar'; origenMap[k]=(origenMap[k]||0)+1; });
 
   // Pipeline por producto
   const prodMap={};
   opsActivas.forEach(o=>{
     if(!o.producto) return;
-    if(!prodMap[o.producto]) prodMap[o.producto]={unica:0,rec:0,count:0,unidades:0};
+    if(!prodMap[o.producto]) prodMap[o.producto]={unica:0,rec:0,unidades:0};
     prodMap[o.producto].unica+=(o.unidades||0)*(o.valor_unitario||0);
     prodMap[o.producto].rec+=(o.unidades_recurrentes||0)*(o.valor_recurrente||0);
-    prodMap[o.producto].count++;
     prodMap[o.producto].unidades+=(o.unidades||0)+(o.unidades_recurrentes||0);
   });
   const prodEntries=Object.entries(prodMap).sort((a,b)=>(b[1].unica+b[1].rec)-(a[1].unica+a[1].rec));
 
-  // Recurrencia potencial total si se cierran todos
-  const recurrenciaPotencial=opsActivas.reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
-
-  // Mapa de calor por ciudad
+  // Ciudad
   const ciudadMap={};
   opsActivas.forEach(o=>{ if(o.ciudad){ const c=o.ciudad.trim(); ciudadMap[c]=(ciudadMap[c]||0)+1; } });
+  const ciudades=Object.entries(ciudadMap).sort((a,b)=>b[1]-a[1]);
 
-  const mesNombre=new Date(anioActual,mesActual-1,1).toLocaleDateString('es-CO',{month:'long'});
-  const mesAntNombre=new Date(anioAnterior,mesAnterior-1,1).toLocaleDateString('es-CO',{month:'long'});
-  const fmt=n=>n>=1000000?'$'+Math.round(n/1000000)+'M':n>=1000?'$'+Math.round(n/1000)+'K':'$'+Math.round(n);
-  const dL=delta(leadsAct,leadsAnt),dC=delta(cerradosAct,cerradosAnt),dG=delta(gestMes,gestAnt),dT=delta(tasa,tasaAnt);
+  // Tabla por ejecutivo
+  let execFilt=usuarios.filter(u=>_kpiFilter.linea==='todos'||(u.linea===_kpiFilter.linea||u.linea==='ambas'));
+  if(_kpiFilter.ejecutivo) execFilt=execFilt.filter(u=>u.id===_kpiFilter.ejecutivo);
 
-  container.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-      <div>
-        <div style="font-size:14px;font-weight:500">KPIs & Analytics</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Comparativo ${mesNombre} vs ${mesAntNombre}</div>
-      </div>
-    </div>
+  content.innerHTML=`
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Mostrando: <strong>${label}</strong>${_kpiFilter.linea!=='todos'?' · Línea '+_kpiFilter.linea:''}${_kpiFilter.ejecutivo?' · '+usuarios.find(u=>u.id===_kpiFilter.ejecutivo)?.nombre:''}</div>
 
-    <!-- SECCIÓN 1: Resumen del mes -->
-    <div class="kpi-section"><div class="kpi-section-title">Resumen del mes</div>
+    <div class="kpi-section"><div class="kpi-section-title">Actividad comercial</div>
     <div class="kpi-cards">
-      <div class="kpi-card"><div class="kpi-lbl">Nuevos leads</div><div class="kpi-val">${leadsAct}</div><div class="kpi-sub">${dL.pct!==null?`<span class="kpi-delta ${dL.cls}">${dL.pct>0?'+':''}${dL.pct}%</span> vs ${mesAntNombre}`:'—'}</div></div>
-      <div class="kpi-card green"><div class="kpi-lbl">Cierres</div><div class="kpi-val" style="color:var(--green)">${cerradosAct}</div><div class="kpi-sub">${dC.pct!==null?`<span class="kpi-delta ${dC.cls}">${dC.pct>0?'+':''}${dC.pct}%</span> vs ${mesAntNombre}`:'—'}</div></div>
-      <div class="kpi-card orange"><div class="kpi-lbl">Tasa conversión</div><div class="kpi-val" style="color:var(--sat-orange)">${tasa}%</div><div class="kpi-sub">${dT.pct!==null?`<span class="kpi-delta ${dT.cls}">${dT.pct>0?'+':''}${dT.pct}pp`:'—'}</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Pipeline activo</div><div class="kpi-val" style="color:var(--sat-blue)">${totalActivos}</div><div class="kpi-sub">en proceso + prop. enviada</div></div>
-      <div class="kpi-card red"><div class="kpi-lbl">Perdidos este mes</div><div class="kpi-val" style="color:var(--red)">${perdidosAct}</div><div class="kpi-sub">leads no convertidos</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Gestiones</div><div class="kpi-val">${gestMes}</div><div class="kpi-sub">${dG.pct!==null?`<span class="kpi-delta ${dG.cls}">${dG.pct>0?'+':''}${dG.pct}%</span> vs ${mesAntNombre}`:'—'}</div></div>
-      <div class="kpi-card orange"><div class="kpi-lbl">Conv. Mercadeo</div><div class="kpi-val" style="color:var(--sat-orange)">${tasaMercadeo}%</div><div class="kpi-sub">${mercadeoCerrado} cerrados de ${mercadeoTotal}</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Nuevos leads</div><div class="kpi-val">${leadsEnPeriodo.length}</div><div class="kpi-sub">${label}</div></div>
+      <div class="kpi-card green"><div class="kpi-lbl">Cierres</div><div class="kpi-val" style="color:var(--green)">${cerradosEnPeriodo.length}</div></div>
+      <div class="kpi-card orange"><div class="kpi-lbl">Tasa conversión</div><div class="kpi-val" style="color:var(--sat-orange)">${tasa}%</div></div>
+      <div class="kpi-card red"><div class="kpi-lbl">Perdidos</div><div class="kpi-val" style="color:var(--red)">${perdidosEnPeriodo.length}</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Gestiones</div><div class="kpi-val">${gestEnPeriodo.length}</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Pipeline activo</div><div class="kpi-val" style="color:var(--sat-blue)">${opsActivas.length}</div><div class="kpi-sub">leads en curso</div></div>
     </div></div>
 
-    <!-- SECCIÓN 2: Pipeline en valor -->
-    <div class="kpi-section"><div class="kpi-section-title">Pipeline en valor</div>
+    <div class="kpi-section"><div class="kpi-section-title">Pipeline en valor (COP)</div>
     <div class="kpi-cards">
-      <div class="kpi-card" style="border-top-color:#534AB7"><div class="kpi-lbl">Pipeline total activo</div><div class="kpi-val" style="font-size:22px;color:#534AB7">${fmt(pipelineTotal)}</div><div class="kpi-sub">leads en proceso + prop. enviada</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Venta única potencial</div><div class="kpi-val" style="font-size:22px;color:var(--sat-blue)">${fmt(pipelineUnico)}</div><div class="kpi-sub">si se cierran todos los leads activos</div></div>
-      <div class="kpi-card green"><div class="kpi-lbl">Recurrencia mensual potencial</div><div class="kpi-val" style="font-size:22px;color:var(--green)">${fmt(recurrenciaPotencial)}</div><div class="kpi-sub">ingresos recurrentes / mes al cerrar</div></div>
+      <div class="kpi-card" style="border-top-color:#534AB7"><div class="kpi-lbl">Pipeline total</div><div class="kpi-val" style="font-size:20px;color:#534AB7">$ ${fmt(pipelineTotal)}</div></div>
+      <div class="kpi-card"><div class="kpi-lbl">Venta única potencial</div><div class="kpi-val" style="font-size:20px;color:var(--sat-blue)">$ ${fmt(pipelineUnico)}</div></div>
+      <div class="kpi-card green"><div class="kpi-lbl">Recurrencia mensual potencial</div><div class="kpi-val" style="font-size:20px;color:var(--green)">$ ${fmt(pipelineRec)}</div><div class="kpi-sub">si se cierran todos</div></div>
     </div></div>
 
-    <!-- SECCIÓN 3: Pipeline por producto -->
-    <div class="kpi-section"><div class="kpi-section-title">Pipeline por producto</div>
-    <div id="chart-prod-pipeline" class="chart-wrap" style="margin-bottom:12px"><div class="chart-title">Valor de pipeline por producto (activos)</div><div id="chart-prod" style="height:260px"></div></div>
-    <div class="chart-wrap"><div class="chart-title">Unidades en pipeline por producto</div><div id="chart-prod-units" style="height:220px"></div></div>
-    </div>
+    <div class="kpi-section"><div class="kpi-section-title">Origen de leads — ${label}</div>
+    <div class="charts-grid">
+      <div class="chart-wrap"><div class="chart-title">Leads por origen</div><div id="chart-origen" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Pipeline por producto (valor COP)</div><div id="chart-prod" style="height:220px"></div></div>
+    </div></div>
 
-    <!-- SECCIÓN 4: Embudo y evolución -->
     <div class="kpi-section"><div class="kpi-section-title">Embudo y evolución</div>
     <div class="charts-grid">
-      <div class="chart-wrap"><div class="chart-title">Embudo de conversión — mes actual</div><div id="chart-embudo" style="height:220px"></div></div>
-      <div class="chart-wrap"><div class="chart-title">Leads y cierres — últimos 6 meses</div><div id="chart-evolucion" style="height:220px"></div></div>
-      <div class="chart-wrap"><div class="chart-title">Tipos de contacto — mes actual</div><div id="chart-tipos" style="height:220px"></div></div>
-      <div class="chart-wrap"><div class="chart-title">Ciclo de venta por ejecutivo (días)</div><div id="chart-ciclo" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Embudo de conversión</div><div id="chart-embudo" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Actividad por mes</div><div id="chart-evolucion" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Tipos de contacto</div><div id="chart-tipos" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Ciclo de venta (días prom.)</div><div id="chart-ciclo" style="height:220px"></div></div>
     </div></div>
 
-    <!-- SECCIÓN 5: Mapa de calor -->
-    <div class="kpi-section"><div class="kpi-section-title">Distribución geográfica — Colombia y Ecuador</div>
-    <div id="chart-mapa-wrap" class="chart-wrap"><div class="chart-title">Leads activos por ciudad</div><div id="chart-mapa" style="height:400px"></div></div>
+    <div class="kpi-section"><div class="kpi-section-title">Distribución geográfica</div>
+    <div class="chart-wrap"><div class="chart-title">Leads activos por ciudad</div><div id="chart-mapa" style="height:${Math.max(200,ciudades.length*28)}px"></div></div>
     </div>
 
-    <!-- SECCIÓN 6: Tabla ejecutivos -->
-    <div class="kpi-section"><div class="kpi-section-title">Rendimiento por ejecutivo — mes actual</div>
+    <div class="kpi-section"><div class="kpi-section-title">Rendimiento por ejecutivo</div>
     <div id="tabla-ejecutivos"></div></div>`;
 
-  const isDark=matchMedia('(prefers-color-scheme:dark)').matches;
   const plotBg='rgba(0,0,0,0)';
-  const plotFont={family:'inherit',size:11,color:isDark?'#a0a098':'#5a5a56'};
-  const pLayout=(extra={})=>({paper_bgcolor:plotBg,plot_bgcolor:plotBg,font:plotFont,margin:{l:40,r:10,t:10,b:40},showlegend:false,...extra});
+  const plotFont={family:'inherit',size:11,color:'#5a5a56'};
+  const pL=(extra={})=>({paper_bgcolor:plotBg,plot_bgcolor:plotBg,font:plotFont,margin:{l:40,r:10,t:10,b:40},showlegend:false,...extra});
 
-  // Gráfico pipeline por producto (barras valor)
+  // Origen
+  const origenLabels=Object.keys(origenMap);
+  const origenVals=Object.values(origenMap);
+  Plotly.newPlot('chart-origen',[{type:'pie',labels:origenLabels,values:origenVals,hole:.4,marker:{colors:['#19428C','#E8460A','#534AB7','#25D366','#888780']},textinfo:'label+value'}],pL({margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',y:-0.2}}),{responsive:true,displayModeBar:false});
+
+  // Producto
   if(prodEntries.length){
-    const labels=prodEntries.map(e=>e[0]);
-    const valUnica=prodEntries.map(e=>e[1].unica);
-    const valRec=prodEntries.map(e=>e[1].rec);
     Plotly.newPlot('chart-prod',[
-      {name:'Venta única',x:labels,y:valUnica,type:'bar',marker:{color:'#19428C'},text:valUnica.map(fmt),textposition:'outside'},
-      {name:'Recurrente/mes',x:labels,y:valRec,type:'bar',marker:{color:'#639922'},text:valRec.map(fmt),textposition:'outside'}
-    ],pLayout({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.25},margin:{l:50,r:10,t:20,b:80},yaxis:{tickformat:'$,.0f'}}),{responsive:true,displayModeBar:false});
-
-    // Gráfico unidades por producto
-    Plotly.newPlot('chart-prod-units',[{
-      type:'bar',orientation:'h',
-      y:prodEntries.map(e=>e[0]),
-      x:prodEntries.map(e=>e[1].unidades),
-      marker:{color:'#534AB7'},
-      text:prodEntries.map(e=>e[1].unidades+' u'),textposition:'outside'
-    }],pLayout({margin:{l:80,r:60,t:10,b:30}}),{responsive:true,displayModeBar:false});
+      {name:'Venta única',x:prodEntries.map(e=>e[0]),y:prodEntries.map(e=>e[1].unica),type:'bar',marker:{color:'#19428C'},text:prodEntries.map(e=>'$ '+fmt(e[1].unica)),textposition:'outside'},
+      {name:'Recurrente',x:prodEntries.map(e=>e[0]),y:prodEntries.map(e=>e[1].rec),type:'bar',marker:{color:'#639922'},text:prodEntries.map(e=>'$ '+fmt(e[1].rec)),textposition:'outside'}
+    ],pL({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.25},margin:{l:50,r:10,t:20,b:80},yaxis:{tickformat:'$,.0f'}}),{responsive:true,displayModeBar:false});
   } else {
-    document.getElementById('chart-prod').innerHTML='<div class="empty" style="padding:40px 0">Sin datos de pipeline con valores aún</div>';
-    document.getElementById('chart-prod-units').innerHTML='';
+    document.getElementById('chart-prod').innerHTML='<div class="empty" style="padding:40px 0">Sin datos de producto con valores</div>';
   }
 
   // Embudo
-  Plotly.newPlot('chart-embudo',[{
-    type:'funnel',y:['Leads','En proceso','Prop. enviada','Cerrados'],
-    x:[opsMes(mesActual,anioActual).length,ops.filter(o=>o.estado==='en_proceso').length,ops.filter(o=>o.estado==='propuesta_enviada').length,cerradosAct],
-    textinfo:'value+percent initial',marker:{color:['#19428C','#378ADD','#BA7517','#639922']}
-  }],pLayout({margin:{l:100,r:20,t:10,b:10}}),{responsive:true,displayModeBar:false});
+  Plotly.newPlot('chart-embudo',[{type:'funnel',y:['Leads creados','En proceso','Prop. enviada','Cerrados'],x:[leadsEnPeriodo.length,opsActivas.filter(o=>o.estado==='en_proceso').length,opsActivas.filter(o=>o.estado==='propuesta_enviada').length,cerradosEnPeriodo.length],textinfo:'value+percent initial',marker:{color:['#19428C','#378ADD','#BA7517','#639922']}}],pL({margin:{l:100,r:20,t:10,b:10}}),{responsive:true,displayModeBar:false});
 
-  // Evolución 6 meses
-  const meses6=[];
-  for(let i=5;i>=0;i--){ const d=new Date(anioActual,mesActual-1-i,1); meses6.push({m:d.getMonth()+1,a:d.getFullYear(),lbl:d.toLocaleDateString('es-CO',{month:'short'})}); }
+  // Evolución meses del año
+  const mesesAnio=[];
+  for(let m=1;m<=12;m++) mesesAnio.push({m,lbl:['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][m-1]});
+  const anioFilt=anio;
   Plotly.newPlot('chart-evolucion',[
-    {name:'Leads',x:meses6.map(m=>m.lbl),y:meses6.map(m=>opsMes(m.m,m.a).length),type:'bar',marker:{color:'#19428C'},opacity:.8},
-    {name:'Cierres',x:meses6.map(m=>m.lbl),y:meses6.map(m=>cerradosMes(m.m,m.a).length),type:'bar',marker:{color:'#639922'},opacity:.9}
-  ],pLayout({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.2}}),{responsive:true,displayModeBar:false});
+    {name:'Leads',x:mesesAnio.map(m=>m.lbl),y:mesesAnio.map(m=>opsFilt.filter(o=>o.created_at&&new Date(o.created_at).getMonth()+1===m.m&&new Date(o.created_at).getFullYear()===anioFilt).length),type:'bar',marker:{color:'#19428C'},opacity:.8},
+    {name:'Cierres',x:mesesAnio.map(m=>m.lbl),y:mesesAnio.map(m=>opsFilt.filter(o=>o.estado==='cerrado'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===m.m&&new Date(o.updated_at).getFullYear()===anioFilt).length),type:'bar',marker:{color:'#639922'},opacity:.9}
+  ],pL({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.2}}),{responsive:true,displayModeBar:false});
 
   // Tipos contacto
   const tc={llamada:0,whatsapp:0,correo:0,presencial:0,otro:0};
-  gest.filter(g=>g.fecha&&new Date(g.fecha).getMonth()+1===mesActual).forEach(g=>{tc[g.tipo||'otro']++;});
-  Plotly.newPlot('chart-tipos',[{type:'pie',labels:['Llamada','WhatsApp','Correo','Presencial','Otro'],values:Object.values(tc),hole:.45,marker:{colors:['#19428C','#25D366','#E8460A','#534AB7','#888780']},textinfo:'label+percent'}],pLayout({margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',y:-0.15}}),{responsive:true,displayModeBar:false});
+  gestEnPeriodo.forEach(g=>{tc[g.tipo||'otro']++;});
+  Plotly.newPlot('chart-tipos',[{type:'pie',labels:['Llamada','WhatsApp','Correo','Presencial','Otro'],values:Object.values(tc),hole:.45,marker:{colors:['#19428C','#25D366','#E8460A','#534AB7','#888780']},textinfo:'label+percent'}],pL({margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',y:-0.15}}),{responsive:true,displayModeBar:false});
 
-  // Ciclo por ejecutivo
-  const execCiclo=usuarios.map(u=>{
-    const uOps=ops.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&o.fecha_inicio_gestion&&o.updated_at);
-    if(!uOps.length) return {nombre:u.nombre.split(' ')[0],dias:0};
+  // Ciclo
+  const execCiclo=execFilt.map(u=>{
+    const uOps=opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&o.fecha_inicio_gestion&&o.updated_at);
+    if(!uOps.length) return null;
     return {nombre:u.nombre.split(' ')[0],dias:Math.round(uOps.reduce((s,o)=>s+diasGestion(o.fecha_inicio_gestion,o.updated_at.split('T')[0]),0)/uOps.length)};
-  }).filter(e=>e.dias>0).sort((a,b)=>a.dias-b.dias);
+  }).filter(Boolean).sort((a,b)=>a.dias-b.dias);
   if(execCiclo.length){
-    Plotly.newPlot('chart-ciclo',[{type:'bar',orientation:'h',y:execCiclo.map(e=>e.nombre),x:execCiclo.map(e=>e.dias),marker:{color:'#534AB7'},text:execCiclo.map(e=>e.dias+'d'),textposition:'outside'}],pLayout({margin:{l:70,r:40,t:10,b:30},xaxis:{title:'Días'}}),{responsive:true,displayModeBar:false});
+    Plotly.newPlot('chart-ciclo',[{type:'bar',orientation:'h',y:execCiclo.map(e=>e.nombre),x:execCiclo.map(e=>e.dias),marker:{color:'#534AB7'},text:execCiclo.map(e=>e.dias+'d'),textposition:'outside'}],pL({margin:{l:70,r:40,t:10,b:30}}),{responsive:true,displayModeBar:false});
   } else {
-    document.getElementById('chart-ciclo').innerHTML='<div class="empty" style="padding:60px 0">Sin datos de ciclo aún</div>';
+    document.getElementById('chart-ciclo').innerHTML='<div class="empty" style="padding:40px 0">Sin datos de ciclo aún</div>';
   }
 
-  // Mapa de calor por ciudad (burbuja)
-  const ciudades=Object.entries(ciudadMap).sort((a,b)=>b[1]-a[1]);
+  // Mapa ciudades
   if(ciudades.length){
-    Plotly.newPlot('chart-mapa',[{
-      type:'bar',orientation:'h',
-      y:ciudades.map(c=>c[0]),
-      x:ciudades.map(c=>c[1]),
-      marker:{color:ciudades.map(c=>c[1]),colorscale:'Blues',showscale:true},
-      text:ciudades.map(c=>c[1]+' leads'),textposition:'outside'
-    }],pLayout({margin:{l:120,r:60,t:10,b:30},yaxis:{automargin:true}}),{responsive:true,displayModeBar:false});
+    Plotly.newPlot('chart-mapa',[{type:'bar',orientation:'h',y:ciudades.map(c=>c[0]),x:ciudades.map(c=>c[1]),marker:{color:ciudades.map(c=>c[1]),colorscale:'Blues',showscale:true},text:ciudades.map(c=>c[1]+' leads'),textposition:'outside'}],pL({margin:{l:120,r:60,t:10,b:30},yaxis:{automargin:true}}),{responsive:true,displayModeBar:false});
   } else {
-    document.getElementById('chart-mapa').innerHTML='<div class="empty" style="padding:60px 0">Sin datos de ciudad aún. Agregue la ciudad al registrar leads.</div>';
+    document.getElementById('chart-mapa').innerHTML='<div class="empty" style="padding:40px 0">Sin datos de ciudad. Agregue la ciudad al registrar leads.</div>';
   }
 
   // Tabla ejecutivos
   const tablaEl=document.getElementById('tabla-ejecutivos');
-  const execData=usuarios.map(u=>{
-    const uLeads=opsMes(mesActual,anioActual).filter(o=>o.usuario_id===u.id).length;
-    const uLeadsAnt=opsMes(mesAnterior,anioAnterior).filter(o=>o.usuario_id===u.id).length;
-    const uCierres=cerradosMes(mesActual,anioActual).filter(o=>o.usuario_id===u.id).length;
-    const uGest=gest.filter(g=>g.usuario_id===u.id&&g.fecha&&new Date(g.fecha).getMonth()+1===mesActual).length;
+  const execData=execFilt.map(u=>{
+    const uLeads=opsFilt.filter(o=>o.usuario_id===u.id&&enPeriodo(o.created_at)).length;
+    const uCierres=opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.updated_at)).length;
+    const uGest=gestFilt.filter(g=>g.usuario_id===u.id&&enPeriodo(g.fecha)).length;
     const uTasa=uLeads>0?Math.round(uCierres/uLeads*100):0;
-    const uPipeline=ops.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
-    const dEl=delta(uLeads,uLeadsAnt);
-    return {u,uLeads,uLeadsAnt,uCierres,uGest,uTasa,uPipeline,dEl};
+    const uPipeline=opsFilt.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
+    const uRec=opsFilt.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
+    return {u,uLeads,uCierres,uGest,uTasa,uPipeline,uRec};
   }).sort((a,b)=>b.uCierres-a.uCierres||b.uLeads-a.uLeads);
 
   tablaEl.innerHTML=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
     <thead><tr style="background:var(--surface2);border-bottom:0.5px solid var(--border)">
-      ${['Ejecutivo','Línea','Leads','vs ant.','Cierres','Conv.','Gestiones','Pipeline'].map(h=>`<th style="text-align:${h==='Ejecutivo'?'left':'center'};padding:9px ${h==='Ejecutivo'?'12':'8'}px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">${h}</th>`).join('')}
+      ${['Ejecutivo','Línea','Leads','Cierres','Conv.','Gestiones','Pipeline total','Rec./mes pot.'].map(h=>`<th style="text-align:${h==='Ejecutivo'?'left':'center'};padding:9px ${h==='Ejecutivo'?'12':'8'}px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">${h}</th>`).join('')}
     </tr></thead>
     <tbody>${execData.map(e=>`<tr style="border-bottom:0.5px solid var(--border)">
       <td style="padding:10px 12px;font-weight:500">${e.u.nombre}</td>
-      <td style="text-align:center;padding:10px 8px"><span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;background:${e.u.linea==='fleet'?'var(--sat-blue-light)':'var(--coral-light)'};color:${e.u.linea==='fleet'?'var(--sat-blue)':'var(--coral-dark)'}">${e.u.linea}</span></td>
+      <td style="text-align:center"><span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;background:${e.u.linea==='fleet'?'var(--sat-blue-light)':'var(--coral-light)'};color:${e.u.linea==='fleet'?'var(--sat-blue)':'var(--coral-dark)'}">${e.u.linea}</span></td>
       <td style="text-align:center;font-size:14px;font-weight:300;color:var(--sat-blue)">${e.uLeads}</td>
-      <td style="text-align:center"><span style="font-size:11px;font-weight:600;color:${e.dEl.cls==='pos'?'var(--green)':e.dEl.cls==='neg'?'var(--red)':'var(--text3)'}">${e.dEl.pct!==null?(e.dEl.pct>0?'+':'')+e.dEl.pct+'%':'—'}</span></td>
       <td style="text-align:center;font-size:14px;font-weight:300;color:var(--green)">${e.uCierres}</td>
       <td style="text-align:center;font-weight:500;color:var(--sat-orange)">${e.uTasa}%</td>
       <td style="text-align:center;color:var(--text2)">${e.uGest}</td>
-      <td style="text-align:center;font-weight:500;color:#534AB7">${fmt(e.uPipeline)}</td>
+      <td style="text-align:center;font-weight:500;color:#534AB7">$ ${fmt(e.uPipeline)}</td>
+      <td style="text-align:center;font-weight:500;color:var(--green)">$ ${fmt(e.uRec)}</td>
     </tr>`).join('')}</tbody>
   </table></div>`;
 }
