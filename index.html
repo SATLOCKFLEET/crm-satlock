@@ -433,16 +433,6 @@ tbody tr:hover{background:var(--surface2)}
 .tarea-header{display:flex;align-items:center;gap:12px;padding:10px 14px}
 .tarea-icono{width:28px;height:28px;border-radius:6px;background:var(--purple-light);color:#534AB7;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
 
-/* ── Insights de IA ── */
-.insight-box{background:linear-gradient(135deg,var(--sat-blue-light) 0%,var(--purple-light) 100%);border:0.5px solid var(--sat-blue);border-radius:var(--radius);padding:16px;margin-bottom:16px;position:relative;overflow:hidden}
-.insight-box::before{content:'';position:absolute;top:-20px;right:-20px;width:80px;height:80px;border-radius:50%;background:rgba(25,66,140,.06)}
-.insight-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.insight-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 8px;border-radius:10px;background:var(--sat-blue);color:#fff}
-.insight-loading{font-size:12px;color:var(--text3);font-style:italic}
-.insight-text{font-size:12px;color:var(--text);line-height:1.7;white-space:pre-wrap}
-.insight-section{background:var(--surface2);border-left:3px solid var(--sat-blue);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:10px 14px;margin-top:10px}
-.insight-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-blue);margin-bottom:5px}
-.insight-section-text{font-size:11px;color:var(--text2);line-height:1.6}
 </style>
 </head>
 <body>
@@ -2872,71 +2862,9 @@ async function renderKPIs(container){
   renderKPIContent();
 }
 
-async function generarInsightsKPI(datos){
-  const { leadsN, cerradosN, perdidosN, tasa, pipelineTotal, pipelineRec, gestN,
-    topProducto, topCiudad, origenTop, execTop, label, linea } = datos;
 
-  const prompt = `Eres un analista comercial senior de Satlock SAS, empresa de telemática y videovigilancia para flotas en Colombia y Ecuador. 
-Analiza estos KPIs del período ${label}${linea!=='todos'?' (línea '+linea+')':''} y genera un resumen ejecutivo directo, sin rodeos, en español.
 
-DATOS:
-- Leads nuevos: ${leadsN}
-- Cierres: ${cerradosN} (tasa conversión: ${tasa}%)
-- Leads perdidos: ${perdidosN}
-- Gestiones registradas: ${gestN}
-- Pipeline total activo: $${Math.round(pipelineTotal).toLocaleString('es-CO')} COP
-- Recurrencia mensual potencial: $${Math.round(pipelineRec).toLocaleString('es-CO')} COP
-- Producto con mayor pipeline: ${topProducto||'Sin datos'}
-- Ciudad con más leads: ${topCiudad||'Sin datos'}
-- Principal fuente de leads: ${origenTop||'Sin especificar'}
-- Ejecutivo con más cierres: ${execTop||'Sin datos'}
 
-Genera:
-1. RESUMEN EJECUTIVO (3-4 oraciones directas sobre el estado comercial)
-2. ALERTA PRINCIPAL (si hay algo crítico que atender)
-3. OPORTUNIDAD IDENTIFICADA (qué se puede aprovechar con estos datos)
-4. RECOMENDACIÓN INMEDIATA (una acción concreta para los próximos 7 días)
-
-Sé directo. No uses frases como "es importante destacar" o "cabe resaltar". Ve al grano.`;
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const data = await res.json();
-    return data.content?.[0]?.text || 'No se pudo generar el análisis.';
-  } catch(e) {
-    return 'Error al conectar con el servicio de IA.';
-  }
-}
-
-async function generarInsightSeccion(tipo, datos){
-  const prompts = {
-    origen: `Analiza esta distribución de origen de leads en Satlock (telemática/flotas): ${JSON.stringify(datos)}. En 2 oraciones directas: ¿qué dice esto del proceso de prospección y qué canal merece más atención?`,
-    pipeline: `Analiza este pipeline por producto en Satlock (telemática/flotas): ${JSON.stringify(datos)}. En 2 oraciones: ¿qué producto tiene mayor potencial y cuál está siendo subutilizado?`,
-    geo: `Analiza esta distribución geográfica de leads activos: ${JSON.stringify(datos)}. En 2 oraciones: ¿qué zona tiene mayor concentración y cuál podría tener potencial sin explotar?`,
-    ejecutivos: `Analiza este rendimiento de ejecutivos en Satlock: ${JSON.stringify(datos)}. En 2 oraciones directas: ¿quién lidera y qué patrón de gestión diferencia a los mejores?`
-  };
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 300,
-        messages: [{ role: 'user', content: prompts[tipo]||'' }]
-      })
-    });
-    const data = await res.json();
-    return data.content?.[0]?.text || '';
-  } catch(e) { return ''; }
-}
 
 function setKpiFilter(key, val){
   _kpiFilter[key]=val;
@@ -3022,16 +2950,6 @@ function renderKPIContent(){
   content.innerHTML=`
     <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Mostrando: <strong>${label}</strong>${_kpiFilter.linea!=='todos'?' · Línea '+_kpiFilter.linea:''}${_kpiFilter.ejecutivo?' · '+usuarios.find(u=>u.id===_kpiFilter.ejecutivo)?.nombre:''}</div>
 
-    <!-- Insight ejecutivo -->
-    <div class="insight-box" id="insight-ejecutivo">
-      <div class="insight-header">
-        <span style="font-size:16px">🤖</span>
-        <span class="insight-badge">IA · Análisis comercial</span>
-        <span class="insight-loading" id="insight-loading">Analizando datos...</span>
-      </div>
-      <div class="insight-text" id="insight-text" style="color:var(--text3);font-style:italic">Generando análisis ejecutivo...</div>
-    </div>
-
     <div class="kpi-section"><div class="kpi-section-title">Actividad comercial</div>
     <div class="kpi-cards">
       <div class="kpi-card"><div class="kpi-lbl">Nuevos leads</div><div class="kpi-val">${leadsEnPeriodo.length}</div><div class="kpi-sub">${label}</div></div>
@@ -3051,8 +2969,8 @@ function renderKPIContent(){
 
     <div class="kpi-section"><div class="kpi-section-title">Origen de leads — ${label}</div>
     <div class="charts-grid">
-      <div class="chart-wrap"><div class="chart-title">Leads por origen</div><div id="chart-origen" style="height:220px"></div><div class="insight-section" id="insight-origen"><div class="insight-section-title">🤖 Insight</div><div class="insight-section-text" style="color:var(--text3);font-style:italic">Analizando...</div></div></div>
-      <div class="chart-wrap"><div class="chart-title">Pipeline por producto (valor COP)</div><div id="chart-prod" style="height:220px"></div><div class="insight-section" id="insight-prod"><div class="insight-section-title">🤖 Insight</div><div class="insight-section-text" style="color:var(--text3);font-style:italic">Analizando...</div></div></div>
+      <div class="chart-wrap"><div class="chart-title">Leads por origen</div><div id="chart-origen" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Pipeline por producto (valor COP)</div><div id="chart-prod" style="height:220px"></div></div>
     </div></div>
 
     <div class="kpi-section"><div class="kpi-section-title">Embudo y evolución</div>
@@ -3064,12 +2982,11 @@ function renderKPIContent(){
     </div></div>
 
     <div class="kpi-section"><div class="kpi-section-title">Distribución geográfica</div>
-    <div class="chart-wrap"><div class="chart-title">Leads activos por ciudad</div><div id="chart-mapa" style="height:${Math.max(200,ciudades.length*28)}px"></div><div class="insight-section" id="insight-geo"><div class="insight-section-title">🤖 Insight</div><div class="insight-section-text" style="color:var(--text3);font-style:italic">Analizando...</div></div></div>
+    <div class="chart-wrap"><div class="chart-title">Leads activos por ciudad</div><div id="chart-mapa" style="height:${Math.max(200,ciudades.length*28)}px"></div></div>
     </div>
 
     <div class="kpi-section"><div class="kpi-section-title">Rendimiento por ejecutivo</div>
     <div id="tabla-ejecutivos"></div>
-    <div class="insight-section" id="insight-exec" style="margin-top:12px"><div class="insight-section-title">🤖 Insight</div><div class="insight-section-text" style="color:var(--text3);font-style:italic">Analizando...</div></div>
     </div>`;
 
   const plotBg='rgba(0,0,0,0)';
@@ -3245,7 +3162,8 @@ function getMetasQCO(linea){
 async function renderConsolidado(container){
   container.innerHTML='<div class="loading">Cargando consolidado...</div>';
   const {data:usuarios}=await sb.from('usuarios').select('*').neq('rol','gerencia').order('nombre');
-  const {data:ops}=await sb.from('oportunidades').select('usuario_id,estado,fecha_inicio_gestion,updated_at,de_mercadeo');
+  const {data:ops}=await sb.from('oportunidades').select('usuario_id,estado,fecha_inicio_gestion,updated_at,de_mercadeo,valor_unitario,unidades,valor_recurrente,unidades_recurrentes,producto,origen_lead');
+  const {data:gestAll}=await sb.from('gestiones').select('usuario_id,fecha,tipo').order('fecha',{ascending:false});
   const hoy=new Date();
   const mes=hoy.getMonth()+1;const anio=hoy.getFullYear();
   const {data:qco}=await sb.from('quince_cinco_uno').select('usuario_id,contactos,cotizaciones,cierres,semana').eq('mes',mes).eq('anio',anio);
@@ -3271,7 +3189,12 @@ async function renderConsolidado(container){
           return s+(d||0);
         },0)/opsCerradas.length)
       :null;
-    return {u,tc,tq,tci,cerrados,proceso,puntaje,metas,color,diasProm};
+    // Pipeline y leads del ejecutivo
+    const uPipeline=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
+    const uRec=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
+    const uGestMes=(gestAll||[]).filter(g=>g.usuario_id===u.id&&g.fecha&&new Date(g.fecha).getMonth()+1===mes&&new Date(g.fecha).getFullYear()===anio).length;
+    const tasaConv=tci>0&&tc>0?Math.round(tci/tc*100):0;
+    return {u,tc,tq,tci,cerrados,proceso,puntaje,metas,color,diasProm,uPipeline,uRec,uGestMes,tasaConv};
   }
 
 
@@ -3335,44 +3258,82 @@ function renderPodio(execs){
 
 function renderExecCards(execs){
     if(!execs.length) return '<div class="empty">Sin datos este período</div>';
+    const fmt=n=>Math.round(n).toLocaleString('es-CO');
     return `<div class="exec-grid-151">${execs.map(e=>{
-      const pctC=Math.min(100,Math.round(e.tc/e.metas.c*100));
-      const pctQ=Math.min(100,Math.round(e.tq/e.metas.q*100));
-      const pctCi=Math.min(100,Math.round(e.tci/e.metas.ci*100));
+      const sinCuota=e.metas.sinCuota;
+      const pctC=sinCuota?100:Math.min(100,Math.round(e.tc/e.metas.c*100));
+      const pctQ=sinCuota?100:Math.min(100,Math.round(e.tq/e.metas.q*100));
+      const pctCi=sinCuota?100:Math.min(100,Math.round(e.tci/e.metas.ci*100));
       const semC=semaforoRow(pctC),semQ=semaforoRow(pctQ),semCi=semaforoRow(pctCi);
-      const overall=semaforoRow(e.puntaje);
+      const overall=sinCuota?{cls:'card-blue',txt:'var(--sat-blue)',fill:'fill-blue'}:semaforoRow(e.puntaje);
       const ini=e.u.nombre.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase();
       const alertas=[];
-      if(pctC<50) alertas.push(`Contactos al ${pctC}%`);
-      if(pctQ<50) alertas.push(`Cotizaciones al ${pctQ}%`);
-      if(pctCi<50) alertas.push(`Sin cierres`);
+      if(!sinCuota&&pctC<50) alertas.push('Contactos al '+pctC+'%');
+      if(!sinCuota&&pctQ<50) alertas.push('Cotizaciones al '+pctQ+'%');
+      if(!sinCuota&&pctCi===0) alertas.push('Sin cierres');
       return `<div class="exec-card-151 ${overall.cls}">
+        <!-- Header ejecutivo -->
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
           <div class="exec-avatar-151" style="background:${e.color}">${ini}</div>
           <div style="flex:1">
             <div style="font-size:13px;font-weight:500;color:var(--text)">${e.u.nombre}</div>
-            <div style="font-size:10px;color:var(--text3)">${e.u.regional||e.u.linea}</div>
+            <div style="font-size:10px;color:var(--text3)">${e.u.regional||e.u.linea||''}</div>
           </div>
-          <div style="text-align:right">
-            <div style="font-size:18px;font-weight:300;color:${overall.txt};font-family:'Courier New',monospace">${e.puntaje}</div>
+          ${!sinCuota?`<div style="text-align:right">
+            <div style="font-size:20px;font-weight:300;color:${overall.txt};font-family:'Courier New',monospace">${e.puntaje}</div>
             <div style="font-size:9px;color:var(--text3)">puntos</div>
-          </div>
+          </div>`:''}
         </div>
-        ${[
-          {lbl:'Contactos',val:e.tc,meta:e.metas.c,pct:pctC,sem:semC},
-          {lbl:'Cotizaciones',val:e.tq,meta:e.metas.q,pct:pctQ,sem:semQ},
-          {lbl:'Cierres',val:e.tci,meta:e.metas.ci,pct:pctCi,sem:semCi}
-        ].map(m=>`
-          <div style="margin-bottom:8px">
+
+        <!-- Barras 15·5·1 -->
+        ${!sinCuota?`<div style="margin-bottom:12px">
+          ${[{lbl:'Contactos',val:e.tc,meta:e.metas.c,pct:pctC,sem:semC},{lbl:'Cotizaciones',val:e.tq,meta:e.metas.q,pct:pctQ,sem:semQ},{lbl:'Cierres',val:e.tci,meta:e.metas.ci,pct:pctCi,sem:semCi}].map(m=>`
+          <div style="margin-bottom:6px">
             <div style="display:flex;justify-content:space-between;margin-bottom:2px">
               <span style="font-size:11px;color:var(--text2)">${m.lbl}</span>
               <span style="font-size:11px;font-weight:500;color:${m.sem.txt}">${m.val} / ${m.meta}</span>
             </div>
             <div class="m151-bar"><div class="m151-fill ${m.sem.fill}" style="width:${m.pct}%"></div></div>
           </div>`).join('')}
-        ${alertas.length?`<div style="margin-top:8px;padding:7px 10px;background:var(--red-light);border:0.5px solid var(--border);border-radius:6px;font-size:11px;color:var(--red-dark)">
-          ${alertas.join(' · ')}
         </div>`:''}
+
+        <!-- KPIs de leads y pipeline -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+          <div style="background:var(--surface2);border-radius:6px;padding:7px 10px;text-align:center">
+            <div style="font-size:16px;font-weight:300;color:var(--sat-blue)">${e.tci}</div>
+            <div style="font-size:9px;color:var(--text3);margin-top:1px">Cierres</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:6px;padding:7px 10px;text-align:center">
+            <div style="font-size:16px;font-weight:300;color:var(--sat-orange)">${e.tasaConv}%</div>
+            <div style="font-size:9px;color:var(--text3);margin-top:1px">Conversión</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:6px;padding:7px 10px;text-align:center">
+            <div style="font-size:13px;font-weight:400;color:#534AB7">$ ${fmt(e.uPipeline)}</div>
+            <div style="font-size:9px;color:var(--text3);margin-top:1px">Pipeline total</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:6px;padding:7px 10px;text-align:center">
+            <div style="font-size:13px;font-weight:400;color:var(--green)">$ ${fmt(e.uRec)}</div>
+            <div style="font-size:9px;color:var(--text3);margin-top:1px">Rec./mes pot.</div>
+          </div>
+        </div>
+
+        <!-- Gestiones y días promedio -->
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <div style="background:var(--surface2);border-radius:6px;padding:6px 10px;flex:1;text-align:center">
+            <div style="font-size:14px;font-weight:300;color:var(--text)">${e.uGestMes}</div>
+            <div style="font-size:9px;color:var(--text3)">Gestiones mes</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:6px;padding:6px 10px;flex:1;text-align:center">
+            <div style="font-size:14px;font-weight:300;color:var(--text)">${e.diasProm?e.diasProm+'d':'—'}</div>
+            <div style="font-size:9px;color:var(--text3)">Ciclo prom.</div>
+          </div>
+          <div style="background:var(--surface2);border-radius:6px;padding:6px 10px;flex:1;text-align:center">
+            <div style="font-size:14px;font-weight:300;color:var(--text)">${e.proceso}</div>
+            <div style="font-size:9px;color:var(--text3)">En proceso</div>
+          </div>
+        </div>
+
+        ${alertas.length?`<div style="padding:6px 10px;background:var(--red-light);border:0.5px solid var(--red);border-radius:6px;font-size:10px;color:var(--red-dark)">${alertas.join(' · ')}</div>`:''}
       </div>`;
     }).join('')}</div>`;
   }
