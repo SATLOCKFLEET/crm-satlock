@@ -432,6 +432,17 @@ tbody tr:hover{background:var(--surface2)}
 .tarea-row.done{border-left-color:var(--border);opacity:.6}
 .tarea-header{display:flex;align-items:center;gap:12px;padding:10px 14px}
 .tarea-icono{width:28px;height:28px;border-radius:6px;background:var(--purple-light);color:#534AB7;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+
+/* ── Insights de IA ── */
+.insight-box{background:linear-gradient(135deg,var(--sat-blue-light) 0%,var(--purple-light) 100%);border:0.5px solid var(--sat-blue);border-radius:var(--radius);padding:16px;margin-bottom:16px;position:relative;overflow:hidden}
+.insight-box::before{content:'';position:absolute;top:-20px;right:-20px;width:80px;height:80px;border-radius:50%;background:rgba(25,66,140,.06)}
+.insight-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.insight-badge{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 8px;border-radius:10px;background:var(--sat-blue);color:#fff}
+.insight-loading{font-size:12px;color:var(--text3);font-style:italic}
+.insight-text{font-size:12px;color:var(--text);line-height:1.7;white-space:pre-wrap}
+.insight-section{background:var(--surface2);border-left:3px solid var(--sat-blue);border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:10px 14px;margin-top:10px}
+.insight-section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-blue);margin-bottom:5px}
+.insight-section-text{font-size:11px;color:var(--text2);line-height:1.6}
 </style>
 </head>
 <body>
@@ -2861,6 +2872,72 @@ async function renderKPIs(container){
   renderKPIContent();
 }
 
+async function generarInsightsKPI(datos){
+  const { leadsN, cerradosN, perdidosN, tasa, pipelineTotal, pipelineRec, gestN,
+    topProducto, topCiudad, origenTop, execTop, label, linea } = datos;
+
+  const prompt = `Eres un analista comercial senior de Satlock SAS, empresa de telemática y videovigilancia para flotas en Colombia y Ecuador. 
+Analiza estos KPIs del período ${label}${linea!=='todos'?' (línea '+linea+')':''} y genera un resumen ejecutivo directo, sin rodeos, en español.
+
+DATOS:
+- Leads nuevos: ${leadsN}
+- Cierres: ${cerradosN} (tasa conversión: ${tasa}%)
+- Leads perdidos: ${perdidosN}
+- Gestiones registradas: ${gestN}
+- Pipeline total activo: $${Math.round(pipelineTotal).toLocaleString('es-CO')} COP
+- Recurrencia mensual potencial: $${Math.round(pipelineRec).toLocaleString('es-CO')} COP
+- Producto con mayor pipeline: ${topProducto||'Sin datos'}
+- Ciudad con más leads: ${topCiudad||'Sin datos'}
+- Principal fuente de leads: ${origenTop||'Sin especificar'}
+- Ejecutivo con más cierres: ${execTop||'Sin datos'}
+
+Genera:
+1. RESUMEN EJECUTIVO (3-4 oraciones directas sobre el estado comercial)
+2. ALERTA PRINCIPAL (si hay algo crítico que atender)
+3. OPORTUNIDAD IDENTIFICADA (qué se puede aprovechar con estos datos)
+4. RECOMENDACIÓN INMEDIATA (una acción concreta para los próximos 7 días)
+
+Sé directo. No uses frases como "es importante destacar" o "cabe resaltar". Ve al grano.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    return data.content?.[0]?.text || 'No se pudo generar el análisis.';
+  } catch(e) {
+    return 'Error al conectar con el servicio de IA.';
+  }
+}
+
+async function generarInsightSeccion(tipo, datos){
+  const prompts = {
+    origen: `Analiza esta distribución de origen de leads en Satlock (telemática/flotas): ${JSON.stringify(datos)}. En 2 oraciones directas: ¿qué dice esto del proceso de prospección y qué canal merece más atención?`,
+    pipeline: `Analiza este pipeline por producto en Satlock (telemática/flotas): ${JSON.stringify(datos)}. En 2 oraciones: ¿qué producto tiene mayor potencial y cuál está siendo subutilizado?`,
+    geo: `Analiza esta distribución geográfica de leads activos: ${JSON.stringify(datos)}. En 2 oraciones: ¿qué zona tiene mayor concentración y cuál podría tener potencial sin explotar?`,
+    ejecutivos: `Analiza este rendimiento de ejecutivos en Satlock: ${JSON.stringify(datos)}. En 2 oraciones directas: ¿quién lidera y qué patrón de gestión diferencia a los mejores?`
+  };
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompts[tipo]||'' }]
+      })
+    });
+    const data = await res.json();
+    return data.content?.[0]?.text || '';
+  } catch(e) { return ''; }
+}
+
 function setKpiFilter(key, val){
   _kpiFilter[key]=val;
   // Actualizar botones activos
@@ -2945,6 +3022,16 @@ function renderKPIContent(){
   content.innerHTML=`
     <div style="font-size:11px;color:var(--text3);margin-bottom:14px">Mostrando: <strong>${label}</strong>${_kpiFilter.linea!=='todos'?' · Línea '+_kpiFilter.linea:''}${_kpiFilter.ejecutivo?' · '+usuarios.find(u=>u.id===_kpiFilter.ejecutivo)?.nombre:''}</div>
 
+    <!-- Insight ejecutivo -->
+    <div class="insight-box" id="insight-ejecutivo">
+      <div class="insight-header">
+        <span style="font-size:16px">🤖</span>
+        <span class="insight-badge">IA · Análisis comercial</span>
+        <span class="insight-loading" id="insight-loading">Analizando datos...</span>
+      </div>
+      <div class="insight-text" id="insight-text" style="color:var(--text3);font-style:italic">Generando análisis ejecutivo...</div>
+    </div>
+
     <div class="kpi-section"><div class="kpi-section-title">Actividad comercial</div>
     <div class="kpi-cards">
       <div class="kpi-card"><div class="kpi-lbl">Nuevos leads</div><div class="kpi-val">${leadsEnPeriodo.length}</div><div class="kpi-sub">${label}</div></div>
@@ -2964,8 +3051,8 @@ function renderKPIContent(){
 
     <div class="kpi-section"><div class="kpi-section-title">Origen de leads — ${label}</div>
     <div class="charts-grid">
-      <div class="chart-wrap"><div class="chart-title">Leads por origen</div><div id="chart-origen" style="height:220px"></div></div>
-      <div class="chart-wrap"><div class="chart-title">Pipeline por producto (valor COP)</div><div id="chart-prod" style="height:220px"></div></div>
+      <div class="chart-wrap"><div class="chart-title">Leads por origen</div><div id="chart-origen" style="height:220px"></div><div class="insight-section" id="insight-origen"><div class="insight-section-title">🤖 Insight</div><div class="insight-section-text" style="color:var(--text3);font-style:italic">Analizando...</div></div></div>
+      <div class="chart-wrap"><div class="chart-title">Pipeline por producto (valor COP)</div><div id="chart-prod" style="height:220px"></div><div class="insight-section" id="insight-prod"><div class="insight-section-title">🤖 Insight</div><div class="insight-section-text" style="color:var(--text3);font-style:italic">Analizando...</div></div></div>
     </div></div>
 
     <div class="kpi-section"><div class="kpi-section-title">Embudo y evolución</div>
@@ -2977,11 +3064,13 @@ function renderKPIContent(){
     </div></div>
 
     <div class="kpi-section"><div class="kpi-section-title">Distribución geográfica</div>
-    <div class="chart-wrap"><div class="chart-title">Leads activos por ciudad</div><div id="chart-mapa" style="height:${Math.max(200,ciudades.length*28)}px"></div></div>
+    <div class="chart-wrap"><div class="chart-title">Leads activos por ciudad</div><div id="chart-mapa" style="height:${Math.max(200,ciudades.length*28)}px"></div><div class="insight-section" id="insight-geo"><div class="insight-section-title">🤖 Insight</div><div class="insight-section-text" style="color:var(--text3);font-style:italic">Analizando...</div></div></div>
     </div>
 
     <div class="kpi-section"><div class="kpi-section-title">Rendimiento por ejecutivo</div>
-    <div id="tabla-ejecutivos"></div></div>`;
+    <div id="tabla-ejecutivos"></div>
+    <div class="insight-section" id="insight-exec" style="margin-top:12px"><div class="insight-section-title">🤖 Insight</div><div class="insight-section-text" style="color:var(--text3);font-style:italic">Analizando...</div></div>
+    </div>`;
 
   const plotBg='rgba(0,0,0,0)';
   const plotFont={family:'inherit',size:11,color:'#5a5a56'};
@@ -3049,6 +3138,36 @@ function renderKPIContent(){
     const uRec=opsFilt.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
     return {u,uLeads,uCierres,uGest,uTasa,uPipeline,uRec};
   }).sort((a,b)=>b.uCierres-a.uCierres||b.uLeads-a.uLeads);
+
+  // ── Generar insights de IA en background ──
+  const topProd=prodEntries[0]?.[0]||'';
+  const topCiudadNombre=ciudades[0]?.[0]||'';
+  const origenTopKey=Object.entries(origenMap).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
+  const execTopNombre=execFilt.map(u=>({n:u.nombre,c:opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.updated_at)).length})).sort((a,b)=>b.c-a.c)[0]?.n||'';
+
+  // Insight ejecutivo
+  generarInsightsKPI({leadsN:leadsEnPeriodo.length,cerradosN:cerradosEnPeriodo.length,perdidosN:perdidosEnPeriodo.length,tasa,pipelineTotal,pipelineRec,gestN:gestEnPeriodo.length,topProducto:topProd,topCiudad:topCiudadNombre,origenTop:origenTopKey,execTop:execTopNombre,label,linea:_kpiFilter.linea}).then(txt=>{
+    const el=document.getElementById('insight-text');
+    const load=document.getElementById('insight-loading');
+    if(el) el.textContent=txt;
+    if(el) el.style.fontStyle='normal';
+    if(el) el.style.color='var(--text)';
+    if(load) load.style.display='none';
+  });
+
+  // Insights por sección (en paralelo)
+  generarInsightSeccion('origen',Object.entries(origenMap).map(([k,v])=>({origen:k,leads:v}))).then(txt=>{
+    const el=document.querySelector('#insight-origen .insight-section-text');
+    if(el&&txt){el.textContent=txt;el.style.fontStyle='normal';}
+  });
+  generarInsightSeccion('pipeline',prodEntries.slice(0,5).map(([k,v])=>({producto:k,pipeline_unica:Math.round(v.unica),pipeline_rec:Math.round(v.rec),unidades:v.unidades}))).then(txt=>{
+    const el=document.querySelector('#insight-prod .insight-section-text');
+    if(el&&txt){el.textContent=txt;el.style.fontStyle='normal';}
+  });
+  if(ciudades.length) generarInsightSeccion('geo',ciudades.slice(0,8).map(([c,n])=>({ciudad:c,leads:n}))).then(txt=>{
+    const el=document.querySelector('#insight-geo .insight-section-text');
+    if(el&&txt){el.textContent=txt;el.style.fontStyle='normal';}
+  });
 
   tablaEl.innerHTML=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
     <thead><tr style="background:var(--surface2);border-bottom:0.5px solid var(--border)">
