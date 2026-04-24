@@ -395,6 +395,35 @@ tbody tr:hover{background:var(--surface2)}
 .traz-campo{font-size:11px;color:var(--text2);margin-bottom:1px}
 .traz-campo strong{color:var(--text)}
 .traz-nota{font-size:11px;color:var(--text);margin-top:3px;padding:4px 8px;background:var(--surface2);border-radius:4px;border-left:2px solid var(--sat-blue)}
+
+/* ── Ficha unificada de cliente ── */
+.ficha-tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:16px;gap:0}
+.ficha-tab{font-family:inherit;font-size:12px;font-weight:500;padding:8px 16px;border:none;background:none;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .12s}
+.ficha-tab.active{color:var(--sat-blue);border-bottom-color:var(--sat-blue)}
+.ficha-tab:hover:not(.active){color:var(--text)}
+.ficha-panel{display:none}.ficha-panel.active{display:block}
+.modal-box.ficha{max-width:680px;width:95vw}
+.timeline-entry{display:flex;gap:10px;padding:8px 0;border-bottom:0.5px solid var(--border);position:relative}
+.timeline-entry:last-child{border-bottom:none}
+.timeline-left{display:flex;flex-direction:column;align-items:center;width:32px;flex-shrink:0}
+.timeline-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.timeline-icon.llamada{background:#ddeeff;color:var(--sat-blue)}
+.timeline-icon.whatsapp{background:#e8fdf0;color:#1a7a42}
+.timeline-icon.correo{background:var(--sat-orange-light);color:var(--sat-orange)}
+.timeline-icon.presencial{background:var(--purple-light);color:#534AB7}
+.timeline-icon.cambio{background:var(--surface2);color:var(--text3)}
+.timeline-icon.nota{background:var(--amber-light);color:var(--amber)}
+.timeline-line{flex:1;width:1px;background:var(--border);margin-top:4px}
+.timeline-content{flex:1;min-width:0}
+.timeline-fecha{font-size:10px;color:var(--text3);font-family:'Courier New',monospace;margin-bottom:2px}
+.timeline-tipo{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.timeline-tipo.llamada{color:var(--sat-blue)}
+.timeline-tipo.whatsapp{color:#1a7a42}
+.timeline-tipo.correo{color:var(--sat-orange)}
+.timeline-tipo.presencial{color:#534AB7}
+.timeline-tipo.cambio{color:var(--text3)}
+.timeline-body{font-size:12px;color:var(--text);line-height:1.5}
+.timeline-cambio{font-size:11px;color:var(--text2);background:var(--surface2);padding:3px 8px;border-radius:4px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -896,7 +925,8 @@ function calcularTamanoNegocio(){
   if(el) el.value = totalPipeline>0 ? totalPipeline.toLocaleString('es-CO') : '';
 }
 
-async function generarNumeroPropuesta(){
+async function generarNumeroPropuesta(campoId){
+  campoId = campoId || 'f-numprop';
   // Consultar el último consecutivo en Supabase
   const {data} = await sb.from('oportunidades')
     .select('num_propuesta')
@@ -913,7 +943,7 @@ async function generarNumeroPropuesta(){
   const mm=String(hoy.getMonth()+1).padStart(2,'0');
   const yy=String(hoy.getFullYear()).slice(-2);
   const num = 'CRM'+String(consecutivo).padStart(4,'0')+dd+mm+yy;
-  document.getElementById('f-numprop').value = num;
+  document.getElementById(campoId).value = num;
 }
 function actualizarProductosForm(){
   const linea=document.getElementById('f-linea')?.value||'fleet';
@@ -1091,83 +1121,249 @@ async function registrarQCOAuto(contactos,cotizaciones,cierres){
 
 // ── EDICIÓN Y BORRADO DE OPORTUNIDADES ───────────────────────────────────────
 async function abrirEditar(id){
-  const {data:r}=await sb.from('oportunidades').select('*').eq('id',id).single();
-  if(!r) return;
-  // Cargar historial de trazabilidad
-  const {data:historial}=await sb.from('trazabilidad').select('*').eq('oportunidad_id',id).order('created_at',{ascending:false});
+  // Cargar datos del lead, gestiones y trazabilidad en paralelo
+  const [opRes, gestRes, trazRes] = await Promise.all([
+    sb.from('oportunidades').select('*').eq('id',id).single(),
+    sb.from('gestiones').select('*,usuarios(nombre)').eq('oportunidad_id',id).order('fecha',{ascending:false}),
+    sb.from('trazabilidad').select('*,usuarios(nombre)').eq('oportunidad_id',id).order('created_at',{ascending:false})
+  ]);
+  const r = opRes.data; if(!r) return;
+  const gestiones = gestRes.data||[];
+  const trazabilidad = trazRes.data||[];
+
   const esAmbas=PERFIL.linea==='ambas';
   const lineaReg=r.linea||PERFIL.linea;
   const productos=getProductosPorLinea(lineaReg);
+
+  // ── Timeline unificado (gestiones + trazabilidad, ordenado por fecha desc) ──
+  const TIPO_ICON={llamada:'📞',whatsapp:'💬',correo:'✉',presencial:'🤝',otro:'•',cambio:'⟳',nota:'📝'};
+  const TIPO_LABEL={llamada:'Llamada',whatsapp:'WhatsApp',correo:'Correo',presencial:'Presencial',otro:'Gestión',cambio:'Cambio',nota:'Nota'};
+  const ESTADO_LABEL={en_proceso:'En proceso',propuesta_enviada:'Propuesta enviada',cerrado:'Cerrado',perdido:'Perdido'};
+
+  const timelineItems = [
+    ...gestiones.map(g=>({
+      fecha: g.fecha+'T12:00:00',
+      tipo: g.tipo||'otro',
+      cuerpo: g.nota||'',
+      autor: g.usuarios?.nombre||'',
+      proxima: g.proxima_gestion,
+      esGestion: true,
+      id: g.id
+    })),
+    ...trazabilidad.map(t=>({
+      fecha: t.created_at,
+      tipo: t.nota&&!t.campo?'nota':'cambio',
+      campo: t.campo,
+      anterior: t.valor_anterior,
+      nuevo: t.valor_nuevo,
+      cuerpo: t.nota||'',
+      autor: t.usuarios?.nombre||'',
+      esGestion: false,
+      id: t.id
+    }))
+  ].sort((a,b)=>new Date(b.fecha)-new Date(a.fecha));
+
+  const timelineHtml = timelineItems.length ? timelineItems.map((it,idx)=>`
+    <div class="timeline-entry">
+      <div class="timeline-left">
+        <div class="timeline-icon ${it.tipo}">${TIPO_ICON[it.tipo]||'•'}</div>
+        ${idx<timelineItems.length-1?'<div class="timeline-line"></div>':''}
+      </div>
+      <div class="timeline-content">
+        <div class="timeline-fecha">${new Date(it.fecha).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})}${it.autor?' · '+it.autor:''}</div>
+        <div class="timeline-tipo ${it.tipo}">${TIPO_LABEL[it.tipo]||it.tipo}</div>
+        ${it.cuerpo?`<div class="timeline-body">${it.cuerpo}</div>`:''}
+        ${it.campo?`<div class="timeline-cambio">${it.campo}: <strong>${it.anterior||'—'}</strong> → <strong>${it.nuevo||'—'}</strong></div>`:''}
+        ${it.proxima?`<div style="font-size:10px;color:var(--sat-orange);margin-top:3px">Próx. gestión: ${it.proxima.split('-').reverse().join('/')}</div>`:''}
+      </div>
+    </div>`).join('')
+  : '<div style="font-size:12px;color:var(--text3);padding:12px 0">Sin actividad registrada aún.</div>';
+
+  // Generar opciones de hora
+  const timeOpts=[];
+  for(let h=7;h<=20;h++) for(let m of[0,15,30,45]) timeOpts.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
+
   const overlay=document.createElement('div');
   overlay.className='modal-overlay';
   overlay.id='modal-editar';
-
-  // Render del historial
-  const TRAZ_LABELS={estado:'Estado',avance:'Avance',producto:'Producto',asunto:'Asunto',proxima_accion:'Próxima acción',notas:'Nota',valor_estimado:'Valor estimado'};
-  const dotClass=(estado)=>estado==='cerrado'?'cierre':estado==='perdido'?'perdido':estado==='propuesta_enviada'?'propuesta':'';
-  const historialHtml=(historial&&historial.length)?`
-    <div style="margin-bottom:16px">
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-        Historial de seguimiento
-        <span style="font-size:10px;font-weight:400;background:var(--sat-blue-light);color:var(--sat-blue);padding:1px 6px;border-radius:10px">${historial.length} cambios</span>
-      </div>
-      <div class="traz-timeline">
-        ${historial.map(h=>`
-          <div class="traz-entry">
-            <div class="traz-dot ${dotClass(h.estado_nuevo||'')}"></div>
-            <div class="traz-fecha">${new Date(h.created_at).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div>
-            ${h.campo?`<div class="traz-campo">${TRAZ_LABELS[h.campo]||h.campo}: <strong>${h.valor_anterior||'—'}</strong> → <strong>${h.valor_nuevo||'—'}</strong></div>`:''}
-            ${h.nota?`<div class="traz-nota">${h.nota}</div>`:''}
-          </div>`).join('')}
-      </div>
-    </div>`:'<div style="font-size:11px;color:var(--text3);margin-bottom:16px">Sin historial de seguimiento aún.</div>';
-
   overlay.innerHTML=`
-    <div class="modal-box" style="max-width:600px">
-      <div class="modal-title">
-        Seguimiento — ${r.empresa||'Oportunidad'}
-        <button class="modal-close" onclick="document.getElementById('modal-editar').remove()">✕</button>
+    <div class="modal-box ficha">
+      <div class="modal-title" style="flex-direction:column;align-items:flex-start;gap:4px">
+        <div style="display:flex;width:100%;justify-content:space-between;align-items:center">
+          <div>
+            <span style="font-size:15px;font-weight:500">${r.empresa||'Sin nombre'}</span>
+            <span style="font-size:11px;color:var(--text3);margin-left:8px">${r.contacto||''}</span>
+          </div>
+          <button class="modal-close" onclick="document.getElementById('modal-editar').remove()">✕</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${r.estado==='cerrado'?'var(--green-light)':r.estado==='perdido'?'var(--red-light)':r.estado==='propuesta_enviada'?'var(--sat-orange-light)':'var(--sat-blue-light)'};color:${r.estado==='cerrado'?'var(--green)':r.estado==='perdido'?'var(--red)':r.estado==='propuesta_enviada'?'var(--sat-orange)':'var(--sat-blue)'}">${ESTADO_LABEL[r.estado]||r.estado}</span>
+          <span style="font-size:10px;color:var(--text3)">${r.producto||''}</span>
+          ${r.de_mercadeo?'<span style="font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:#fdeee8;color:var(--sat-orange)">Mercadeo</span>':''}
+          <span style="font-size:10px;color:var(--text3)">${r.num_propuesta||''}</span>
+        </div>
       </div>
-      ${historialHtml}
-      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:10px">Actualizar oportunidad</div>
-      <div class="form-grid">
-        <div class="fg"><div class="flbl">Fecha</div><input class="finput" id="e-fecha" type="date" value="${r.fecha||''}"/></div>
-        <div class="fg"><div class="flbl">Estado</div>
-          <select class="fsel" id="e-estado">
-            ${Object.entries(ESTADOS).map(([k,v])=>`<option value="${k}"${r.estado===k?' selected':''}>${v.label}</option>`).join('')}
-          </select></div>
-        ${esAmbas?`<div class="fg"><div class="flbl">Línea comercial</div>
-          <select class="fsel" id="e-linea" onchange="actualizarProductosEditar()">
-            <option value="carga"${lineaReg==='carga'?' selected':''}>Carga</option>
-            <option value="fleet"${lineaReg==='fleet'?' selected':''}>Fleet</option>
-          </select></div>`:`<input type="hidden" id="e-linea" value="${lineaReg}"/>`}
-        <div class="fg"><div class="flbl">Empresa</div><input class="finput" id="e-empresa" value="${(r.empresa||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg"><div class="flbl">Contacto</div><input class="finput" id="e-contacto" value="${(r.contacto||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg"><div class="flbl">Cargo contacto</div><input class="finput" id="e-cargo" value="${(r.cargo_contacto||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg"><div class="flbl">Teléfono</div><input class="finput" id="e-tel" value="${(r.telefono||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg"><div class="flbl">Correo</div><input class="finput" id="e-correo" type="email" value="${(r.correo||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg"><div class="flbl">N° propuesta</div><input class="finput" id="e-numprop" value="${(r.num_propuesta||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg full"><div class="flbl">Producto</div>
-          <select class="fsel" id="e-producto">
-            <option value="">Seleccionar...</option>
-            ${productos.map(p=>`<option${r.producto===p?' selected':''}>${p}</option>`).join('')}
-          </select></div>
-        <div class="fg full"><div class="flbl">Asunto</div><input class="finput" id="e-asunto" value="${(r.asunto||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg full"><div class="flbl">Avance (%)</div>
-          <input type="range" class="finput" id="e-avance" min="0" max="100" value="${r.avance||0}" oninput="document.getElementById('e-avance-val').textContent=this.value+'%'"/>
-          <span id="e-avance-val" style="font-size:11px;color:var(--text3)">${r.avance||0}%</span></div>
-        <div class="fg"><div class="flbl">Próxima acción</div><input class="finput" id="e-prox" value="${(r.proxima_accion||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg"><div class="flbl">Fecha próx. acción</div><input class="finput" type="date" id="e-fprox" value="${r.fecha_proxima_accion||''}"/></div>
-        <div class="fg"><div class="flbl">Valor estimado</div><input class="finput" type="number" id="e-valor" value="${r.valor_estimado||''}"/></div>
-        <div class="fg"><div class="flbl">Link propuesta en Drive</div><input class="finput" id="e-linkdrive" value="${(r.link_drive||'').replace(/"/g,'&quot;')}"/></div>
-        <div class="fg full"><div class="flbl">Notas</div><textarea class="ftxt" id="e-notas">${r.notas||''}</textarea></div>
+
+      <div class="ficha-tabs">
+        <button class="ficha-tab active" onclick="switchFichaTab('actividad',this)">Actividad</button>
+        <button class="ficha-tab" onclick="switchFichaTab('negocio',this)">Negocio</button>
+        <button class="ficha-tab" onclick="switchFichaTab('editar',this)">Editar datos</button>
       </div>
-      <div class="form-actions" style="margin-top:16px">
-        <button class="btn-sec" onclick="document.getElementById('modal-editar').remove()">Cancelar</button>
-        <button class="btn-pri" onclick="guardarEdicion('${id}')">Guardar cambios</button>
+
+      <!-- PANEL ACTIVIDAD -->
+      <div class="ficha-panel active" id="fp-actividad">
+        <!-- Formulario nueva gestión -->
+        <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Registrar gestión</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            ${['llamada','whatsapp','correo','presencial','otro'].map(t=>`
+              <button class="tipo-btn" id="ftipo-${t}" onclick="selTipoFicha('${t}')">${t==='llamada'?'📞 Llamada':t==='whatsapp'?'💬 WhatsApp':t==='correo'?'✉ Correo':t==='presencial'?'🤝 Presencial':'• Otro'}</button>
+            `).join('')}
+          </div>
+          <div style="display:grid;grid-template-columns:130px 130px 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Fecha gestión</div>
+              <input class="finput" type="date" id="f-gest-fecha" value="${fechaHoyLocal()}" style="font-size:12px;padding:7px 10px"/>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Próxima gestión</div>
+              <input class="finput" type="date" id="f-gest-prox" value="${proxGestionDefault()}" style="font-size:12px;padding:7px 10px"/>
+            </div>
+            <div>
+              <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Nota</div>
+              <textarea class="ftxt" id="f-gest-nota" placeholder="Resultado de la gestión, acuerdo, próximo paso..." style="min-height:40px;font-size:12px;resize:vertical"></textarea>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end">
+            <button class="btn-pri" onclick="guardarGestionDesdeFicha('${r.id}')" style="font-size:11px;padding:6px 14px">Guardar gestión</button>
+          </div>
+        </div>
+        <!-- Timeline -->
+        <div style="max-height:340px;overflow-y:auto;padding-right:4px" id="ficha-timeline">
+          ${timelineHtml}
+        </div>
+      </div>
+
+      <!-- PANEL NEGOCIO -->
+      <div class="ficha-panel" id="fp-negocio">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
+          <div><span style="color:var(--text3)">Empresa</span><div style="font-weight:500;margin-top:2px">${r.empresa||'—'}</div></div>
+          <div><span style="color:var(--text3)">NIT/RUC</span><div style="margin-top:2px">${r.nit||'—'}</div></div>
+          <div><span style="color:var(--text3)">Contacto</span><div style="margin-top:2px">${r.contacto||'—'}</div></div>
+          <div><span style="color:var(--text3)">Cargo</span><div style="margin-top:2px">${r.cargo_contacto||'—'}</div></div>
+          <div><span style="color:var(--text3)">Teléfono</span><div style="margin-top:2px">${r.telefono||'—'}</div></div>
+          <div><span style="color:var(--text3)">Correo</span><div style="margin-top:2px">${r.correo||'—'}</div></div>
+          <div><span style="color:var(--text3)">Producto</span><div style="font-weight:500;margin-top:2px">${r.producto||'—'}</div></div>
+          <div><span style="color:var(--text3)">Línea</span><div style="margin-top:2px">${r.linea||'—'}</div></div>
+          <div><span style="color:var(--text3)">Tipo negocio</span><div style="margin-top:2px">${[r.venta_unica?'Venta única':'',r.recurrente?'Recurrente':''].filter(Boolean).join(' + ')||'—'}</div></div>
+          <div><span style="color:var(--text3)">Unidades</span><div style="margin-top:2px">${r.unidades||'—'}</div></div>
+          <div><span style="color:var(--text3)">Valor estimado</span><div style="font-weight:500;color:var(--green);margin-top:2px">${r.valor_estimado?'$ '+parseFloat(r.valor_estimado).toLocaleString('es-CO'):'—'}</div></div>
+          <div><span style="color:var(--text3)">N° propuesta</span><div style="font-family:'Courier New',monospace;margin-top:2px">${r.num_propuesta||'—'}</div></div>
+          <div style="grid-column:1/-1"><span style="color:var(--text3)">Asunto</span><div style="margin-top:2px">${r.asunto||'—'}</div></div>
+          <div style="grid-column:1/-1"><span style="color:var(--text3)">Próxima acción</span><div style="margin-top:2px;color:var(--sat-orange)">${r.proxima_accion||'—'}${r.fecha_proxima_accion?' ('+r.fecha_proxima_accion.split('-').reverse().join('/)+')':''}</div></div>
+          ${r.link_drive?`<div style="grid-column:1/-1"><a href="${r.link_drive}" target="_blank" style="color:var(--sat-blue);font-size:12px">Ver propuesta en Drive ↗</a></div>`:''}
+          <div style="grid-column:1/-1"><span style="color:var(--text3)">Notas</span><div style="margin-top:2px;white-space:pre-wrap">${r.notas||'—'}</div></div>
+          <div><span style="color:var(--text3)">Apertura</span><div style="margin-top:2px">${r.fecha_inicio_gestion||r.fecha||'—'}</div></div>
+          <div><span style="color:var(--text3)">Días en gestión</span><div style="margin-top:2px">${diasGestion(r.fecha_inicio_gestion||r.fecha,r.estado==='cerrado'||r.estado==='perdido'?r.updated_at?.split('T')[0]:null)||'—'}d</div></div>
+        </div>
+      </div>
+
+      <!-- PANEL EDITAR -->
+      <div class="ficha-panel" id="fp-editar">
+        <div class="form-grid">
+          <div class="fg"><div class="flbl">Fecha</div><input class="finput" id="e-fecha" type="date" value="${r.fecha||''}"/></div>
+          <div class="fg"><div class="flbl">Estado</div>
+            <select class="fsel" id="e-estado">
+              ${Object.entries(ESTADOS).map(([k,v])=>`<option value="${k}"${r.estado===k?' selected':''}>${v.label}</option>`).join('')}
+            </select></div>
+          ${esAmbas?`<div class="fg"><div class="flbl">Línea</div>
+            <select class="fsel" id="e-linea">
+              <option value="fleet"${lineaReg==='fleet'?' selected':''}>Fleet</option>
+              <option value="carga"${lineaReg==='carga'?' selected':''}>Carga</option>
+            </select></div>`:`<input type="hidden" id="e-linea" value="${lineaReg}"/>`}
+          <div class="fg"><div class="flbl">Empresa</div><input class="finput" id="e-empresa" value="${(r.empresa||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Contacto</div><input class="finput" id="e-contacto" value="${(r.contacto||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Cargo</div><input class="finput" id="e-cargo" value="${(r.cargo_contacto||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Teléfono</div><input class="finput" id="e-tel" value="${(r.telefono||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Correo</div><input class="finput" id="e-correo" type="email" value="${(r.correo||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">N° propuesta</div>
+            <div style="display:flex;gap:6px">
+              <input class="finput" id="e-numprop" value="${(r.num_propuesta||'').replace(/"/g,'&quot;')}" style="font-family:'Courier New',monospace"/>
+              <button class="btn-sec" onclick="generarNumeroPropuesta('e-numprop')" style="font-size:11px;padding:7px 10px;white-space:nowrap">Generar</button>
+            </div></div>
+          <div class="fg full"><div class="flbl">Producto</div>
+            <select class="fsel" id="e-producto">
+              <option value="">Seleccionar...</option>
+              ${productos.map(p=>`<option${r.producto===p?' selected':''}>${p}</option>`).join('')}
+            </select></div>
+          <div class="fg full"><div class="flbl">Asunto</div><input class="finput" id="e-asunto" value="${(r.asunto||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg full"><div class="flbl">Avance (%) <span id="e-avance-val" style="font-size:11px;color:var(--text3)">${r.avance||0}%</span></div>
+            <input type="range" class="finput" id="e-avance" min="0" max="100" value="${r.avance||0}" oninput="document.getElementById('e-avance-val').textContent=this.value+'%'"/></div>
+          <div class="fg"><div class="flbl">Próxima acción</div><input class="finput" id="e-prox" value="${(r.proxima_accion||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Fecha próxima acción</div><input class="finput" type="date" id="e-fprox" value="${r.fecha_proxima_accion||''}"/></div>
+          <div class="fg"><div class="flbl">Valor estimado</div><input class="finput" id="e-valor" value="${r.valor_estimado||''}" placeholder="0"/></div>
+          <div class="fg"><div class="flbl">Link Drive</div><input class="finput" id="e-linkdrive" value="${(r.link_drive||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg full">
+            <div style="display:flex;gap:16px;align-items:center;padding:8px 12px;background:var(--surface2);border-radius:var(--radius-sm)">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">
+                <input type="checkbox" id="e-de-mercadeo" ${r.de_mercadeo?'checked':''} style="accent-color:var(--sat-orange);width:14px;height:14px"/> Viene de Mercadeo
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">
+                <input type="checkbox" id="e-lead-nuevo" ${r.es_lead_nuevo?'checked':''} style="accent-color:var(--sat-blue);width:14px;height:14px"/> Lead nuevo (15·5·1)
+              </label>
+            </div>
+          </div>
+          <div class="fg full"><div class="flbl">Notas</div>
+            <textarea class="ftxt" id="e-notas" style="min-height:60px">${r.notas||''}</textarea></div>
+          <div class="fg full"><div class="flbl">Nota de seguimiento</div>
+            <textarea class="ftxt" id="e-nota-traz" placeholder="Describe el cambio realizado..." style="min-height:44px;font-size:12px"></textarea></div>
+        </div>
+        <div class="form-actions" style="margin-top:12px;justify-content:space-between">
+          <button class="btn-sec" style="color:var(--red);border-color:var(--red)" onclick="confirmarBorrar('${r.id}','${(r.empresa||'').replace(/'/g,"\\'")}')">Eliminar</button>
+          <button class="btn-pri" onclick="guardarEdicion('${r.id}')">Guardar cambios</button>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(overlay);
+  // Seleccionar llamada por defecto
+  document.getElementById('ftipo-llamada')?.classList.add('sel-llamada');
+  window._fichaTipo = 'llamada';
+}
+
+function switchFichaTab(tab, btn){
+  document.querySelectorAll('.ficha-tab').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.ficha-panel').forEach(p=>p.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  document.getElementById('fp-'+tab)?.classList.add('active');
+}
+
+function selTipoFicha(tipo){
+  ['llamada','whatsapp','correo','presencial','otro'].forEach(t=>{
+    const b=document.getElementById('ftipo-'+t);
+    if(b) b.className='tipo-btn';
+  });
+  const sel=document.getElementById('ftipo-'+tipo);
+  if(sel) sel.classList.add('sel-'+tipo);
+  window._fichaTipo=tipo;
+}
+
+async function guardarGestionDesdeFicha(opId){
+  const nota=document.getElementById('f-gest-nota')?.value.trim();
+  const fecha=document.getElementById('f-gest-fecha')?.value||fechaHoyLocal();
+  const proxGest=document.getElementById('f-gest-prox')?.value||null;
+  const tipo=window._fichaTipo||'llamada';
+  if(!nota){alert('Escriba una nota de la gestión.');return;}
+  const {data,error}=await sb.from('gestiones').insert({
+    oportunidad_id:opId, usuario_id:USER.id, fecha, tipo, nota,
+    proxima_gestion:proxGest||null
+  }).select().single();
+  if(error){alert('Error: '+error.message);return;}
+  // Actualizar diario en memoria
+  if(!window._diarioGestiones) window._diarioGestiones=[];
+  window._diarioGestiones.unshift(data);
+  // Reabrir la ficha para reflejar la nueva gestión
+  document.getElementById('modal-editar').remove();
+  abrirEditar(opId);
 }
 function actualizarProductosEditar(){
   const linea=document.getElementById('e-linea').value;
@@ -2257,6 +2453,7 @@ function renderDiarioLista(q, filtro){
             <span class="diario-empresa">${op.empresa}</span>
             ${op.de_mercadeo?`<span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;background:#fdeee8;color:var(--sat-orange)">Mercadeo</span>`:''}
             <span style="font-size:10px;color:var(--text3)">${op.producto||''}</span>
+            <button onclick="event.stopPropagation();abrirEditar('${op.id}')" style="font-family:inherit;font-size:10px;padding:2px 8px;border:0.5px solid var(--sat-blue);border-radius:4px;background:var(--sat-blue-light);color:var(--sat-blue);cursor:pointer">Ver ficha</button>
           </div>
           <div class="diario-contacto">${op.contacto||''}${op.cargo_contacto?' · '+op.cargo_contacto:''}</div>
         </div>
