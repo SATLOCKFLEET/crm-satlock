@@ -618,7 +618,7 @@ function construirTabs(){
   const base = [
     {label:'Seguimiento',render:renderSeguimiento},
     {label:'+ Nueva oportunidad',render:renderNueva},
-    {label:'Diario de gestión',render:renderDiario},
+    {label:'Mi día',render:renderDiario},
     {label:'Agenda',render:renderAgenda},
     {label:'15 · 5 · 1',render:renderQCO},
   ];
@@ -2310,50 +2310,44 @@ async function registrarQCO(){
 
 
 
-// ── DIARIO DE GESTIÓN ─────────────────────────────────────────────────────────
+// ── MI DÍA (Actividad diaria) ────────────────────────────────────────────────
 async function renderDiario(container){
+  // Solo los leads propios del ejecutivo
   let query = sb.from('oportunidades')
-    .select('id,empresa,contacto,cargo_contacto,estado,fecha_inicio_gestion,de_mercadeo,producto')
-    .in('estado',['en_proceso','propuesta_enviada','cerrado'])
+    .select('id,empresa,contacto,cargo_contacto,estado,fecha_inicio_gestion,de_mercadeo,producto,proxima_accion,fecha_proxima_accion')
+    .in('estado',['en_proceso','propuesta_enviada'])
     .order('empresa');
-  if(PERFIL.rol==='ejecutivo_fleet'||PERFIL.rol==='ejecutivo_carga'){
-    query = query.eq('usuario_id', USER.id);
-  }
+  // Siempre filtrar por usuario propio en esta vista
+  query = query.eq('usuario_id', USER.id);
   const {data:ops} = await query;
-  
+
   // Cargar última gestión de cada oportunidad
   const {data:gestiones} = await sb.from('gestiones')
     .select('oportunidad_id,fecha,tipo,nota,proxima_gestion,created_at')
-    .order('fecha',{ascending:false});
+    .eq('usuario_id', USER.id)
+    .order('created_at',{ascending:false});
+
+  window._diarioOps = ops||[];
+  window._diarioGestiones = gestiones||[];
 
   container.innerHTML=`
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
-        <div style="font-size:14px;font-weight:500;color:var(--text)">Diario de gestión</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Registro de contactos y seguimiento — alerta próxima gestión por cliente</div>
+        <div style="font-size:14px;font-weight:500;color:var(--text)">Mi día</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Clientes activos que requieren atención — haz clic en cualquiera para abrir la ficha completa</div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <div style="display:flex;gap:4px">
-          <button class="fbtn active" id="dfiltro-todos" onclick="setFiltroDiario('todos',this)">Todos</button>
-          <button class="fbtn" id="dfiltro-urgentes" onclick="setFiltroDiario('urgentes',this)">Urgentes</button>
-          <button class="fbtn" id="dfiltro-hoy" onclick="setFiltroDiario('hoy',this)">Hoy</button>
-          <button class="fbtn" id="dfiltro-semana" onclick="setFiltroDiario('semana',this)">Esta semana</button>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-family:inherit;font-size:11px;font-weight:500;padding:6px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--sat-blue);color:var(--sat-blue);background:var(--sat-blue-light)">
-          📥 Importar Excel
-          <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importarDiarioExcel(this)"/>
-        </label>
-        <input class="diario-search" type="text" placeholder="Buscar cliente..." oninput="filtrarDiario(this.value)" id="diario-search"/>
-      </div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">
+        <button class="fbtn active" id="dfiltro-todos" onclick="setFiltroDiario('todos',this)">Todos</button>
+        <button class="fbtn" id="dfiltro-urgentes" onclick="setFiltroDiario('urgentes',this)">Urgentes</button>
+        <button class="fbtn" id="dfiltro-hoy" onclick="setFiltroDiario('hoy',this)">Hoy</button>
+        <button class="fbtn" id="dfiltro-semana" onclick="setFiltroDiario('semana',this)">Esta semana</button>
       </div>
     </div>
     <div id="diario-resumen" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap"></div>
+    <input class="diario-search" type="text" placeholder="Buscar cliente..." oninput="filtrarDiario(this.value)" id="diario-search" style="margin-bottom:12px;width:220px"/>
     <div id="diario-lista"></div>`;
 
-  window._diarioOps = ops||[];
-  window._diarioGestiones = gestiones||[];
-  renderDiarioLista('');
+  renderDiarioLista('', 'todos');
 }
 
 function ultimaGestion(opId){
@@ -2365,27 +2359,17 @@ function ultimaGestion(opId){
 function semaforoDiario(opId, fechaInicio, estado){
   const ult = ultimaGestion(opId);
   if(estado==='cerrado'){
-    const dias=diasGestion(fechaInicio,null);
-    return {cls:'verde',dias,label:'Cerrado',diasProx:null};
+    return {cls:'verde',diasFaltan:null,label:'Cerrado',diasProx:null};
   }
-  // Si hay próxima gestión programada, usarla como referencia
   if(ult&&ult.proxima_gestion){
     const hoy=fechaHoyLocal();
-    const pxDate=ult.proxima_gestion.slice(0,10);
-    const [py,pm,pd]=pxDate.split('-').map(Number);
+    const [py,pm,pd]=ult.proxima_gestion.slice(0,10).split('-').map(Number);
     const [hy,hm,hd]=hoy.split('-').map(Number);
-    const proxMs=Date.UTC(py,pm-1,pd);
-    const hoyMs=Date.UTC(hy,hm-1,hd);
-    const diasFaltan=Math.ceil((proxMs-hoyMs)/(1000*60*60*24));
-    if(diasFaltan<0){
-      return {cls:'rojo',diasFaltan,label:`Vencido ${Math.abs(diasFaltan)}d`,diasProx:ult.proxima_gestion};
-    } else if(diasFaltan<=5){
-      return {cls:'amarillo',diasFaltan,label:`${diasFaltan}d para gestión`,diasProx:ult.proxima_gestion};
-    } else {
-      return {cls:'verde',diasFaltan,label:`${diasFaltan}d para gestión`,diasProx:ult.proxima_gestion};
-    }
+    const diasFaltan=Math.ceil((Date.UTC(py,pm-1,pd)-Date.UTC(hy,hm-1,hd))/(1000*60*60*24));
+    if(diasFaltan<0) return {cls:'rojo',diasFaltan,label:`Vencido ${Math.abs(diasFaltan)}d`,diasProx:ult.proxima_gestion};
+    if(diasFaltan<=5) return {cls:'amarillo',diasFaltan,label:`${diasFaltan}d para gestión`,diasProx:ult.proxima_gestion};
+    return {cls:'verde',diasFaltan,label:`${diasFaltan}d para gestión`,diasProx:ult.proxima_gestion};
   }
-  // Sin próxima gestión programada: semáforo por días transcurridos
   const refFecha = ult ? ult.fecha : fechaInicio;
   if(!refFecha) return {cls:'gris',diasFaltan:null,label:'Sin gestión',diasProx:null};
   const dias = diasGestion(refFecha, null);
@@ -2395,49 +2379,41 @@ function semaforoDiario(opId, fechaInicio, estado){
 }
 
 let _diarioFiltro='todos';
-function filtrarDiario(q){
-  renderDiarioLista(q, _diarioFiltro);
-}
+function filtrarDiario(q){ renderDiarioLista(q, _diarioFiltro); }
 function setFiltroDiario(f, btn){
   _diarioFiltro=f;
   document.querySelectorAll('#dfiltro-todos,#dfiltro-urgentes,#dfiltro-hoy,#dfiltro-semana').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
-  const q=document.getElementById('diario-search')?.value||'';
-  renderDiarioLista(q, f);
+  renderDiarioLista(document.getElementById('diario-search')?.value||'', f);
 }
 
 function renderDiarioLista(q, filtro){
   filtro=filtro||_diarioFiltro||'todos';
-  const lista = document.getElementById('diario-lista');
+  const lista=document.getElementById('diario-lista');
   if(!lista) return;
-  let ops = window._diarioOps||[];
-  if(q){
-    const ql=q.toLowerCase();
-    ops=ops.filter(o=>o.empresa.toLowerCase().includes(ql)||(o.contacto||'').toLowerCase().includes(ql));
-  }
-  // Aplicar filtro de urgencia
+  let ops=window._diarioOps||[];
+  if(q){ const ql=q.toLowerCase(); ops=ops.filter(o=>o.empresa.toLowerCase().includes(ql)||(o.contacto||'').toLowerCase().includes(ql)); }
+
   const hoyStr=fechaHoyLocal();
   const enSemana=new Date(); enSemana.setDate(enSemana.getDate()+7);
   const enSemanaStr=enSemana.getFullYear()+'-'+String(enSemana.getMonth()+1).padStart(2,'0')+'-'+String(enSemana.getDate()).padStart(2,'0');
-  if(filtro==='urgentes'){
-    ops=ops.filter(o=>{const s=semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado);return s.cls==='rojo';});
-  } else if(filtro==='hoy'){
-    ops=ops.filter(o=>{const s=semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado);return s.diasProx===hoyStr||(s.diasFaltan!==null&&s.diasFaltan<=0);});
-  } else if(filtro==='semana'){
-    ops=ops.filter(o=>{const s=semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado);return s.diasProx&&s.diasProx<=enSemanaStr;});
-  }
-  // Resumen de contadores
+
+  if(filtro==='urgentes') ops=ops.filter(o=>semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado).cls==='rojo');
+  else if(filtro==='hoy') ops=ops.filter(o=>{ const s=semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado); return s.diasProx===hoyStr||(s.diasFaltan!==null&&s.diasFaltan<=0); });
+  else if(filtro==='semana') ops=ops.filter(o=>{ const s=semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado); return s.diasProx&&s.diasProx<=enSemanaStr; });
+
+  // Contadores
   const allOps=window._diarioOps||[];
   const nRojo=allOps.filter(o=>semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado).cls==='rojo').length;
   const nAmarillo=allOps.filter(o=>semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado).cls==='amarillo').length;
   const nVerde=allOps.filter(o=>semaforoDiario(o.id,o.fecha_inicio_gestion,o.estado).cls==='verde').length;
   const resumen=document.getElementById('diario-resumen');
   if(resumen) resumen.innerHTML=`
-    <div style="background:var(--red-light);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px">
+    <div style="background:var(--red-light);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px;cursor:pointer" onclick="setFiltroDiario('urgentes',document.getElementById('dfiltro-urgentes'))">
       <span style="width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block"></span>
       <span style="font-size:11px;color:var(--red-dark)"><strong>${nRojo}</strong> vencidos / urgentes</span>
     </div>
-    <div style="background:var(--amber-light);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px">
+    <div style="background:var(--amber-light);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:8px;cursor:pointer" onclick="setFiltroDiario('semana',document.getElementById('dfiltro-semana'))">
       <span style="width:8px;height:8px;border-radius:50%;background:var(--amber);display:inline-block"></span>
       <span style="font-size:11px;color:var(--amber)"><strong>${nAmarillo}</strong> próximos (≤5 días)</span>
     </div>
@@ -2445,213 +2421,44 @@ function renderDiarioLista(q, filtro){
       <span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span>
       <span style="font-size:11px;color:var(--green)"><strong>${nVerde}</strong> al día</span>
     </div>`;
-  // Ordenar: más urgentes primero (más días sin gestión)
-  ops = [...ops].sort((a,b)=>{
+
+  // Ordenar: más urgentes primero
+  ops=[...ops].sort((a,b)=>{
     const sa=semaforoDiario(a.id,a.fecha_inicio_gestion,a.estado);
     const sb2=semaforoDiario(b.id,b.fecha_inicio_gestion,b.estado);
-    return (sb2.dias||0)-(sa.dias||0);
+    const ord={rojo:0,amarillo:1,gris:2,verde:3};
+    return (ord[sa.cls]||0)-(ord[sb2.cls]||0)||(sa.diasFaltan||999)-(sb2.diasFaltan||999);
   });
-  if(!ops.length){lista.innerHTML='<div class="empty">Sin clientes activos</div>';return;}
+
+  if(!ops.length){ lista.innerHTML='<div class="empty">Sin clientes que requieran atención con este filtro.</div>'; return; }
+
+  const TIPOS={llamada:'📞',whatsapp:'💬',correo:'✉',presencial:'🤝',otro:'•'};
   lista.innerHTML=ops.map(op=>{
     const sem=semaforoDiario(op.id,op.fecha_inicio_gestion,op.estado);
     const ult=ultimaGestion(op.id);
-    const gestOp=(window._diarioGestiones||[]).filter(g=>g.oportunidad_id===op.id)
-      .sort((a,b)=>b.fecha.localeCompare(a.fecha));
-    const TIPOS={llamada:'Llamada',whatsapp:'WhatsApp',correo:'Correo',presencial:'Presencial',otro:'Otro'};
-    const semBg=sem.cls==='verde'?'var(--green-light)':sem.cls==='amarillo'?'var(--amber-light)':sem.cls==='rojo'?'var(--red-light)':'var(--gray-light)';
-    const semTxt=sem.cls==='verde'?'var(--green)':sem.cls==='amarillo'?'var(--amber)':sem.cls==='rojo'?'var(--red)':'var(--gray)';
-    return `<div class="diario-row" id="diario-row-${op.id}">
-      <div class="diario-header" onclick="toggleDiario('${op.id}')">
+    const semBg=sem.cls==='verde'?'var(--green-light)':sem.cls==='amarillo'?'var(--amber-light)':sem.cls==='rojo'?'var(--red-light)':'var(--surface2)';
+    const semTxt=sem.cls==='verde'?'var(--green)':sem.cls==='amarillo'?'var(--amber)':sem.cls==='rojo'?'var(--red)':'var(--text3)';
+    return `<div class="diario-row" onclick="abrirEditar('${op.id}')" style="cursor:pointer">
+      <div class="diario-header" style="border-bottom:none">
         <div class="diario-semaforo ${sem.cls}"></div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span class="diario-empresa">${op.empresa}</span>
-            ${op.de_mercadeo?`<span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;background:#fdeee8;color:var(--sat-orange)">Mercadeo</span>`:''}
+            ${op.de_mercadeo?'<span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;background:#fdeee8;color:var(--sat-orange)">Mercadeo</span>':''}
             <span style="font-size:10px;color:var(--text3)">${op.producto||''}</span>
-            <button onclick="event.stopPropagation();abrirEditar('${op.id}')" style="font-family:inherit;font-size:10px;padding:2px 8px;border:0.5px solid var(--sat-blue);border-radius:4px;background:var(--sat-blue-light);color:var(--sat-blue);cursor:pointer">Ver ficha</button>
           </div>
           <div class="diario-contacto">${op.contacto||''}${op.cargo_contacto?' · '+op.cargo_contacto:''}</div>
+          ${ult?`<div style="font-size:11px;color:var(--text2);margin-top:3px">${TIPOS[ult.tipo]||'•'} ${ult.nota?.slice(0,80)}${(ult.nota?.length||0)>80?'...':''}</div>`:'<div style="font-size:11px;color:var(--text3);margin-top:3px;font-style:italic">Sin gestiones registradas</div>'}
         </div>
-        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
-            <span class="diario-dias" style="background:${semBg};color:${semTxt}">${sem.label}</span>
-            <span style="font-size:10px;color:var(--text3)">${ult?'Último: '+ult.fecha.split('-').reverse().join('/'):'Sin gestión'}${sem.diasProx?' · Próx: '+sem.diasProx.split('-').reverse().join('/'):''}
-            </span>
-          </div>
-          <span style="color:var(--text3);font-size:14px">▾</span>
-        </div>
-      </div>
-      <div class="diario-body" id="diario-body-${op.id}">
-        <!-- Timeline de gestiones -->
-        <div class="diario-timeline" id="timeline-${op.id}">
-          ${gestOp.length?gestOp.slice(0,10).map(g=>`
-            <div class="diario-entry">
-              <div class="diario-dot ${g.tipo||'llamada'}"></div>
-              <div class="diario-entry-content">
-                <div class="diario-entry-fecha">${g.fecha.split('-').reverse().join('/')}</div>
-                <div class="diario-entry-tipo ${g.tipo||'otro'}">${TIPOS[g.tipo]||'Gestión'}</div>
-                <div class="diario-entry-nota">${g.nota||''}</div>
-              </div>
-            </div>`).join('')
-          :'<div style="font-size:12px;color:var(--text3);padding:8px 0 8px 28px">Sin gestiones registradas aún</div>'}
-        </div>
-        <!-- Formulario agregar gestión -->
-        <div class="diario-add-form">
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Registrar gestión</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-            ${['llamada','whatsapp','correo','presencial','otro'].map(t=>`
-              <button class="tipo-btn" id="tipo-${op.id}-${t}" onclick="selTipo('${op.id}','${t}')">${t==='llamada'?'📞 Llamada':t==='whatsapp'?'💬 WhatsApp':t==='correo'?'✉ Correo':t==='presencial'?'🤝 Presencial':'• Otro'}</button>
-            `).join('')}
-          </div>
-          <div style="display:grid;grid-template-columns:130px 1fr;gap:8px;align-items:start;margin-bottom:8px">
-            <div>
-              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Fecha gestión</div>
-              <input class="finput" type="date" id="fecha-gest-${op.id}" value="${fechaHoyLocal()}" style="font-size:12px;padding:7px 10px;width:100%"/>
-            </div>
-            <div>
-              <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin-bottom:4px">Próxima gestión</div>
-              <input class="finput" type="date" id="prox-gest-${op.id}" value="${proxGestionDefault()}" style="font-size:12px;padding:7px 10px;width:100%"/>
-            </div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:start">
-            <textarea class="ftxt" id="nota-gest-${op.id}" placeholder="Describe la gestión realizada: resultado de la llamada, acuerdo alcanzado, próximo paso..." style="min-height:60px;font-size:12px;resize:vertical"></textarea>
-            <button class="btn-pri" onclick="guardarGestion('${op.id}')" style="padding:7px 14px;white-space:nowrap;align-self:flex-end">Guardar</button>
-          </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+          <span class="diario-dias" style="background:${semBg};color:${semTxt}">${sem.label}</span>
+          <span style="font-size:10px;color:var(--text3)">${ult?'Último: '+ult.fecha.split('-').reverse().join('/'):'Sin gestión'}</span>
+          ${sem.diasProx?`<span style="font-size:10px;color:var(--sat-orange)">Próx: ${sem.diasProx.split('-').reverse().join('/')}</span>`:''}
         </div>
       </div>
     </div>`;
   }).join('');
-  // Seleccionar llamada por defecto en cada fila
-  ops.forEach(op=>{
-    const btn=document.getElementById(`tipo-${op.id}-llamada`);
-    if(btn) btn.classList.add('sel-llamada');
-  });
-  window._diarioTipos = {};
-  ops.forEach(op=>{ window._diarioTipos[op.id]='llamada'; });
 }
-
-async function importarDiarioExcel(input){
-  const file = input.files[0];
-  if(!file) return;
-  // Cargar SheetJS dinámicamente
-  if(!window.XLSX){
-    await new Promise((res,rej)=>{
-      const s=document.createElement('script');
-      s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-      s.onload=res; s.onerror=rej;
-      document.head.appendChild(s);
-    });
-  }
-  const reader = new FileReader();
-  reader.onload = async(e)=>{
-    try{
-      const wb = XLSX.read(new Uint8Array(e.target.result),{type:'array'});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws,{header:1,range:3}); // desde fila 4 (index 3)
-      
-      // Buscar oportunidades existentes para hacer match por nombre
-      const {data:ops} = await sb.from('oportunidades').select('id,empresa').eq('usuario_id',USER.id);
-      const opMap = {};
-      (ops||[]).forEach(o=>{ opMap[o.empresa.toLowerCase().trim()] = o.id; });
-      
-      let importados=0, sinMatch=[];
-      const inserts = [];
-      
-      for(const row of rows){
-        if(!row[0]||!row[4]) continue; // empresa y nota obligatorios
-        const empresa = String(row[0]).trim();
-        const fecha = row[2]?String(row[2]).slice(0,10):fechaHoyLocal();
-        const tipo = row[3]?String(row[3]).toLowerCase().trim():'llamada';
-        const nota = String(row[4]).trim();
-        const proxGest = row[5]?String(row[5]).slice(0,10):null;
-        
-        // Buscar match de empresa
-        const opId = opMap[empresa.toLowerCase()];
-        if(!opId){ sinMatch.push(empresa); continue; }
-        
-        inserts.push({
-          oportunidad_id:opId,
-          usuario_id:USER.id,
-          fecha,
-          tipo:['llamada','whatsapp','correo','presencial','otro'].includes(tipo)?tipo:'otro',
-          nota,
-          proxima_gestion:proxGest||null
-        });
-        importados++;
-      }
-      
-      if(inserts.length){
-        const {error} = await sb.from('gestiones').insert(inserts);
-        if(error){ alert('Error al importar: '+error.message); return; }
-      }
-      
-      let msg = `Importación completada: ${importados} gestiones importadas.`;
-      if(sinMatch.length){
-        const unicos=[...new Set(sinMatch)];
-        msg += `\n\nNo se encontraron ${unicos.length} empresa(s) en su CRM:\n${unicos.slice(0,5).join('\n')}${unicos.length>5?'\n...y '+(unicos.length-5)+' más':''}\n\nVerifique que el nombre coincida exactamente con el CRM.`;
-      }
-      alert(msg);
-      // Recargar diario
-      const container=document.getElementById('main-content');
-      if(container) renderDiario(container);
-    }catch(err){
-      alert('Error al leer el archivo: '+err.message);
-    }
-  };
-  reader.readAsArrayBuffer(file);
-  input.value='';
-}
-function proxGestionDefault(){
-  const d=new Date();
-  d.setDate(d.getDate()+30);
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-}
-function toggleDiario(opId){
-  const body=document.getElementById(`diario-body-${opId}`);
-  if(body) body.classList.toggle('open');
-}
-
-function selTipo(opId, tipo){
-  const tipos=['llamada','whatsapp','correo','presencial','otro'];
-  tipos.forEach(t=>{
-    const btn=document.getElementById(`tipo-${opId}-${t}`);
-    if(btn) btn.className='tipo-btn';
-  });
-  const sel=document.getElementById(`tipo-${opId}-${tipo}`);
-  if(sel) sel.classList.add(`sel-${tipo}`);
-  if(!window._diarioTipos) window._diarioTipos={};
-  window._diarioTipos[opId]=tipo;
-}
-
-async function guardarGestion(opId){
-  const nota=document.getElementById(`nota-gest-${opId}`)?.value.trim();
-  const fecha=document.getElementById(`fecha-gest-${opId}`)?.value||fechaHoyLocal();
-  const tipo=(window._diarioTipos||{})[opId]||'llamada';
-  if(!nota){alert('Escriba una nota de la gestión.');return;}
-  const proxGest=document.getElementById(`prox-gest-${opId}`)?.value||proxGestionDefault();
-  const {data,error}=await sb.from('gestiones').insert({
-    oportunidad_id:opId,
-    usuario_id:USER.id,
-    fecha,tipo,nota,
-    proxima_gestion:proxGest
-  }).select().single();
-  if(error){alert('Error: '+error.message);return;}
-  // Actualizar en memoria
-  if(!window._diarioGestiones) window._diarioGestiones=[];
-  window._diarioGestiones.unshift(data);
-  // Limpiar nota
-  const notaEl=document.getElementById(`nota-gest-${opId}`);
-  if(notaEl) notaEl.value='';
-  // Re-renderizar solo esta fila
-  const q=document.getElementById('diario-search')?.value||'';
-  renderDiarioLista(q);
-  // Reabrir la fila
-  setTimeout(()=>{
-    const body=document.getElementById(`diario-body-${opId}`);
-    if(body) body.classList.add('open');
-  },50);
-}
-
 
 // ── KPIs & ANALYTICS ──────────────────────────────────────────────────────────
 let _kpiPeriodo = 'mes'; // 'mes' | 'trimestre'
