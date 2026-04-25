@@ -1598,11 +1598,10 @@ async function initGoogleAuth(){
     return;
   }
 
-  // Token Client — implicit flow, sin popup si ya autorizó antes
+  // Token Client — implicit flow
   gcalTokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GCAL_CLIENT_ID,
     scope: GCAL_SCOPES,
-    prompt: '',
     callback: (response)=>{
       if(response.error){ console.error('GCal error:', response.error); return; }
       gcalToken = response.access_token;
@@ -1614,38 +1613,37 @@ async function initGoogleAuth(){
       programarRenovacion();
     }
   });
-  // Intentar renovar silenciosamente (sin popup)
-  gcalTokenClient.requestAccessToken({prompt:''});
+  // NO llamar requestAccessToken aquí — solo cuando el usuario haga clic
 }
 
 async function renovarTokenGcal(){
-  // Con implicit flow renovamos silenciosamente via Token Client
-  return new Promise((resolve)=>{
-    if(!gcalTokenClient){ resolve(false); return; }
-    const oldCallback = gcalTokenClient.callback;
-    gcalTokenClient.callback = (response)=>{
-      gcalTokenClient.callback = oldCallback;
-      if(response.error){ resolve(false); return; }
-      gcalToken = response.access_token;
-      gcalTokenExpiry = Date.now() + (response.expires_in||3600)*1000;
-      localStorage.setItem('gcal_token', gcalToken);
-      localStorage.setItem('gcal_token_expiry', String(gcalTokenExpiry));
-      console.log('Token GCal renovado automáticamente');
-      resolve(true);
-    };
-    gcalTokenClient.requestAccessToken({prompt:''});
-  });
+  // Con implicit flow, la renovación requiere acción del usuario
+  // Si el token expiró, marcar como desconectado y pedir reconexión
+  if(gcalTokenExpiry && gcalTokenExpiry < Date.now()){
+    gcalToken = null;
+    localStorage.removeItem('gcal_token');
+    localStorage.removeItem('gcal_token_expiry');
+    actualizarBtnGcal(false);
+    console.log('Token GCal expirado — reconexión requerida');
+    return false;
+  }
+  return gcalToken ? true : false;
 }
 
 function programarRenovacion(){
   const tiempoRestante = gcalTokenExpiry - Date.now() - 300000; // 5 min antes
-  const espera = Math.max(tiempoRestante, 60000); // mínimo 1 minuto
-  setTimeout(async()=>{
-    if(gcalToken){
-      await renovarTokenGcal();
-      programarRenovacion();
+  if(tiempoRestante <= 0) return;
+  setTimeout(()=>{
+    if(gcalToken && gcalTokenClient){
+      // Renovar silenciosamente con prompt vacío — requiere que el browser permita
+      // Si el browser bloquea, el token simplemente expira y el usuario reconecta
+      try {
+        gcalTokenClient.requestAccessToken({prompt:''});
+      } catch(e){
+        console.log('Renovación automática bloqueada — el usuario deberá reconectar');
+      }
     }
-  }, espera);
+  }, tiempoRestante);
 }
 
 function conectarGcal(){
