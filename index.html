@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777321692 -->
+<!-- build:1777321818 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -3263,6 +3263,9 @@ function getKpiRango(){
 
 function renderKPIContent(){
   const content=document.getElementById('kpi-content');
+  // Función helper normalización recurrencia mensual
+  const REC_M2={mensual:1,trimestral:3,semestral:6,anual:12};
+  const recMOp=o=>{const raw=(o.unidades_recurrentes||0)*(o.valor_recurrente||0);return raw/(REC_M2[o.tipo_recurrencia]||1);};
   if(!content) return;
   const ops=window._kpiOps||[];
   const gest=window._kpiGest||[];
