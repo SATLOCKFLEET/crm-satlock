@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777327333 -->
+<!-- build:1777327902 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1040,6 +1040,8 @@ function renderNueva(container){
             <input class="finput" id="t-link" placeholder="https://drive.google.com/..."/></div>
           <div class="fg"><div class="flbl">Fecha límite</div>
             <input class="finput" type="date" id="t-fecha"/></div>
+          <div class="fg"><div class="flbl">Hora (opcional)</div>
+            <input class="finput" type="time" id="t-hora"/></div>
           <div class="fg"><div class="flbl">Prioridad</div>
             <select class="fsel" id="t-prioridad">
               <option value="alta">Alta</option>
@@ -1090,8 +1092,9 @@ async function guardarRegistro(){
     const contacto=document.getElementById('t-contacto')?.value.trim()||'';
     const num_cotizacion=document.getElementById('t-num-cot')?.value.trim()||'';
     const link_propuesta=document.getElementById('t-link')?.value.trim()||'';
+    const hora=document.getElementById('t-hora')?.value||null;
     const {error}=await sb.from('tareas_admin').insert({
-      usuario_id:USER.id, titulo, descripcion, fecha_limite:fecha, prioridad, done:false,
+      usuario_id:USER.id, titulo, descripcion, fecha_limite:fecha, hora_limite:hora, prioridad, done:false,
       cliente, contacto, num_cotizacion, link_propuesta
     });
     if(error){alert('Error: '+error.message);return;}
@@ -1099,7 +1102,7 @@ async function guardarRegistro(){
     if(gcalToken && fecha){
       try{
         await crearEventoGcalConInvitados(
-          '📋 '+titulo, fecha, '09:00', descripcion||'', 60, []
+          '📋 '+titulo, fecha, hora||'09:00', descripcion||'', 60, []
         );
       }catch(e){ console.warn('No se pudo crear en GCal:', e); }
     }
@@ -3020,6 +3023,10 @@ async function editarTareaAdmin(id){
               <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Próxima gestión</div>
               <input class="finput" type="date" id="st-prox" value="${proxGestionDefault()}" style="font-size:12px;padding:7px 10px;width:100%"/>
             </div>
+            <div style="flex:1">
+              <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Hora</div>
+              <input class="finput" type="time" id="st-hora" style="font-size:12px;padding:7px 10px;width:100%"/>
+            </div>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div style="display:flex;gap:8px">
@@ -3039,6 +3046,7 @@ async function editarTareaAdmin(id){
           <div class="fg"><div class="flbl">Contacto</div><input class="finput" id="mt-contacto" value="${(t.contacto||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg full"><div class="flbl">Descripción</div><textarea class="ftxt" id="mt-desc" style="min-height:56px">${t.descripcion||''}</textarea></div>
           <div class="fg"><div class="flbl">Fecha límite</div><input class="finput" type="date" id="mt-fecha" value="${t.fecha_limite||''}"/></div>
+          <div class="fg"><div class="flbl">Hora</div><input class="finput" type="time" id="mt-hora" value="${t.hora_limite||''}"/></div>
           <div class="fg"><div class="flbl">Prioridad</div>
             <select class="fsel" id="mt-prio">
               <option value="alta"${t.prioridad==='alta'?' selected':''}>Alta</option>
@@ -3059,13 +3067,14 @@ async function guardarSeguimientoTarea(tareaId){
   const nota=document.getElementById('st-nota')?.value.trim();
   if(!nota){alert('Escriba una nota del avance.');return;}
   const proxGest=document.getElementById('st-prox')?.value||null;
+  const proxHora=document.getElementById('st-hora')?.value||null;
   const {error}=await sb.from('seguimiento_tareas').insert({
     tarea_id:tareaId, usuario_id:USER.id, nota,
     proxima_gestion:proxGest||null
   });
-  // Actualizar fecha_limite de la tarea si se definió próxima gestión
+  // Actualizar fecha_limite y hora_limite de la tarea si se definió próxima gestión
   if(proxGest){
-    await sb.from('tareas_admin').update({fecha_limite:proxGest}).eq('id',tareaId);
+    await sb.from('tareas_admin').update({fecha_limite:proxGest, hora_limite:proxHora}).eq('id',tareaId);
     const idx=(window._tareasAdmin||[]).findIndex(t=>t.id===tareaId);
     if(idx>-1) window._tareasAdmin[idx].fecha_limite=proxGest;
   }
@@ -3085,6 +3094,7 @@ async function guardarEdicionTarea(id){
     num_cotizacion:document.getElementById('mt-num-cot')?.value.trim()||'',
     link_propuesta:document.getElementById('mt-link')?.value.trim()||'',
     fecha_limite:document.getElementById('mt-fecha')?.value||null,
+    hora_limite:document.getElementById('mt-hora')?.value||null,
     prioridad:document.getElementById('mt-prio')?.value||'media'
   };
   if(!update.titulo){alert('El título es obligatorio.');return;}
