@@ -669,7 +669,7 @@ async function renderSeguimiento(container){
   let query = sb.from('oportunidades').select('*,usuarios(nombre,linea,cargo)').order('fecha',{ascending:false});
   if(PERFIL.rol==='ejecutivo_fleet'||PERFIL.rol==='ejecutivo_carga'){
     query = query.eq('usuario_id',USER.id);
-  } else if(PERFIL.rol==='jefe_fleet' && !verTodos){
+  } else if((PERFIL.rol==='jefe_fleet'||PERFIL.rol==='gerencia') && !verTodos){
     query = query.eq('usuario_id',USER.id);
   }
   const {data:rows} = await query;
@@ -679,7 +679,7 @@ async function renderSeguimiento(container){
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2)">
         <input type="checkbox" id="seg-ver-todos" style="accent-color:var(--sat-blue);width:14px;height:14px" onchange="renderSeguimiento(document.getElementById('main-content'))"/>
-        Ver todos los ejecutivos
+        Ver leads de todo el equipo
       </label>
     </div>`:''}
     <div class="filters">
