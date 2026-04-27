@@ -732,15 +732,9 @@ async function renderSeguimiento(container){
       ${window._segVerTodos?`
       <select class="fsel" id="seg-filtro-exec" onchange="renderSeguimiento(document.getElementById('main-content'))" style="font-size:11px;padding:4px 8px">
         <option value="">Todos los ejecutivos</option>
-        ${(window._kpiUsuarios||[]).map(u=>`<option value="${u.id}"${window._segFiltroExec===u.id?' selected':''}>${u.nombre}</option>`).join('')}
+        ${(window._segUsuarios||[]).map(u=>`<option value="${u.id}"${window._segFiltroExec===u.id?' selected':''}>${u.nombre}</option>`).join('')}
       </select>
-      <select class="fsel" id="seg-filtro-estado" onchange="renderSeguimiento(document.getElementById('main-content'))" style="font-size:11px;padding:4px 8px">
-        <option value="">Todos los estados</option>
-        <option value="en_proceso">En proceso</option>
-        <option value="propuesta_enviada">Propuesta enviada</option>
-        <option value="cerrado">Cerrado</option>
-        <option value="perdido">Perdido</option>
-      </select>`:''}
+      `:''}
     </div>`:''}
     <div class="filters">
       <button class="fbtn active" onclick="setFiltro('todos',this)">Todos</button>
@@ -1127,15 +1121,15 @@ async function generarNumeroPropuesta(campoId){
   campoId = campoId || 'f-numprop';
   // Detectar país del ejecutivo para el prefijo
   // Ecuador: EGC-DDMMAA-XXXX, Colombia/México: GC-DDMMAA-XXXX
-  const esEcuador = PERFIL?.regional?.toLowerCase().includes('ecuador') ||
-                    document.getElementById('f-pais')?.value === 'Ecuador' ||
-                    document.getElementById('e-pais')?.value === 'Ecuador';
-  const prefijo = esEcuador ? 'EGC' : 'GC';
+  const paisVal = document.getElementById('f-pais')?.value || document.getElementById('e-pais')?.value || '';
+  const esEcuador = PERFIL?.regional?.toLowerCase().includes('ecuador') || paisVal === 'Ecuador';
+  const esMexico = paisVal === 'México';
+  const prefijo = esEcuador ? 'EGC' : esMexico ? 'MGC' : 'GC';
   
   // Consultar el último consecutivo global
   const {data} = await sb.from('oportunidades')
     .select('num_propuesta')
-    .or('num_propuesta.like.GC%,num_propuesta.like.EGC%')
+    .or('num_propuesta.like.GC%,num_propuesta.like.EGC%,num_propuesta.like.MGC%')
     .order('created_at',{ascending:false})
     .limit(50);
   
@@ -1520,8 +1514,28 @@ async function abrirEditar(id){
               <option value="Ecuador"${r.pais==='Ecuador'?' selected':''}>🇪🇨 Ecuador</option>
               <option value="México"${r.pais==='México'?' selected':''}>🇲🇽 México</option>
             </select></div>
+          <div class="fg"><div class="flbl">NIT / RUC</div><input class="finput" id="e-nit" value="${(r.nit||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Teléfono</div><input class="finput" id="e-tel" value="${(r.telefono||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Correo</div><input class="finput" id="e-correo" type="email" value="${(r.correo||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg full"><div class="flbl">Origen del lead</div>
+            <select class="fsel" id="e-origen">
+              <option value="">Sin especificar</option>
+              ${['Lead propio / en frío','Feria / Evento / Stand','Estudio de Mercado','Mantenimiento / Postventa'].map(o=>`<option value="${o}"${r.origen_lead===o?' selected':''}>${o}</option>`).join('')}
+            </select></div>
+          <div class="fg full"><div class="flbl">Tipo de negocio</div>
+            <div style="display:flex;gap:16px;padding-top:4px">
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+                <input type="checkbox" id="e-venta-unica" ${r.venta_unica?'checked':''} style="accent-color:var(--sat-blue);width:14px;height:14px"/> Venta única
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+                <input type="checkbox" id="e-recurrente" ${r.recurrente?'checked':''} style="accent-color:var(--sat-blue);width:14px;height:14px"/> Recurrente
+              </label>
+            </div>
+          </div>
+          <div class="fg"><div class="flbl">Unidades (venta única)</div><input class="finput" type="number" id="e-unidades" value="${r.unidades||''}" min="1"/></div>
+          <div class="fg"><div class="flbl">Valor unitario</div><input class="finput" type="number" id="e-valor-unit" value="${r.valor_unitario||''}" placeholder="0"/></div>
+          <div class="fg"><div class="flbl">Servicios recurrentes/mes</div><input class="finput" type="number" id="e-unidades-rec" value="${r.unidades_recurrentes||''}" min="1"/></div>
+          <div class="fg"><div class="flbl">Valor mensual/servicio</div><input class="finput" type="number" id="e-valor-rec" value="${r.valor_recurrente||''}" placeholder="0"/></div>
           <div class="fg"><div class="flbl">N° propuesta</div>
             <div style="display:flex;gap:6px">
               <input class="finput" id="e-numprop" value="${(r.num_propuesta||'').replace(/"/g,'&quot;')}" style="font-family:'Courier New',monospace"/>
@@ -1629,6 +1643,14 @@ async function guardarEdicion(id){
     ciudad:document.getElementById('e-ciudad')?.value.trim()||'',
     pais:document.getElementById('e-pais')?.value||'Colombia',
     moneda:document.getElementById('e-pais')?.value==='Ecuador'?'USD':document.getElementById('e-pais')?.value==='México'?'MXN':'COP',
+    nit:document.getElementById('e-nit')?.value.trim()||'',
+    origen_lead:document.getElementById('e-origen')?.value||'',
+    venta_unica:document.getElementById('e-venta-unica')?.checked||false,
+    recurrente:document.getElementById('e-recurrente')?.checked||false,
+    unidades:parseInt(document.getElementById('e-unidades')?.value||'0')||null,
+    valor_unitario:parseFloat(document.getElementById('e-valor-unit')?.value||'0')||null,
+    unidades_recurrentes:parseInt(document.getElementById('e-unidades-rec')?.value||'0')||null,
+    valor_recurrente:parseFloat(document.getElementById('e-valor-rec')?.value||'0')||null,
     telefono:document.getElementById('e-tel').value,
     correo:document.getElementById('e-correo').value,
     num_propuesta:document.getElementById('e-numprop').value,
