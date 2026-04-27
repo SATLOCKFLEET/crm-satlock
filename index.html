@@ -715,10 +715,15 @@ function renderTab(idx,tabs){
 // ── SEGUIMIENTO ───────────────────────────────────────────────────────────────
 async function renderSeguimiento(container){
   const verTodos = window._segVerTodos || false;
+  // Cargar lista de ejecutivos para el filtro si no están cargados
+  if(['gerencia','jefe_fleet','jefe_proyectos'].includes(PERFIL.rol) && (!window._segUsuarios || !window._segUsuarios.length)){
+    const {data:segUsers} = await sb.from('usuarios').select('id,nombre,rol,linea').neq('rol','gerencia').neq('rol','alta_gerencia').order('nombre');
+    window._segUsuarios = segUsers||[];
+  }
   let query = sb.from('oportunidades').select('*,usuarios(nombre,linea,cargo)').order('fecha',{ascending:false});
   if(PERFIL.rol==='ejecutivo_fleet'||PERFIL.rol==='ejecutivo_carga'){
     query = query.eq('usuario_id',USER.id);
-  } else if((PERFIL.rol==='jefe_fleet'||PERFIL.rol==='gerencia') && !verTodos){
+  } else if((PERFIL.rol==='jefe_fleet'||PERFIL.rol==='gerencia'||PERFIL.rol==='jefe_proyectos'||PERFIL.rol==='alta_gerencia') && !verTodos){
     query = query.eq('usuario_id',USER.id);
   }
   const {data:rows} = await query;
