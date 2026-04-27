@@ -469,7 +469,7 @@ tbody tr:hover{background:var(--surface2)}
     </div>
     <div class="user-pill">
       <div class="user-avatar" id="user-avatar"></div>
-      <span id="user-name-top"></span>
+      <span id="user-name-top" style="font-size:12px;font-weight:500;color:var(--text)"></span>
       <button class="btn-logout" onclick="logout()">Salir</button>
     </div>
   </div>
@@ -723,12 +723,24 @@ async function renderSeguimiento(container){
   const {data:rows} = await query;
   container.innerHTML = `
     <div id="metrics-row" class="metrics"></div>
-    ${['gerencia','jefe_fleet'].includes(PERFIL.rol)?`
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+    ${['gerencia','jefe_fleet','jefe_proyectos'].includes(PERFIL.rol)?`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2)">
         <input type="checkbox" id="seg-ver-todos" ${window._segVerTodos?'checked':''} style="accent-color:var(--sat-blue);width:14px;height:14px" onchange="window._segVerTodos=this.checked;renderSeguimiento(document.getElementById('main-content'))"/>
-        Ver leads de todo el equipo
+        Ver todos los ejecutivos
       </label>
+      ${window._segVerTodos?`
+      <select class="fsel" id="seg-filtro-exec" onchange="renderSeguimiento(document.getElementById('main-content'))" style="font-size:11px;padding:4px 8px">
+        <option value="">Todos los ejecutivos</option>
+        ${(window._kpiUsuarios||[]).map(u=>`<option value="${u.id}"${window._segFiltroExec===u.id?' selected':''}>${u.nombre}</option>`).join('')}
+      </select>
+      <select class="fsel" id="seg-filtro-estado" onchange="renderSeguimiento(document.getElementById('main-content'))" style="font-size:11px;padding:4px 8px">
+        <option value="">Todos los estados</option>
+        <option value="en_proceso">En proceso</option>
+        <option value="propuesta_enviada">Propuesta enviada</option>
+        <option value="cerrado">Cerrado</option>
+        <option value="perdido">Perdido</option>
+      </select>`:''}
     </div>`:''}
     <div class="filters">
       <button class="fbtn active" onclick="setFiltro('todos',this)">Todos</button>
@@ -875,6 +887,12 @@ function renderNueva(container){
     <!-- DATOS BÁSICOS -->
     <div class="form-grid">
       <div class="fg"><div class="flbl">Fecha</div><input class="finput" type="date" id="f-fecha"/></div>
+      <div class="fg"><div class="flbl">País</div>
+        <select class="fsel" id="f-pais" onchange="actualizarMonedaPais()">
+          <option value="Colombia">🇨🇴 Colombia (COP)</option>
+          <option value="Ecuador">🇪🇨 Ecuador (USD)</option>
+          <option value="México">🇲🇽 México (MXN)</option>
+        </select></div>
       <div class="fg"><div class="flbl">Estado inicial</div>
         <select class="fsel" id="f-estado" onchange="sincronizarAvanceEstado()">
           <option value="en_proceso">En proceso</option>
@@ -1107,23 +1125,48 @@ function calcularTamanoNegocio(){
 
 async function generarNumeroPropuesta(campoId){
   campoId = campoId || 'f-numprop';
-  // Consultar el último consecutivo en Supabase
+  // Detectar país del ejecutivo para el prefijo
+  // Ecuador: EGC-DDMMAA-XXXX, Colombia/México: GC-DDMMAA-XXXX
+  const esEcuador = PERFIL?.regional?.toLowerCase().includes('ecuador') ||
+                    document.getElementById('f-pais')?.value === 'Ecuador' ||
+                    document.getElementById('e-pais')?.value === 'Ecuador';
+  const prefijo = esEcuador ? 'EGC' : 'GC';
+  
+  // Consultar el último consecutivo global
   const {data} = await sb.from('oportunidades')
     .select('num_propuesta')
-    .like('num_propuesta','CRM%')
-    .order('num_propuesta',{ascending:false})
-    .limit(1);
-  let consecutivo = 1;
-  if(data&&data.length&&data[0].num_propuesta){
-    const match = data[0].num_propuesta.match(/CRM(\d{4})/);
-    if(match) consecutivo = parseInt(match[1])+1;
-  }
+    .or('num_propuesta.like.GC%,num_propuesta.like.EGC%')
+    .order('created_at',{ascending:false})
+    .limit(50);
+  
+  let maxConsec = 0;
+  (data||[]).forEach(o=>{
+    if(!o.num_propuesta) return;
+    const m = o.num_propuesta.match(/(?:EGC|GC)-\d{6}-(\d{4})/);
+    if(m) maxConsec = Math.max(maxConsec, parseInt(m[1]));
+    // También buscar formato antiguo CRM
+    const m2 = o.num_propuesta.match(/CRM(\d{4})/);
+    if(m2) maxConsec = Math.max(maxConsec, parseInt(m2[1]));
+  });
+  
+  const consecutivo = maxConsec + 1;
   const hoy = new Date();
   const dd=String(hoy.getDate()).padStart(2,'0');
   const mm=String(hoy.getMonth()+1).padStart(2,'0');
   const yy=String(hoy.getFullYear()).slice(-2);
-  const num = 'CRM'+String(consecutivo).padStart(4,'0')+dd+mm+yy;
-  document.getElementById(campoId).value = num;
+  const num = `${prefijo}-${dd}${mm}${yy}-${String(consecutivo).padStart(4,'0')}`;
+  const el = document.getElementById(campoId);
+  if(el) el.value = num;
+}
+function actualizarMonedaPais(){
+  const pais = document.getElementById('f-pais')?.value||'Colombia';
+  const moneda = pais==='Ecuador'?'USD':pais==='México'?'MXN':'COP';
+  const simbolo = pais==='Ecuador'?'$':pais==='México'?'$':'$';
+  // Actualizar labels de valor
+  document.querySelectorAll('[id^="f-valor"]').forEach(el=>{
+    const lbl = el.previousElementSibling?.previousElementSibling;
+    if(lbl && lbl.className==='flbl') lbl.innerHTML = `Valor por unidad (${moneda})`;
+  });
 }
 function actualizarProductosForm(){
   const linea=document.getElementById('f-linea')?.value||'fleet';
@@ -1248,6 +1291,8 @@ async function guardarOp(){
     origen_lead:origenVal,
     nit:nit,
     ciudad:document.getElementById('f-ciudad')?.value.trim()||'',
+    pais:document.getElementById('f-pais')?.value||'Colombia',
+    moneda:document.getElementById('f-pais')?.value==='Ecuador'?'USD':document.getElementById('f-pais')?.value==='México'?'MXN':'COP',
     venta_unica:document.getElementById('f-venta-unica')?.checked||false,
     recurrente:document.getElementById('f-recurrente')?.checked||false,
     unidades:parseInt(document.getElementById('f-unidades')?.value||'0')||null,
@@ -1390,7 +1435,7 @@ async function abrirEditar(id){
       <div class="ficha-tabs">
         <button class="ficha-tab active" onclick="switchFichaTab('actividad',this)">Actividad</button>
         <button class="ficha-tab" onclick="switchFichaTab('negocio',this)">Negocio</button>
-        <button class="ficha-tab" onclick="switchFichaTab('editar',this)">Editar datos</button>
+        ${['jefe_fleet','jefe_proyectos','ejecutivo_fleet','ejecutivo_carga'].includes(PERFIL.rol)?`<button class="ficha-tab" onclick="switchFichaTab('editar',this)">Editar datos</button>`:''}
       </div>
 
       <!-- PANEL ACTIVIDAD -->
@@ -1469,6 +1514,12 @@ async function abrirEditar(id){
           <div class="fg"><div class="flbl">Contacto</div><input class="finput" id="e-contacto" value="${(r.contacto||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Cargo</div><input class="finput" id="e-cargo" value="${(r.cargo_contacto||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Ciudad</div><input class="finput" id="e-ciudad" value="${(r.ciudad||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">País</div>
+            <select class="fsel" id="e-pais">
+              <option value="Colombia"${(r.pais||'Colombia')==='Colombia'?' selected':''}>🇨🇴 Colombia</option>
+              <option value="Ecuador"${r.pais==='Ecuador'?' selected':''}>🇪🇨 Ecuador</option>
+              <option value="México"${r.pais==='México'?' selected':''}>🇲🇽 México</option>
+            </select></div>
           <div class="fg"><div class="flbl">Teléfono</div><input class="finput" id="e-tel" value="${(r.telefono||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Correo</div><input class="finput" id="e-correo" type="email" value="${(r.correo||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">N° propuesta</div>
@@ -1504,7 +1555,7 @@ async function abrirEditar(id){
             <textarea class="ftxt" id="e-nota-traz" placeholder="Describe el cambio realizado..." style="min-height:44px;font-size:12px"></textarea></div>
         </div>
         <div class="form-actions" style="margin-top:12px;justify-content:space-between">
-          <button class="btn-sec" style="color:var(--red);border-color:var(--red)" onclick="confirmarBorrar('${r.id}','${(r.empresa||'').replace(/'/g,"\\'")}')">Eliminar</button>
+          ${['jefe_fleet','jefe_proyectos'].includes(PERFIL.rol)?`<button class="btn-sec" style="color:var(--red);border-color:var(--red)" onclick="confirmarBorrar('${r.id}','${(r.empresa||'').replace(/'/g,"\\'")}')">Eliminar</button>`:'<div></div>'}
           <button class="btn-pri" onclick="guardarEdicion('${r.id}')">Guardar cambios</button>
         </div>
       </div>
@@ -1564,7 +1615,7 @@ async function guardarEdicion(id){
   const {data:anterior}=await sb.from('oportunidades').select('estado,avance,producto,asunto,proxima_accion,notas,valor_estimado').eq('id',id).single();
   const notaTraz=document.getElementById('e-nota-traz')?.value.trim()||'';
   const nuevoEstado=document.getElementById('e-estado').value;
-  const nuevoAvance=nuevoEstado==='cerrado'?100:parseInt(document.getElementById('e-avance').value);
+  const nuevoAvance=nuevoEstado==='cerrado'?100:nuevoEstado==='perdido'?0:parseInt(document.getElementById('e-avance').value);
 
   const {error}=await sb.from('oportunidades').update({
     fecha:document.getElementById('e-fecha').value,
@@ -1576,6 +1627,8 @@ async function guardarEdicion(id){
     contacto:document.getElementById('e-contacto').value,
     cargo_contacto:document.getElementById('e-cargo').value,
     ciudad:document.getElementById('e-ciudad')?.value.trim()||'',
+    pais:document.getElementById('e-pais')?.value||'Colombia',
+    moneda:document.getElementById('e-pais')?.value==='Ecuador'?'USD':document.getElementById('e-pais')?.value==='México'?'MXN':'COP',
     telefono:document.getElementById('e-tel').value,
     correo:document.getElementById('e-correo').value,
     num_propuesta:document.getElementById('e-numprop').value,
@@ -3321,11 +3374,85 @@ async function renderConsolidado(container){
         ${[...flota,...carga].map(e=>`<option value="${e.u.id}">${e.u.nombre}</option>`).join('')}
       </select>
     </div>
-    <div id="consolidado-body"></div>`;
+    <div id="consolidado-body"></div>
+    
+    <!-- Pipeline detallado -->
+    <div style="margin-top:20px">
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:12px;display:flex;align-items:center;gap:8px">
+        Pipeline detallado
+        <span style="font-size:10px;font-weight:400;color:var(--text3)">— todos los leads activos</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <select class="fsel" id="pipe-pais" onchange="renderPipelineDetallado()" style="font-size:11px;padding:4px 8px">
+          <option value="">Todos los países</option>
+          <option value="Colombia">🇨🇴 Colombia</option>
+          <option value="Ecuador">🇪🇨 Ecuador</option>
+          <option value="México">🇲🇽 México</option>
+        </select>
+        <select class="fsel" id="pipe-exec" onchange="renderPipelineDetallado()" style="font-size:11px;padding:4px 8px">
+          <option value="">Todos los ejecutivos</option>
+          ${[...flota,...carga].map(e=>`<option value="${e.u.id}">${e.u.nombre}</option>`).join('')}
+        </select>
+        <select class="fsel" id="pipe-estado" onchange="renderPipelineDetallado()" style="font-size:11px;padding:4px 8px">
+          <option value="">Todos los estados</option>
+          <option value="en_proceso">En proceso</option>
+          <option value="propuesta_enviada">Propuesta enviada</option>
+          <option value="cerrado">Cerrado</option>
+          <option value="perdido">Perdido</option>
+        </select>
+      </div>
+      <div id="pipeline-tabla"></div>
+    </div>`;
 
   window._consolidadoFlota=flota;
   window._consolidadoCarga=carga;
+  // Cargar oportunidades completas para el pipeline detallado
+  const {data:opsDetalle}=await sb.from('oportunidades').select('*,usuarios(nombre)').order('empresa');
+  window._opsDetalle=opsDetalle||[];
   renderConsolidadoBody('fleet','');
+  renderPipelineDetallado();
+}
+
+function renderPipelineDetallado(){
+  const tabla=document.getElementById('pipeline-tabla');
+  if(!tabla) return;
+  const pais=document.getElementById('pipe-pais')?.value||'';
+  const exec=document.getElementById('pipe-exec')?.value||'';
+  const estado=document.getElementById('pipe-estado')?.value||'';
+  
+  let ops=(window._opsDetalle||[]).filter(o=>{
+    if(pais&&o.pais!==pais) return false;
+    if(exec&&o.usuario_id!==exec) return false;
+    if(estado&&o.estado!==estado) return false;
+    return true;
+  });
+  
+  if(!ops.length){tabla.innerHTML='<div class="empty">Sin leads con estos filtros</div>';return;}
+  
+  const fmt=n=>n?Number(n).toLocaleString('es-CO'):'—';
+  const ESTADOS_LABEL={en_proceso:'En proceso',propuesta_enviada:'Prop. enviada',cerrado:'Cerrado',perdido:'Perdido'};
+  
+  tabla.innerHTML=`<div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="background:var(--surface2);border-bottom:0.5px solid var(--border)">
+        ${['Empresa','Ejecutivo','País','Producto','Estado','Cantidad','Valor unit.','Total único','Rec./mes','Moneda'].map(h=>`<th style="text-align:left;padding:8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);white-space:nowrap">${h}</th>`).join('')}
+      </tr></thead>
+      <tbody>${ops.map((o,i)=>`
+        <tr style="border-bottom:0.5px solid var(--border);background:${i%2===0?'':'var(--surface2)'}">
+          <td style="padding:8px;font-weight:500">${o.empresa||'—'}</td>
+          <td style="padding:8px;color:var(--text3)">${o.usuarios?.nombre||'—'}</td>
+          <td style="padding:8px">${o.pais||'Colombia'}</td>
+          <td style="padding:8px">${o.producto||'—'}</td>
+          <td style="padding:8px"><span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${o.estado==='cerrado'?'var(--green-light)':o.estado==='perdido'?'var(--red-light)':o.estado==='propuesta_enviada'?'var(--sat-orange-light)':'var(--sat-blue-light)'};color:${o.estado==='cerrado'?'var(--green)':o.estado==='perdido'?'var(--red)':o.estado==='propuesta_enviada'?'var(--sat-orange)':'var(--sat-blue)'}">${ESTADOS_LABEL[o.estado]||o.estado}</span></td>
+          <td style="padding:8px;text-align:right">${o.unidades||'—'}</td>
+          <td style="padding:8px;text-align:right">${fmt(o.valor_unitario)}</td>
+          <td style="padding:8px;text-align:right;font-weight:500;color:var(--sat-blue)">${o.unidades&&o.valor_unitario?fmt(o.unidades*o.valor_unitario):'—'}</td>
+          <td style="padding:8px;text-align:right;color:#534AB7">${o.unidades_recurrentes&&o.valor_recurrente?fmt(o.unidades_recurrentes*o.valor_recurrente)+'<br><span style="font-size:9px;color:var(--text3)">'+o.unidades_recurrentes+' u × '+fmt(o.valor_recurrente)+'</span>':'—'}</td>
+          <td style="padding:8px;font-size:10px;color:var(--text3)">${o.moneda||'COP'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
 }
 
 function renderPodio(execs){
