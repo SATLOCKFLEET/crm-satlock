@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777320483 -->
+<!-- build:1777321003 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1125,6 +1125,8 @@ function selOrigenLead(idx){
 }
 
 function calcularTamanoNegocio(){
+  const REC_MESES = {mensual:1, trimestral:3, semestral:6, anual:12};
+  // Venta única
   const unidades = parseInt(document.getElementById('f-unidades')?.value||'0');
   const valorUnitStr = (document.getElementById('f-valor-unit')?.dataset?.raw||document.getElementById('f-valor-unit')?.value||'0').replace(/[^0-9]/g,'');
   const valorUnit = parseFloat(valorUnitStr)||0;
@@ -1132,14 +1134,22 @@ function calcularTamanoNegocio(){
   const elU = document.getElementById('f-total-unica');
   if(elU) elU.value = totalUnica>0 ? totalUnica.toLocaleString('es-CO') : '';
 
+  // Recurrencia
   const unidadesRec = parseInt(document.getElementById('f-unidades-rec')?.value||'0');
   const valorRecStr = (document.getElementById('f-valor-rec')?.dataset?.raw||document.getElementById('f-valor-rec')?.value||'0').replace(/[^0-9]/g,'');
   const valorRec = parseFloat(valorRecStr)||0;
-  const totalRec = unidadesRec * valorRec;
-  const elR = document.getElementById('f-total-rec');
-  if(elR) elR.value = totalRec>0 ? totalRec.toLocaleString('es-CO') : '';
+  const tipoRec = document.getElementById('f-tipo-rec')?.value||'mensual';
+  const mesesPeriodo = REC_MESES[tipoRec]||1;
+  const totalRecPeriodo = unidadesRec * valorRec;
+  const recMensual = totalRecPeriodo / mesesPeriodo;
 
-  const totalPipeline = totalUnica + totalRec;
+  const elR = document.getElementById('f-total-rec');
+  if(elR) elR.value = totalRecPeriodo>0 ? totalRecPeriodo.toLocaleString('es-CO') : '';
+  const elRM = document.getElementById('f-rec-mensual');
+  if(elRM) elRM.value = recMensual>0 ? recMensual.toLocaleString('es-CO') : '';
+
+  // Pipeline total usa equivalente mensual
+  const totalPipeline = totalUnica + recMensual;
   const el = document.getElementById('f-tamano');
   if(el) el.value = totalPipeline>0 ? totalPipeline.toLocaleString('es-CO') : '';
 }
