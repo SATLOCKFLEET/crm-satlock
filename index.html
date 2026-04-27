@@ -665,7 +665,7 @@ function renderTab(idx,tabs){
 
 // ── SEGUIMIENTO ───────────────────────────────────────────────────────────────
 async function renderSeguimiento(container){
-  const verTodos = document.getElementById('seg-ver-todos')?.checked || false;
+  const verTodos = window._segVerTodos || false;
   let query = sb.from('oportunidades').select('*,usuarios(nombre,linea,cargo)').order('fecha',{ascending:false});
   if(PERFIL.rol==='ejecutivo_fleet'||PERFIL.rol==='ejecutivo_carga'){
     query = query.eq('usuario_id',USER.id);
@@ -678,7 +678,7 @@ async function renderSeguimiento(container){
     ${['gerencia','jefe_fleet'].includes(PERFIL.rol)?`
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:var(--text2)">
-        <input type="checkbox" id="seg-ver-todos" style="accent-color:var(--sat-blue);width:14px;height:14px" onchange="renderSeguimiento(document.getElementById('main-content'))"/>
+        <input type="checkbox" id="seg-ver-todos" ${window._segVerTodos?'checked':''} style="accent-color:var(--sat-blue);width:14px;height:14px" onchange="window._segVerTodos=this.checked;renderSeguimiento(document.getElementById('main-content'))"/>
         Ver leads de todo el equipo
       </label>
     </div>`:''}
