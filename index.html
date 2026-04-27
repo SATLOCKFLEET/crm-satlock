@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777318338 -->
+<!-- build:1777319201
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1549,8 +1549,15 @@ async function abrirEditar(id){
           </div>
           <div class="fg"><div class="flbl">Unidades (venta única)</div><input class="finput" type="number" id="e-unidades" value="${r.unidades||''}" min="1"/></div>
           <div class="fg"><div class="flbl">Valor unitario</div><input class="finput" type="number" id="e-valor-unit" value="${r.valor_unitario||''}" placeholder="0"/></div>
-          <div class="fg"><div class="flbl">Servicios recurrentes/mes</div><input class="finput" type="number" id="e-unidades-rec" value="${r.unidades_recurrentes||''}" min="1"/></div>
-          <div class="fg"><div class="flbl">Valor mensual/servicio</div><input class="finput" type="number" id="e-valor-rec" value="${r.valor_recurrente||''}" placeholder="0"/></div>
+          <div class="fg"><div class="flbl">Tipo recurrencia</div>
+            <select class="fsel" id="e-tipo-rec">
+              <option value="mensual"${(r.tipo_recurrencia||'mensual')==='mensual'?' selected':''}>Mensual</option>
+              <option value="trimestral"${r.tipo_recurrencia==='trimestral'?' selected':''}>Trimestral</option>
+              <option value="semestral"${r.tipo_recurrencia==='semestral'?' selected':''}>Semestral</option>
+              <option value="anual"${r.tipo_recurrencia==='anual'?' selected':''}>Anual</option>
+            </select></div>
+          <div class="fg"><div class="flbl">Cantidad servicios</div><input class="finput" type="number" id="e-unidades-rec" value="${r.unidades_recurrentes||''}" min="1"/></div>
+          <div class="fg"><div class="flbl">Valor por período</div><input class="finput" type="number" id="e-valor-rec" value="${r.valor_recurrente||''}" placeholder="0"/></div>
           <div class="fg"><div class="flbl">N° propuesta</div>
             <div style="display:flex;gap:6px">
               <input class="finput" id="e-numprop" value="${(r.num_propuesta||'').replace(/"/g,'&quot;')}" style="font-family:'Courier New',monospace"/>
@@ -1666,6 +1673,7 @@ async function guardarEdicion(id){
     valor_unitario:parseFloat(document.getElementById('e-valor-unit')?.value||'0')||null,
     unidades_recurrentes:parseInt(document.getElementById('e-unidades-rec')?.value||'0')||null,
     valor_recurrente:parseFloat(document.getElementById('e-valor-rec')?.value||'0')||null,
+    tipo_recurrencia:document.getElementById('e-tipo-rec')?.value||null,
     telefono:document.getElementById('e-tel').value,
     correo:document.getElementById('e-correo').value,
     num_propuesta:document.getElementById('e-numprop').value,
@@ -3106,8 +3114,13 @@ function renderKPIContent(){
 
   // KPIs básicos
   const tasa=leadsEnPeriodo.length>0?Math.round(cerradosEnPeriodo.length/leadsEnPeriodo.length*100):0;
+  const REC_M={mensual:1,trimestral:3,semestral:6,anual:12};
+  const recMensualOp=o=>{
+    const raw=(o.unidades_recurrentes||0)*(o.valor_recurrente||0);
+    return raw/(REC_M[o.tipo_recurrencia]||1);
+  };
   const pipelineUnico=opsActivas.reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+s,0);
-  const pipelineRec=opsActivas.reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
+  const pipelineRec=opsActivas.reduce((s,o)=>recMensualOp(o)+s,0);
   const pipelineTotal=pipelineUnico+pipelineRec;
 
   // Origen de leads
@@ -3239,7 +3252,7 @@ function renderKPIContent(){
     const uGest=gestFilt.filter(g=>g.usuario_id===u.id&&enPeriodo(g.fecha)).length;
     const uTasa=uLeads>0?Math.round(uCierres/uLeads*100):0;
     const uPipeline=opsFilt.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
-    const uRec=opsFilt.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
+    const uRec=opsFilt.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>recMOp(o)+s,0);
     return {u,uLeads,uCierres,uGest,uTasa,uPipeline,uRec};
   }).sort((a,b)=>b.uCierres-a.uCierres||b.uLeads-a.uLeads);
 
