@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777324127 -->
+<!-- build:1777325799 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1790,20 +1790,34 @@ async function initGoogleAuth(){
   // NO llamar requestAccessToken aquí — solo cuando el usuario haga clic
 }
 
-async function enviarCorreoGmail({para, asunto, cuerpo, opId}){
+async function enviarCorreoGmail({para, asunto, cuerpo, opId, adjuntos=[]}){
   if(!gcalToken){
     alert('Debe conectar Google Calendar/Gmail primero para enviar correos.');
     return false;
   }
-  // Construir el mensaje en formato RFC 2822 codificado en base64
-  const mensaje = [
+  const boundary = 'satlock_'+Date.now();
+  let rawParts = [
     `To: ${para}`,
     `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(asunto)))}?=`,
     'MIME-Version: 1.0',
-    'Content-Type: text/html; charset=UTF-8',
-    '',
-    cuerpo
-  ].join('\r\n');
+  ];
+
+  if(adjuntos.length){
+    rawParts.push(`Content-Type: multipart/mixed; boundary="${boundary}"`, '');
+    rawParts.push(`--${boundary}`);
+    rawParts.push('Content-Type: text/html; charset=UTF-8', 'Content-Transfer-Encoding: quoted-printable', '', cuerpo);
+    for(const adj of adjuntos){
+      rawParts.push(`--${boundary}`);
+      rawParts.push(`Content-Type: ${adj.tipo||'application/octet-stream'}; name="${adj.nombre}"`);
+      rawParts.push(`Content-Disposition: attachment; filename="${adj.nombre}"`);
+      rawParts.push('Content-Transfer-Encoding: base64', '', adj.datos);
+    }
+    rawParts.push(`--${boundary}--`);
+  } else {
+    rawParts.push('Content-Type: text/html; charset=UTF-8', '', cuerpo);
+  }
+
+  const mensaje = rawParts.join('\r\n');
   const base64 = btoa(unescape(encodeURIComponent(mensaje))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
   try {
     const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
@@ -1906,8 +1920,18 @@ function abrirModalCorreo(opId, empresa, contacto, correoDestino){
         <div class="fg full"><div class="flbl">Asunto</div>
           <input class="finput" id="mc-asunto" placeholder="Asunto del correo"/></div>
         <div class="fg full"><div class="flbl">Mensaje</div>
-          <textarea class="ftxt" id="mc-cuerpo" style="min-height:180px;font-size:12px" placeholder="Escriba su mensaje aquí..."></textarea></div>
-        <div class="fg full" style="font-size:11px;color:var(--text3)">El correo se enviará desde su cuenta de Gmail con su firma configurada. Quedará guardado en Enviados y se registrará automáticamente como gestión de tipo correo.</div>
+          <textarea class="ftxt" id="mc-cuerpo" style="min-height:160px;font-size:12px" placeholder="Escriba su mensaje aquí..."></textarea></div>
+        <div class="fg full">
+          <div class="flbl">Adjunto desde computador</div>
+          <input type="file" id="mc-archivo" multiple style="font-size:12px;color:var(--text2)" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg"/>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px">PDF, Word, Excel, imágenes — máx. 5 MB por archivo</div>
+        </div>
+        <div class="fg full">
+          <div class="flbl">Link de Google Drive (opcional)</div>
+          <input class="finput" id="mc-drive-link" placeholder="https://drive.google.com/..."/>
+          <div style="font-size:10px;color:var(--text3);margin-top:3px">Se incluirá como enlace en el cuerpo del correo</div>
+        </div>
+        <div class="fg full" style="font-size:11px;color:var(--text3);background:var(--surface2);padding:8px 10px;border-radius:6px">El correo se enviará desde su cuenta de Gmail con su firma configurada. Quedará guardado en Enviados y se registrará automáticamente como gestión de tipo correo.</div>
       </div>
       <div class="form-actions">
         <button class="btn-sec" onclick="document.getElementById('modal-correo').remove()">Cancelar</button>
@@ -1934,21 +1958,46 @@ function aplicarPlantillaCorreo(plantillas){
 async function confirmarEnvioCorreo(opId){
   const para = document.getElementById('mc-para')?.value.trim();
   const asunto = document.getElementById('mc-asunto')?.value.trim();
-  const cuerpoTxt = document.getElementById('mc-cuerpo')?.value.trim();
+  let cuerpoTxt = document.getElementById('mc-cuerpo')?.value.trim();
+  const driveLink = document.getElementById('mc-drive-link')?.value.trim();
+  const archivos = document.getElementById('mc-archivo')?.files;
   if(!para){alert('Ingrese el correo del destinatario.');return;}
   if(!asunto){alert('Ingrese el asunto del correo.');return;}
   if(!cuerpoTxt){alert('Escriba el mensaje.');return;}
-  
+
+  // Agregar link de Drive al cuerpo si existe
+  if(driveLink){
+    cuerpoTxt += '\n\nArchivo adjunto en Drive:\n'+driveLink;
+  }
+
   const btn = document.querySelector('#modal-correo .btn-pri');
   if(btn){btn.textContent='Enviando...';btn.disabled=true;}
-  
-  // Convertir texto a HTML básico
-  const cuerpoHtml = '<p>'+cuerpoTxt.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>')+'</p>';
-  const ok = await enviarCorreoGmail({para, asunto, cuerpo:cuerpoHtml, opId});
+
+  // Convertir texto a HTML
+  let cuerpoHtml = '<p>'+cuerpoTxt.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>')+'</p>';
+  if(driveLink){
+    cuerpoHtml += `<p><a href="${driveLink}" style="color:#19428C">📎 Ver archivo en Google Drive</a></p>`;
+  }
+
+  // Leer archivos adjuntos
+  let adjuntos = [];
+  if(archivos && archivos.length){
+    for(const file of archivos){
+      if(file.size > 5*1024*1024){ alert(`El archivo "${file.name}" supera 5 MB.`); if(btn){btn.textContent='✉ Enviar correo';btn.disabled=false;} return; }
+      const b64 = await new Promise((res,rej)=>{
+        const reader = new FileReader();
+        reader.onload = e => res(e.target.result.split(',')[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+      adjuntos.push({nombre:file.name, tipo:file.type, datos:b64});
+    }
+  }
+
+  const ok = await enviarCorreoGmail({para, asunto, cuerpo:cuerpoHtml, opId, adjuntos});
   if(ok){
     document.getElementById('modal-correo').remove();
     alert('Correo enviado correctamente y gestión registrada.');
-    // Refrescar actividad si está abierta
     const fichaEl = document.getElementById('fp-actividad');
     if(fichaEl) cargarTimeline(opId);
   } else {
