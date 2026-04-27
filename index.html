@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777322074 -->
+<!-- build:1777324127 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -499,7 +499,7 @@ function fechaHoyLocal(){
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 const GCAL_CLIENT_ID = '1087906833348-1hlh2iepi4nfhuivoa07vqilk9il2igi.apps.googleusercontent.com';
-const GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar';
+const GCAL_SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/gmail.send';
 const GCAL_WORKER = 'https://satlock-gcal-auth.yezid-bautista.workers.dev';
 let gcalToken = null;
 let gcalRefreshToken = localStorage.getItem('gcal_refresh_token')||null;
@@ -1476,7 +1476,10 @@ async function abrirEditar(id){
       <div class="ficha-panel active" id="fp-actividad">
         <!-- Formulario nueva gestión -->
         <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:14px">
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Registrar gestión</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3)">Registrar gestión</div>
+            <button onclick="abrirModalCorreo('${r.id}','${(r.empresa||'').replace(/'/g,"\\'")}','${(r.contacto||'').replace(/'/g,"\\'")}','${(r.correo||'').replace(/'/g,"\\'")}')" style="font-family:inherit;font-size:11px;padding:5px 12px;border:0.5px solid var(--sat-blue);border-radius:var(--radius-sm);background:var(--sat-blue-light);color:var(--sat-blue);cursor:pointer">✉ Enviar correo</button>
+          </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
             ${['llamada','whatsapp','correo','presencial','otro'].map(t=>`
               <button class="tipo-btn" id="ftipo-${t}" onclick="selTipoFicha('${t}')">${t==='llamada'?'📞 Llamada':t==='whatsapp'?'💬 WhatsApp':t==='correo'?'✉ Correo':t==='presencial'?'🤝 Presencial':'• Otro'}</button>
@@ -1785,6 +1788,172 @@ async function initGoogleAuth(){
     }
   });
   // NO llamar requestAccessToken aquí — solo cuando el usuario haga clic
+}
+
+async function enviarCorreoGmail({para, asunto, cuerpo, opId}){
+  if(!gcalToken){
+    alert('Debe conectar Google Calendar/Gmail primero para enviar correos.');
+    return false;
+  }
+  // Construir el mensaje en formato RFC 2822 codificado en base64
+  const mensaje = [
+    `To: ${para}`,
+    `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(asunto)))}?=`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    cuerpo
+  ].join('\r\n');
+  const base64 = btoa(unescape(encodeURIComponent(mensaje))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  try {
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer '+gcalToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({raw: base64})
+    });
+    if(res.ok){
+      // Registrar la gestión automáticamente
+      if(opId){
+        await sb.from('gestiones').insert({
+          oportunidad_id: opId,
+          usuario_id: USER.id,
+          fecha: fechaHoyLocal(),
+          tipo: 'correo',
+          nota: 'Correo enviado: '+asunto,
+          proxima_gestion: null
+        });
+      }
+      return true;
+    } else {
+      const err = await res.json();
+      console.error('Gmail error:', err);
+      alert('Error al enviar: '+(err.error?.message||'Error desconocido'));
+      return false;
+    }
+  } catch(e){
+    alert('Error de conexión: '+e.message);
+    return false;
+  }
+}
+
+function abrirModalCorreo(opId, empresa, contacto, correoDestino){
+  const PLANTILLAS = {
+    '': {asunto:'', cuerpo:''},
+    'presentacion': {
+      asunto: `Presentación Satlock Fleet — Soluciones de Telemática para ${empresa}`,
+      cuerpo: `<p>Estimado/a ${contacto||'señor/a'},</p>
+<p>Reciba un cordial saludo de parte del equipo de <strong>Satlock Fleet</strong>.</p>
+<p>Me permito contactarle para presentar nuestras soluciones de telemática, videovigilancia y monitoreo de flotas, diseñadas para optimizar la operación y seguridad de su parque vehicular.</p>
+<p>Satlock Fleet ofrece:</p>
+<ul>
+<li>Rastreo GPS en tiempo real</li>
+<li>Video telemática con cámaras IA (ADAS y DMS)</li>
+<li>Geocercas y alertas inteligentes</li>
+<li>Corte remoto de motor</li>
+<li>Centro de monitoreo 24/7</li>
+</ul>
+<p>Quedamos atentos a una reunión para presentarle nuestra propuesta en detalle.</p>
+<p>Atentamente,</p>`
+    },
+    'seguimiento': {
+      asunto: `Seguimiento propuesta Satlock Fleet — ${empresa}`,
+      cuerpo: `<p>Estimado/a ${contacto||'señor/a'},</p>
+<p>Espero se encuentre bien. Me permito hacer seguimiento a la propuesta que tuvimos la oportunidad de presentarle.</p>
+<p>Quedo atento a sus comentarios y disponible para resolver cualquier inquietud que pueda tener.</p>
+<p>Atentamente,</p>`
+    },
+    'propuesta': {
+      asunto: `Propuesta comercial Satlock Fleet — ${empresa}`,
+      cuerpo: `<p>Estimado/a ${contacto||'señor/a'},</p>
+<p>Adjunto encontrará nuestra propuesta comercial detallada con las soluciones que consideramos más adecuadas para las necesidades de <strong>${empresa}</strong>.</p>
+<p>Quedo atento a sus comentarios.</p>
+<p>Atentamente,</p>`
+    },
+    'cierre': {
+      asunto: `Confirmación de negocio — Satlock Fleet & ${empresa}`,
+      cuerpo: `<p>Estimado/a ${contacto||'señor/a'},</p>
+<p>Es un placer confirmar el inicio de nuestra relación comercial. Nuestro equipo se pondrá en contacto a la brevedad para coordinar los próximos pasos de implementación.</p>
+<p>Bienvenido/a a la familia Satlock.</p>
+<p>Atentamente,</p>`
+    }
+  };
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modal-correo';
+  overlay.innerHTML = `
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-title">
+        Enviar correo
+        <button class="modal-close" onclick="document.getElementById('modal-correo').remove()">✕</button>
+      </div>
+      <div class="form-grid">
+        <div class="fg full">
+          <div class="flbl">Plantilla</div>
+          <select class="fsel" id="mc-plantilla" onchange="aplicarPlantillaCorreo(${JSON.stringify(PLANTILLAS).replace(/"/g,'&quot;')})">
+            <option value="">— Texto libre —</option>
+            <option value="presentacion">Presentación inicial</option>
+            <option value="seguimiento">Seguimiento de propuesta</option>
+            <option value="propuesta">Envío de propuesta</option>
+            <option value="cierre">Confirmación de cierre</option>
+          </select>
+        </div>
+        <div class="fg full"><div class="flbl">Para</div>
+          <input class="finput" id="mc-para" value="${correoDestino||''}" placeholder="correo@cliente.com"/></div>
+        <div class="fg full"><div class="flbl">Asunto</div>
+          <input class="finput" id="mc-asunto" placeholder="Asunto del correo"/></div>
+        <div class="fg full"><div class="flbl">Mensaje</div>
+          <textarea class="ftxt" id="mc-cuerpo" style="min-height:180px;font-size:12px" placeholder="Escriba su mensaje aquí..."></textarea></div>
+        <div class="fg full" style="font-size:11px;color:var(--text3)">El correo se enviará desde su cuenta de Gmail con su firma configurada. Quedará guardado en Enviados y se registrará automáticamente como gestión de tipo correo.</div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-sec" onclick="document.getElementById('modal-correo').remove()">Cancelar</button>
+        <button class="btn-pri" onclick="confirmarEnvioCorreo('${opId}')">✉ Enviar correo</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function aplicarPlantillaCorreo(plantillas){
+  const sel = document.getElementById('mc-plantilla')?.value||'';
+  const p = plantillas[sel]||{asunto:'',cuerpo:''};
+  const elA = document.getElementById('mc-asunto');
+  const elC = document.getElementById('mc-cuerpo');
+  if(elA && p.asunto) elA.value = p.asunto;
+  if(elC && p.cuerpo){
+    // Convertir HTML básico a texto para el textarea
+    const tmp = document.createElement('div');
+    tmp.innerHTML = p.cuerpo;
+    elC.value = tmp.innerText;
+  }
+}
+
+async function confirmarEnvioCorreo(opId){
+  const para = document.getElementById('mc-para')?.value.trim();
+  const asunto = document.getElementById('mc-asunto')?.value.trim();
+  const cuerpoTxt = document.getElementById('mc-cuerpo')?.value.trim();
+  if(!para){alert('Ingrese el correo del destinatario.');return;}
+  if(!asunto){alert('Ingrese el asunto del correo.');return;}
+  if(!cuerpoTxt){alert('Escriba el mensaje.');return;}
+  
+  const btn = document.querySelector('#modal-correo .btn-pri');
+  if(btn){btn.textContent='Enviando...';btn.disabled=true;}
+  
+  // Convertir texto a HTML básico
+  const cuerpoHtml = '<p>'+cuerpoTxt.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>')+'</p>';
+  const ok = await enviarCorreoGmail({para, asunto, cuerpo:cuerpoHtml, opId});
+  if(ok){
+    document.getElementById('modal-correo').remove();
+    alert('Correo enviado correctamente y gestión registrada.');
+    // Refrescar actividad si está abierta
+    const fichaEl = document.getElementById('fp-actividad');
+    if(fichaEl) cargarTimeline(opId);
+  } else {
+    if(btn){btn.textContent='✉ Enviar correo';btn.disabled=false;}
+  }
 }
 
 async function renovarTokenGcal(){
