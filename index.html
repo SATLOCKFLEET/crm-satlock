@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777316888 -->
+<!-- build:1777317957 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -718,6 +718,8 @@ async function renderSeguimiento(container){
   // Leer filtro de ejecutivo del DOM si existe
   const selectExec = document.getElementById('seg-filtro-exec');
   if(selectExec) window._segFiltroExec = selectExec.value;
+  // Si hay un ejecutivo seleccionado, activar automáticamente verTodos
+  const verTodosEfectivo = verTodos || !!window._segFiltroExec;
   // Cargar lista de ejecutivos para el filtro si no están cargados
   if(['gerencia','jefe_fleet','jefe_proyectos'].includes(PERFIL.rol) && (!window._segUsuarios || !window._segUsuarios.length)){
     const {data:segUsers} = await sb.from('usuarios').select('id,nombre,rol,linea').neq('rol','gerencia').neq('rol','alta_gerencia').order('nombre');
@@ -726,7 +728,7 @@ async function renderSeguimiento(container){
   let query = sb.from('oportunidades').select('*,usuarios(nombre,linea,cargo)').order('fecha',{ascending:false});
   if(PERFIL.rol==='ejecutivo_fleet'||PERFIL.rol==='ejecutivo_carga'){
     query = query.eq('usuario_id',USER.id);
-  } else if((PERFIL.rol==='jefe_fleet'||PERFIL.rol==='gerencia'||PERFIL.rol==='jefe_proyectos'||PERFIL.rol==='alta_gerencia') && !verTodos){
+  } else if((PERFIL.rol==='jefe_fleet'||PERFIL.rol==='gerencia'||PERFIL.rol==='jefe_proyectos'||PERFIL.rol==='alta_gerencia') && !verTodosEfectivo){
     query = query.eq('usuario_id',USER.id);
   }
   const {data:rows} = await query;
@@ -823,7 +825,7 @@ function renderOpRows(rows, filtro, q){
         ${['jefe_fleet','jefe_proyectos'].includes(PERFIL.rol)?`
           <button class="icon-btn" onclick="abrirEditar('${r.id}')" title="Editar">✎</button>
           <button class="icon-btn" onclick="confirmarBorrar('${r.id}','${r.empresa}')" title="Eliminar" style="color:var(--red)">✕</button>
-        `:`<button class="icon-btn" onclick="abrirEditar('${r.id}')" title="Visualizar" style="color:var(--sat-blue)">👁</button>`}
+        `:`<button class="btn-sec" onclick="abrirEditar('${r.id}')" style="font-size:11px;color:var(--sat-blue);border-color:var(--sat-blue);background:var(--sat-blue-light)">Visualizar</button>`}
       </td>
     </tr>`;
   }).join('');
