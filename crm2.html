@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777411663 -->
+<!-- build:1777413969 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -505,8 +505,8 @@ let gcalToken = null;
 let gcalRefreshToken = localStorage.getItem('gcal_refresh_token')||null;
 let gcalTokenExpiry = parseInt(localStorage.getItem('gcal_token_expiry')||'0');
 let gcalTokenClient = null;
-const PRODUCTOS_FLEET = ['Control Track','Satellital Track','Track Vision','Safe Track','MOSAT','Satlock Carga (venta cruzada)'];
-const PRODUCTOS_CARGA = ['MAC','SGT','GCT','TAGS','LCT','Integraciones','Inside Cargo','Central In House','AMT','Fleet (venta cruzada)'];
+const PRODUCTOS_FLEET = ['VL103','JC181','JC261','JC371','JC450','SmartoneC','LL309','LL301','PL601','SC1000','TAG705','TAG704','TAC708','TAG713'];
+const PRODUCTOS_CARGA = ['MAC','GCT','INTEGRACIÓN','SIC','CMI','AMT','LCT','SGT'];
 const ESTADOS = {
   en_proceso:{label:'En proceso',cls:'s-en_proceso',color:'#378ADD'},
   propuesta_enviada:{label:'Prop. enviada',cls:'s-propuesta_enviada',color:'#BA7517'},
@@ -1243,9 +1243,54 @@ function actualizarMonedaPais(){
     if(lbl && lbl.className==='flbl') lbl.innerHTML = `Valor por unidad (${moneda})`;
   });
 }
-function actualizarProductoEdit(){
-  // Nada que hacer -- el valor ya está en el select
+function cargarProductosEdit(r){
+  const PRODS_FLEET=['VL103','JC181','JC261','JC371','JC450','SmartoneC','LL309','LL301','PL601','SC1000','TAG705','TAG704','TAC708','TAG713'];
+  const PRODS_CARGA=['MAC','GCT','INTEGRACIÓN','SIC','CMI','AMT','LCT','SGT'];
+  const linea=r?.linea||PERFIL.linea||'fleet';
+  const productos=linea==='carga'?PRODS_CARGA:PRODS_FLEET;
+  const container=document.getElementById('e-producto-btns');
+  const hiddenInput=document.getElementById('e-producto');
+  if(!container) return;
+  container.innerHTML=productos.map(p=>`
+    <button type="button" class="tipo-btn${r?.producto===p?' active':''}" 
+      style="${r?.producto===p?'background:var(--sat-blue);color:#fff;border-color:var(--sat-blue)':''}"
+      onclick="selProductoEdit('${p}')">${p}</button>`).join('');
 }
+
+function selProductoEdit(p){
+  document.querySelectorAll('#e-producto-btns .tipo-btn').forEach(b=>{
+    b.style.background=''; b.style.color=''; b.style.borderColor='';
+    b.classList.remove('active');
+  });
+  const btn=document.querySelector('#e-producto-btns .tipo-btn[onclick*="${p}"]');
+  event.target.style.background='var(--sat-blue)';
+  event.target.style.color='#fff';
+  event.target.style.borderColor='var(--sat-blue)';
+  event.target.classList.add('active');
+  const hiddenInput=document.getElementById('e-producto');
+  if(hiddenInput) hiddenInput.value=p;
+}
+
+function setLineaEdit(linea){
+  const hiddenInput=document.getElementById('e-linea');
+  if(hiddenInput) hiddenInput.value=linea;
+  ['fleet','carga'].forEach(l=>{
+    const btn=document.getElementById('e-linea-'+l);
+    if(btn){
+      btn.style.background=''; btn.style.color=''; btn.style.borderColor='';
+      btn.classList.remove('active');
+    }
+  });
+  const activeBtn=document.getElementById('e-linea-'+linea);
+  if(activeBtn){
+    activeBtn.style.background=linea==='fleet'?'var(--sat-blue)':'var(--sat-orange)';
+    activeBtn.style.color='#fff';
+    activeBtn.style.borderColor=linea==='fleet'?'var(--sat-blue)':'var(--sat-orange)';
+  }
+  // Recargar botones de producto para la nueva línea
+  cargarProductosEdit({linea, producto:''});
+}
+
 function actualizarProductosForm(){
   const linea=document.getElementById('f-linea')?.value||'fleet';
   const PRODS_FLEET=['VL103','JC181','JC261','JC371','JC450','SmartoneC','LL309','LL301','PL601','SC1000','TAG705','TAG704','TAC708','TAG713'];
@@ -1604,16 +1649,19 @@ async function abrirEditar(id){
             <select class="fsel" id="e-estado">
               ${Object.entries(ESTADOS).map(([k,v])=>`<option value="${k}"${r.estado===k?' selected':''}>${v.label}</option>`).join('')}
             </select></div>
-          ${esAmbas?`<div class="fg"><div class="flbl">Línea</div>
-            <select class="fsel" id="e-linea">
-              <option value="fleet"${r.linea==='fleet'?' selected':''}>Fleet</option>
-              <option value="carga"${r.linea==='carga'?' selected':''}>Carga</option>
-            </select></div>`:'<input type="hidden" id="e-linea" value="${r.linea||PERFIL.linea}"/>'}
-          <div class="fg"><div class="flbl">Producto</div>
-            <select class="fsel" id="e-producto">
-              <option value="">— Seleccione —</option>
-              ${(r.linea==='carga'?PRODUCTOS_CARGA:PRODUCTOS_FLEET).map(p=>`<option value="${p}"${r.producto===p?' selected':''}>${p}</option>`).join('')}
-            </select></div>
+          <div class="fg full">
+            <div class="flbl">Línea comercial</div>
+            <div style="display:flex;gap:8px;margin-top:4px">
+              <button type="button" id="e-linea-fleet" onclick="setLineaEdit('fleet')" class="tipo-btn${r.linea==='fleet'?' active':''}" style="${r.linea==='fleet'?'background:var(--sat-blue);color:#fff;border-color:var(--sat-blue)':''}">Fleet</button>
+              <button type="button" id="e-linea-carga" onclick="setLineaEdit('carga')" class="tipo-btn${r.linea==='carga'?' active':''}" style="${r.linea==='carga'?'background:var(--sat-orange);color:#fff;border-color:var(--sat-orange)':''}">Carga</button>
+            </div>
+            <input type="hidden" id="e-linea" value="${r.linea||PERFIL.linea||'fleet'}"/>
+          </div>
+          <div class="fg full">
+            <div class="flbl">Producto / Solución</div>
+            <div id="e-producto-btns" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px"></div>
+            <input type="hidden" id="e-producto" value="${r.producto||''}"/>
+          </div>
           <div class="fg full"><div class="flbl">Origen del lead</div>
             <select class="fsel" id="e-origen">
               <option value="">Sin especificar</option>
