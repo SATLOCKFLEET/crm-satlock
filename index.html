@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777390334 -->
+<!-- build:1777391521 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -972,6 +972,19 @@ function renderNueva(container){
           <div style="position:relative">
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--sat-blue)">$</span>
             <input class="finput" type="text" id="f-total-unica" readonly style="padding-left:20px;background:var(--sat-blue-light);color:var(--sat-blue);font-weight:500;cursor:default"/>
+          </div></div>
+        <div style="grid-column:1/-1;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-orange);margin-top:8px;padding-top:8px;border-top:0.5px dashed var(--border)">Instalación (opcional)</div>
+        <div class="fg"><div class="flbl">Unidades instalación</div>
+          <input class="finput" type="number" id="f-unidades-inst" min="1" placeholder="Ej: 10" oninput="calcularTamanoNegocio()"/></div>
+        <div class="fg"><div class="flbl">Valor instalación por unidad</div>
+          <div style="position:relative">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3)">$</span>
+            <input class="finput" type="text" id="f-valor-inst" placeholder="0" oninput="formatearMoneda(this);calcularTamanoNegocio()" style="padding-left:20px"/>
+          </div></div>
+        <div class="fg"><div class="flbl" style="color:var(--sat-orange)">Total instalación</div>
+          <div style="position:relative">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--sat-orange)">$</span>
+            <input class="finput" type="text" id="f-total-inst" readonly style="padding-left:20px;background:var(--sat-orange-light);color:var(--sat-orange);font-weight:500;cursor:default"/>
           </div></div>
       </div>
       <div id="bloque-recurrente" class="form-grid" style="display:none;margin-bottom:10px;border-top:0.5px solid var(--border);padding-top:10px">
