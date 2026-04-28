@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777391521 -->
+<!-- build:1777402272 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -2848,61 +2848,91 @@ function getSemaforo(pct){
 }
 async function renderQCO(container){
   const hoy=new Date();
-  const mes=hoy.getMonth()+1;const anio=hoy.getFullYear();
+  const mes=hoy.getMonth()+1; const anio=hoy.getFullYear();
   const quincena=getQuincenaActual();
   const metas=getMetasQCO(PERFIL.linea, PERFIL.rol);
-  let query=sb.from('quince_cinco_uno').select('*').eq('usuario_id',USER.id).eq('mes',mes).eq('anio',anio);
-  if(PERFIL.linea==='fleet') query=query.eq('semana',quincena===1?1:3); // semana 1-2 = Q1, 3-4 = Q2 proxy
-  const {data:rows}=await query;
-  const tot=(campo)=>(rows||[]).reduce((s,r)=>s+(r[campo]||0),0);
-  const tc=tot('contactos'),tq=tot('cotizaciones'),tcierres=tot('cierres');
-  const pctC=metas.sinCuota?100:Math.min(100,Math.round(tc/metas.c*100));
-  const pctQ=metas.sinCuota?100:Math.min(100,Math.round(tq/metas.q*100));
-  const pctCi=metas.sinCuota?100:Math.min(100,Math.round(tcierres/metas.ci*100));
-  const neutral={color:'var(--sat-blue)',bg:'var(--sat-blue-light)',label:'Sin cuota'};
-  const semC=metas.sinCuota?neutral:getSemaforo(pctC);
-  const semQ=metas.sinCuota?neutral:getSemaforo(pctQ);
-  const semCi=metas.sinCuota?neutral:getSemaforo(pctCi);
-  const periodoStr=PERFIL.linea==='fleet'
-    ?`${quincena===1?'1ª':'2ª'} quincena — ${hoy.toLocaleDateString('es-CO',{month:'long',year:'numeric'})}`
-    :hoy.toLocaleDateString('es-CO',{month:'long',year:'numeric'});
+  const sinCuota=metas.sinCuota||false;
+
+  // Calcular automáticamente desde oportunidades
+  let query=sb.from('oportunidades').select('estado,created_at,updated_at').eq('usuario_id',USER.id);
+  const {data:ops}=await query;
+  const allOps=ops||[];
+
+  // Para Fleet: filtrar por quincena actual
+  // Para Carga: todo el mes
+  const enPeriodo=(fecha)=>{
+    if(!fecha) return false;
+    const d=new Date(fecha);
+    if(d.getMonth()+1!==mes||d.getFullYear()!==anio) return false;
+    if(PERFIL.linea==='fleet'){
+      const dia=d.getDate();
+      return quincena===1?(dia>=1&&dia<=15):(dia>=16);
+    }
+    return true;
+  };
+
+  // Contactos = leads creados en el período
+  const contactos=allOps.filter(o=>enPeriodo(o.created_at)).length;
+  // Cotizaciones = leads que están en propuesta_enviada O llegaron a ese estado (aproximado: leads con propuesta o cerrado)
+  const cotizaciones=allOps.filter(o=>
+    ['propuesta_enviada','cerrado'].includes(o.estado) && enPeriodo(o.created_at)
+  ).length;
+  // Cierres = leads cerrados en el período
+  const cierres=allOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.updated_at)).length;
+
+  const pctC=sinCuota?100:Math.min(100,metas.c>0?Math.round(contactos/metas.c*100):0);
+  const pctQ=sinCuota?100:Math.min(100,metas.q>0?Math.round(cotizaciones/metas.q*100):0);
+  const pctCi=sinCuota?100:Math.min(100,metas.ci>0?Math.round(cierres/metas.ci*100):0);
+  const puntaje=calcPuntaje(contactos,cotizaciones,cierres,metas);
+
+  const semC=semaforoRow(pctC),semQ=semaforoRow(pctQ),semCi=semaforoRow(pctCi);
+  const overall=sinCuota?{cls:'card-blue',txt:'var(--sat-blue)'}:semaforoRow(puntaje);
+
+  const periodoLabel=PERFIL.linea==='fleet'
+    ?`Quincena ${quincena===1?'1 (1-15)':'2 (16-'+new Date(anio,mes,0).getDate()+')'} — ${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][mes-1]} ${anio}`
+    :`${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][mes-1]} ${anio}`;
+
   container.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-      <div>
-        <div style="font-size:13px;font-weight:500">Metodología 15 · 5 · 1</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">${periodoStr} · Meta ${metas.periodoLabel}</div>
+    <div style="max-width:480px;margin:0 auto">
+      <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px">15 · 5 · 1</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:16px">${periodoLabel} — calculado automáticamente desde tus leads</div>
+
+      <div class="exec-card-151 ${overall.cls}" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div class="exec-avatar-151" style="background:var(--sat-blue)">${PERFIL.nombre.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase()}</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:500">${PERFIL.nombre}</div>
+            <div style="font-size:10px;color:var(--text3)">${PERFIL.cargo||PERFIL.linea}</div>
+          </div>
+          ${!sinCuota?`<div style="text-align:right">
+            <div style="font-size:22px;font-weight:300;color:${overall.txt};font-family:'Courier New',monospace">${puntaje}</div>
+            <div style="font-size:9px;color:var(--text3)">puntos</div>
+          </div>`:''}
+        </div>
+
+        ${!sinCuota?`
+        ${[{lbl:'Contactos (leads creados)',val:contactos,meta:metas.c,pct:pctC,sem:semC},
+           {lbl:'Cotizaciones (propuestas enviadas)',val:cotizaciones,meta:metas.q,pct:pctQ,sem:semQ},
+           {lbl:'Cierres',val:cierres,meta:metas.ci,pct:pctCi,sem:semCi}
+          ].map(m=>`
+          <div style="margin-bottom:10px">
+            <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+              <span style="font-size:11px;color:var(--text2)">${m.lbl}</span>
+              <span style="font-size:12px;font-weight:600;color:${m.sem.txt}">${m.val} / ${m.meta}</span>
+            </div>
+            <div class="m151-bar"><div class="m151-fill ${m.sem.fill}" style="width:${m.pct}%"></div></div>
+          </div>`).join('')}`:'<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Vista gerencial — sin cuota asignada</div>'}
       </div>
-      <button class="btn-pri" onclick="registrarQCO()">+ Registrar actividad</button>
-    </div>
-    <div class="qco-grid" style="margin-bottom:16px">
-      <div class="qco-card" style="border-top:3px solid ${semC.color}">
-        <div class="qco-num" style="color:${semC.color}">${tc}</div>
-        <div class="qco-lbl">Contactos</div>
-        <div class="qco-meta">Meta: <span>${metas.c}</span></div>
-        <div style="margin-top:8px;font-size:10px;font-weight:600;color:${semC.color};background:${semC.bg};padding:2px 8px;border-radius:10px;display:inline-block">${semC.label}</div>
+
+      <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 16px">
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">¿Cómo se calculan estos números?</div>
+        <div style="font-size:11px;color:var(--text2);line-height:1.7">
+          <strong>Contactos:</strong> leads creados en este período.<br>
+          <strong>Cotizaciones:</strong> leads en estado "Propuesta enviada" o "Cerrado" creados en este período.<br>
+          <strong>Cierres:</strong> leads marcados como "Cerrado" en este período.
+        </div>
       </div>
-      <div class="qco-card" style="border-top:3px solid ${semQ.color}">
-        <div class="qco-num" style="color:${semQ.color}">${tq}</div>
-        <div class="qco-lbl">Cotizaciones</div>
-        <div class="qco-meta">Meta: <span>${metas.q}</span></div>
-        <div style="margin-top:8px;font-size:10px;font-weight:600;color:${semQ.color};background:${semQ.bg};padding:2px 8px;border-radius:10px;display:inline-block">${semQ.label}</div>
-      </div>
-      <div class="qco-card" style="border-top:3px solid ${semCi.color}">
-        <div class="qco-num" style="color:${semCi.color}">${tcierres}</div>
-        <div class="qco-lbl">Cierres</div>
-        <div class="qco-meta">Meta: <span>${metas.ci}</span></div>
-        <div style="margin-top:8px;font-size:10px;font-weight:600;color:${semCi.color};background:${semCi.bg};padding:2px 8px;border-radius:10px;display:inline-block">${semCi.label}</div>
-      </div>
-    </div>
-    <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px">
-      ${[{lbl:'Contactos',val:pctC,sem:semC},{lbl:'Cotizaciones',val:pctQ,sem:semQ},{lbl:'Cierres',val:pctCi,sem:semCi}].map(it=>`
-      <div class="progress-row">
-        <span class="progress-lbl">${it.lbl}</span>
-        <div class="progress-bg"><div class="progress-fill" style="width:${it.val}%;background:${it.sem.color}"></div></div>
-        <span class="progress-pct" style="color:${it.sem.color}">${it.val}%</span>
-      </div>`).join('')}
-    </div>
-    ${PERFIL.linea==='fleet'?`<div style="margin-top:12px;font-size:11px;color:var(--text3);border:0.5px solid var(--border);border-radius:var(--radius-sm);padding:8px 12px">La meta Fleet se evalúa cada quincena. Al iniciar la 2ª quincena el contador reinicia.</div>`:''}`;
+    </div>`;
 }
 async function registrarQCO(){
   const c=parseInt(prompt('Contactos nuevos:')||'0');
@@ -3874,20 +3904,27 @@ function getMetasQCO(linea){
 async function renderConsolidado(container){
   container.innerHTML='<div class="loading">Cargando consolidado...</div>';
   const {data:usuarios}=await sb.from('usuarios').select('*').neq('rol','gerencia').order('nombre');
-  const {data:ops}=await sb.from('oportunidades').select('usuario_id,estado,fecha_inicio_gestion,updated_at,de_mercadeo,valor_unitario,unidades,valor_recurrente,unidades_recurrentes,producto,origen_lead');
+  const {data:ops}=await sb.from('oportunidades').select('usuario_id,estado,fecha_inicio_gestion,updated_at,created_at,de_mercadeo,valor_unitario,unidades,valor_recurrente,unidades_recurrentes,producto,origen_lead,tipo_recurrencia');
   const {data:gestAll}=await sb.from('gestiones').select('usuario_id,fecha,tipo').order('fecha',{ascending:false});
   const hoy=new Date();
   const mes=hoy.getMonth()+1;const anio=hoy.getFullYear();
-  const {data:qco}=await sb.from('quince_cinco_uno').select('usuario_id,contactos,cotizaciones,cierres,semana').eq('mes',mes).eq('anio',anio);
   const quincena=getQuincenaActual();
+  const qco=[];
 
   function buildExec(u,idx){
     const metas=getMetasQCO(u.linea, u.rol);
-    let uqco=qco?.filter(q=>q.usuario_id===u.id)||[];
-    if(u.linea==='fleet') uqco=uqco.filter(q=>q.semana===(quincena===1?1:3));
-    const tc=uqco.reduce((s,r)=>s+r.contactos,0);
-    const tq=uqco.reduce((s,r)=>s+r.cotizaciones,0);
-    const tci=uqco.reduce((s,r)=>s+r.cierres,0);
+    // Calcular desde oportunidades automáticamente
+    const uops2=ops?.filter(o=>o.usuario_id===u.id)||[];
+    const enPeriodoU=(fecha)=>{
+      if(!fecha) return false;
+      const d=new Date(fecha);
+      if(d.getMonth()+1!==mes||d.getFullYear()!==anio) return false;
+      if(u.linea==='fleet'){const dia=d.getDate();return quincena===1?(dia>=1&&dia<=15):(dia>=16);}
+      return true;
+    };
+    const tc=uops2.filter(o=>enPeriodoU(o.created_at)).length;
+    const tq=uops2.filter(o=>['propuesta_enviada','cerrado'].includes(o.estado)&&enPeriodoU(o.created_at)).length;
+    const tci=uops2.filter(o=>o.estado==='cerrado'&&enPeriodoU(o.updated_at)).length;
     const uops=ops?.filter(o=>o.usuario_id===u.id)||[];
     const cerrados=uops.filter(o=>o.estado==='cerrado').length;
     const proceso=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).length;
