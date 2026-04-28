@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777414654 -->
+<!-- build:1777415551 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -692,11 +692,11 @@ function construirTabs(){
     {label:'Agenda',render:renderAgenda},
     {label:'15 · 5 · 1',render:renderQCO},
   ];
-  if(['gerencia','jefe_fleet','jefe_proyectos'].includes(PERFIL.rol)){
+  if(['gerencia','jefe_fleet','jefe_proyectos','analista_comercial'].includes(PERFIL.rol)){
     base.push({label:'Consolidado equipo',render:renderConsolidado});
     base.push({label:'KPIs & Analytics',render:renderKPIs});
   }
-  if(['alta_gerencia','gerencia','jefe_fleet'].includes(PERFIL.rol)){
+  if(['alta_gerencia','gerencia','jefe_fleet','analista_comercial'].includes(PERFIL.rol)){
     base.push({label:'Alta Gerencia',render:renderAltaGerencia});
   }
   return base;
@@ -724,14 +724,14 @@ async function renderSeguimiento(container){
   // Si hay un ejecutivo seleccionado, activar automáticamente verTodos
   const verTodosEfectivo = verTodos || !!window._segFiltroExec;
   // Cargar lista de ejecutivos para el filtro si no están cargados
-  if(['gerencia','jefe_fleet','jefe_proyectos'].includes(PERFIL.rol) && (!window._segUsuarios || !window._segUsuarios.length)){
+  if(['gerencia','jefe_fleet','jefe_proyectos','analista_comercial'].includes(PERFIL.rol) && (!window._segUsuarios || !window._segUsuarios.length)){
     const {data:segUsers} = await sb.from('usuarios').select('id,nombre,rol,linea').neq('rol','gerencia').neq('rol','alta_gerencia').order('nombre');
     window._segUsuarios = segUsers||[];
   }
   let query = sb.from('oportunidades').select('*,usuarios(nombre,linea,cargo)').order('fecha',{ascending:false});
   if(PERFIL.rol==='ejecutivo_fleet'||PERFIL.rol==='ejecutivo_carga'){
     query = query.eq('usuario_id',USER.id);
-  } else if((PERFIL.rol==='jefe_fleet'||PERFIL.rol==='gerencia'||PERFIL.rol==='jefe_proyectos'||PERFIL.rol==='alta_gerencia') && !verTodosEfectivo){
+  } else if((PERFIL.rol==='jefe_fleet'||PERFIL.rol==='gerencia'||PERFIL.rol==='jefe_proyectos'||PERFIL.rol==='alta_gerencia'||PERFIL.rol==='analista_comercial') && !verTodosEfectivo){
     query = query.eq('usuario_id',USER.id);
   }
   // Aplicar filtro de ejecutivo específico
