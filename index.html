@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777403461 -->
+<!-- build:1777404634 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1585,19 +1585,13 @@ async function abrirEditar(id){
       <!-- PANEL EDITAR -->
       <div class="ficha-panel" id="fp-editar">
         <div class="form-grid">
-          <div class="fg"><div class="flbl">Fecha</div><input class="finput" id="e-fecha" type="date" value="${r.fecha||''}"/></div>
-          <div class="fg"><div class="flbl">Estado</div>
-            <select class="fsel" id="e-estado">
-              ${Object.entries(ESTADOS).map(([k,v])=>`<option value="${k}"${r.estado===k?' selected':''}>${v.label}</option>`).join('')}
-            </select></div>
-          ${esAmbas?`<div class="fg"><div class="flbl">Línea</div>
-            <select class="fsel" id="e-linea">
-              <option value="fleet"${lineaReg==='fleet'?' selected':''}>Fleet</option>
-              <option value="carga"${lineaReg==='carga'?' selected':''}>Carga</option>
-            </select></div>`:`<input type="hidden" id="e-linea" value="${lineaReg}"/>`}
+          <!-- Datos básicos -->
           <div class="fg"><div class="flbl">Empresa</div><input class="finput" id="e-empresa" value="${(r.empresa||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">NIT / RUC</div><input class="finput" id="e-nit" value="${(r.nit||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Contacto</div><input class="finput" id="e-contacto" value="${(r.contacto||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Cargo</div><input class="finput" id="e-cargo" value="${(r.cargo_contacto||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Teléfono</div><input class="finput" id="e-tel" value="${(r.telefono||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg"><div class="flbl">Correo</div><input class="finput" type="email" id="e-correo" value="${(r.correo||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">Ciudad</div><input class="finput" id="e-ciudad" value="${(r.ciudad||'').replace(/"/g,'&quot;')}"/></div>
           <div class="fg"><div class="flbl">País</div>
             <select class="fsel" id="e-pais">
@@ -1605,18 +1599,25 @@ async function abrirEditar(id){
               <option value="Ecuador"${r.pais==='Ecuador'?' selected':''}>🇪🇨 Ecuador</option>
               <option value="México"${r.pais==='México'?' selected':''}>🇲🇽 México</option>
             </select></div>
-          <div class="fg full"><div class="flbl">Producto</div>
-            <select class="fsel" id="e-producto" onchange="actualizarProductoEdit()">
-              <option value="">— Seleccione producto —</option>
-              ${(r.linea==='carga'||(!r.linea&&PERFIL.linea==='carga')?PRODUCTOS_CARGA:PRODUCTOS_FLEET).map(p=>`<option value="${p}"${r.producto===p?' selected':''}>${p}</option>`).join('')}
+          <div class="fg"><div class="flbl">Fecha</div><input class="finput" type="date" id="e-fecha" value="${r.fecha||''}"/></div>
+          <div class="fg"><div class="flbl">Estado</div>
+            <select class="fsel" id="e-estado">
+              ${Object.entries(ESTADOS).map(([k,v])=>`<option value="${k}"${r.estado===k?' selected':''}>${v.label}</option>`).join('')}
             </select></div>
-          <div class="fg"><div class="flbl">NIT / RUC</div><input class="finput" id="e-nit" value="${(r.nit||'').replace(/"/g,'&quot;')}"/></div>
-          <div class="fg"><div class="flbl">Teléfono</div><input class="finput" id="e-tel" value="${(r.telefono||'').replace(/"/g,'&quot;')}"/></div>
-          <div class="fg"><div class="flbl">Correo</div><input class="finput" id="e-correo" type="email" value="${(r.correo||'').replace(/"/g,'&quot;')}"/></div>
+          ${esAmbas?`<div class="fg"><div class="flbl">Línea</div>
+            <select class="fsel" id="e-linea">
+              <option value="fleet"${r.linea==='fleet'?' selected':''}>Fleet</option>
+              <option value="carga"${r.linea==='carga'?' selected':''}>Carga</option>
+            </select></div>`:'<input type="hidden" id="e-linea" value="${r.linea||PERFIL.linea}"/>'}
+          <div class="fg"><div class="flbl">Producto</div>
+            <select class="fsel" id="e-producto">
+              <option value="">— Seleccione —</option>
+              ${(r.linea==='carga'?PRODUCTOS_CARGA:PRODUCTOS_FLEET).map(p=>`<option value="${p}"${r.producto===p?' selected':''}>${p}</option>`).join('')}
+            </select></div>
           <div class="fg full"><div class="flbl">Origen del lead</div>
             <select class="fsel" id="e-origen">
               <option value="">Sin especificar</option>
-              ${['Lead propio / en frío','Feria / Evento / Stand','Estudio de Mercado','Mantenimiento / Postventa'].map(o=>`<option value="${o}"${r.origen_lead===o?' selected':''}>${o}</option>`).join('')}
+              ${['Lead propio / en frío','Feria / Evento / Stand','Estudio de Mercado','Mantenimiento / Postventa','Venta Cruzada'].map(o=>`<option value="${o}"${r.origen_lead===o?' selected':''}>${o}</option>`).join('')}
             </select></div>
           <div class="fg full"><div class="flbl">Tipo de negocio</div>
             <div style="display:flex;gap:16px;padding-top:4px">
@@ -1628,15 +1629,15 @@ async function abrirEditar(id){
               </label>
             </div>
           </div>
-          <!-- Fila Venta única -->
-          <div class="fg full" style="background:var(--sat-blue-light);border-radius:6px;padding:10px 12px;margin-top:6px">
+          <!-- Venta única -->
+          <div class="fg full" style="background:var(--sat-blue-light);border-radius:6px;padding:10px 12px">
             <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-blue);margin-bottom:8px">Venta única</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
               <div><div class="flbl">Unidades</div><input class="finput" type="number" id="e-unidades" value="${r.unidades||''}" min="1"/></div>
               <div><div class="flbl">Valor por unidad</div><input class="finput" type="number" id="e-valor-unit" value="${r.valor_unitario||''}" placeholder="0"/></div>
             </div>
           </div>
-          <!-- Fila Instalación -->
+          <!-- Instalación -->
           <div class="fg full" style="background:var(--sat-orange-light);border-radius:6px;padding:10px 12px">
             <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-orange);margin-bottom:8px">Instalación</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1644,7 +1645,7 @@ async function abrirEditar(id){
               <div><div class="flbl">Valor por unidad</div><input class="finput" type="number" id="e-valor-inst" value="${r.valor_instalacion||''}" placeholder="0"/></div>
             </div>
           </div>
-          <!-- Fila Recurrencia -->
+          <!-- Recurrencia -->
           <div class="fg full" style="background:var(--purple-light);border-radius:6px;padding:10px 12px">
             <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#534AB7;margin-bottom:8px">Recurrencia</div>
             <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -1659,40 +1660,15 @@ async function abrirEditar(id){
               <div><div class="flbl">Valor por período</div><input class="finput" type="number" id="e-valor-rec" value="${r.valor_recurrente||''}" placeholder="0"/></div>
             </div>
           </div>
-          <div class="fg"><div class="flbl">N° propuesta</div>
-            <div style="display:flex;gap:6px">
-              <input class="finput" id="e-numprop" value="${(r.num_propuesta||'').replace(/"/g,'&quot;')}" style="font-family:'Courier New',monospace"/>
-              <button class="btn-sec" onclick="generarNumeroPropuesta('e-numprop')" style="font-size:11px;padding:7px 10px;white-space:nowrap">Generar</button>
-            </div></div>
-          <div class="fg full"><div class="flbl">Producto</div>
-            <select class="fsel" id="e-producto">
-              <option value="">Seleccionar...</option>
-              ${productos.map(p=>`<option${r.producto===p?' selected':''}>${p}</option>`).join('')}
-            </select></div>
-          <div class="fg full"><div class="flbl">Asunto</div><input class="finput" id="e-asunto" value="${(r.asunto||'').replace(/"/g,'&quot;')}"/></div>
-          <div class="fg full"><div class="flbl">Avance (%) <span id="e-avance-val" style="font-size:11px;color:var(--text3)">${r.avance||0}%</span></div>
-            <input type="range" class="finput" id="e-avance" min="0" max="100" value="${r.avance||0}" oninput="document.getElementById('e-avance-val').textContent=this.value+'%'"/></div>
-          <div class="fg"><div class="flbl">Próxima acción</div><input class="finput" id="e-prox" value="${(r.proxima_accion||'').replace(/"/g,'&quot;')}"/></div>
-          <div class="fg"><div class="flbl">Fecha próxima acción</div><input class="finput" type="date" id="e-fprox" value="${r.fecha_proxima_accion||''}"/></div>
-          <div class="fg"><div class="flbl">Valor estimado</div><input class="finput" id="e-valor" value="${r.valor_estimado||''}" placeholder="0"/></div>
-          <div class="fg"><div class="flbl">Link Drive</div><input class="finput" id="e-linkdrive" value="${(r.link_drive||'').replace(/"/g,'&quot;')}"/></div>
-          <div class="fg full">
-            <div style="display:flex;gap:16px;align-items:center;padding:8px 12px;background:var(--surface2);border-radius:var(--radius-sm)">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">
-                <input type="checkbox" id="e-de-mercadeo" ${r.de_mercadeo?'checked':''} style="accent-color:var(--sat-orange);width:14px;height:14px"/> Viene de Mercadeo
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px">
-                <input type="checkbox" id="e-lead-nuevo" ${r.es_lead_nuevo?'checked':''} style="accent-color:var(--sat-blue);width:14px;height:14px"/> Lead nuevo (15·5·1)
-              </label>
-            </div>
+          <div class="fg"><div class="flbl">N° propuesta</div><input class="finput" id="e-numprop" value="${(r.num_propuesta||'').replace(/"/g,'&quot;')}"/>
+            <button onclick="generarNumeroPropuesta('e-numprop')" style="font-family:inherit;font-size:10px;margin-top:4px;padding:3px 8px;border:0.5px solid var(--sat-blue);border-radius:4px;background:var(--sat-blue-light);color:var(--sat-blue);cursor:pointer">Generar</button>
           </div>
-          <div class="fg full"><div class="flbl">Notas</div>
-            <textarea class="ftxt" id="e-notas" style="min-height:60px">${r.notas||''}</textarea></div>
-          <div class="fg full"><div class="flbl">Nota de seguimiento</div>
-            <textarea class="ftxt" id="e-nota-traz" placeholder="Describe el cambio realizado..." style="min-height:44px;font-size:12px"></textarea></div>
+          <div class="fg"><div class="flbl">Link Drive</div><input class="finput" id="e-link" value="${(r.link_drive||'').replace(/"/g,'&quot;')}" placeholder="https://drive.google.com/..."/></div>
+          <div class="fg full"><div class="flbl">Próxima acción</div><input class="finput" id="e-proxima" value="${(r.proxima_accion||'').replace(/"/g,'&quot;')}"/></div>
+          <div class="fg full"><div class="flbl">Notas</div><textarea class="ftxt" id="e-notas" style="min-height:60px">${r.notas||''}</textarea></div>
         </div>
-        <div class="form-actions" style="margin-top:12px;justify-content:space-between">
-          ${['jefe_fleet','jefe_proyectos'].includes(PERFIL.rol)?(r.num_propuesta?`<div style="font-size:10px;color:var(--text3);font-style:italic;padding:4px 0">Tiene cotización — solo puede marcarse como perdido</div>`:`<button class="btn-sec" style="color:var(--red);border-color:var(--red)" onclick="confirmarBorrar('${r.id}','${(r.empresa||'').replace(/'/g,"\\'")}')">Eliminar</button>`):'<div></div>'}
+        <div class="form-actions" style="margin-top:12px">
+          <button class="btn-sec" onclick="document.querySelector('.modal-overlay').remove()">Cancelar</button>
           <button class="btn-pri" onclick="guardarEdicion('${r.id}')">Guardar cambios</button>
         </div>
       </div>
