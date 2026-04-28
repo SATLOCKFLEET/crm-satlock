@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777410496 -->
+<!-- build:1777411663 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1732,14 +1732,14 @@ async function guardarEdicion(id){
 
   const {error}=await sb.from('oportunidades').update({
     fecha:document.getElementById('e-fecha').value,
-    linea:(document.getElementById('e-linea')?.value)||'fleet',
+    linea:(document.getElementById('e-linea')?.value)||window._editandoLead?.linea||PERFIL.linea||'fleet',
     link_drive:document.getElementById('e-link')?.value||document.getElementById('e-linkdrive')?.value||'',
     de_mercadeo:document.getElementById('e-de-mercadeo')?.checked||false,
     es_lead_nuevo:document.getElementById('e-lead-nuevo')?.checked||false,
     empresa:document.getElementById('e-empresa').value,
     contacto:document.getElementById('e-contacto').value,
     cargo_contacto:document.getElementById('e-cargo').value,
-    producto:document.getElementById('e-producto')?.value||r?.producto||'',
+    producto:document.getElementById('e-producto')?.value||window._editandoLead?.producto||'',
     ciudad:document.getElementById('e-ciudad')?.value.trim()||'',
     pais:document.getElementById('e-pais')?.value||'Colombia',
     moneda:document.getElementById('e-pais')?.value==='Ecuador'?'USD':document.getElementById('e-pais')?.value==='México'?'MXN':'COP',
