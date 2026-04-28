@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777404634 -->
+<!-- build:1777408226 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -896,7 +896,7 @@ function renderNueva(container){
     <div style="margin-bottom:16px">
       <div class="flbl" style="margin-bottom:8px">Origen del lead</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap" id="origen-btns">
-        ${['Lead propio / en frío','Feria / Evento / Stand','Estudio de Mercado','Mantenimiento / Postventa'].map((o,i)=>`
+        ${['Lead propio / en frío','Feria / Evento / Stand','Estudio de Mercado','Mantenimiento / Postventa','Venta Cruzada'].map((o,i)=>`
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 14px;background:var(--surface2);border:1.5px solid var(--border);border-radius:20px;transition:all .12s" id="origen-label-${i}">
             <input type="radio" name="f-origen" value="${o}" id="f-origen-${i}" style="accent-color:var(--sat-blue);width:14px;height:14px" onchange="selOrigenLead(${i})"/>
             <span style="font-size:12px;font-weight:500">${o}</span>
@@ -1513,7 +1513,7 @@ async function abrirEditar(id){
       <div class="ficha-tabs">
         <button class="ficha-tab active" onclick="switchFichaTab('actividad',this)">Actividad</button>
         <button class="ficha-tab" onclick="switchFichaTab('negocio',this)">Negocio</button>
-        ${['jefe_fleet','jefe_proyectos','ejecutivo_fleet','ejecutivo_carga'].includes(PERFIL.rol)?`<button class="ficha-tab" onclick="switchFichaTab('editar',this)">Editar datos</button>`:''}
+        <button class="ficha-tab" onclick="switchFichaTab('editar',this)">Editar datos</button>
       </div>
 
       <!-- PANEL ACTIVIDAD -->
@@ -3728,7 +3728,7 @@ function renderKPIContent(){
   const pipelineTotal=pipelineUnico+pipelineRec;
 
   // Origen de leads
-  const origenMap={'Lead propio / en frío':0,'Feria / Evento / Stand':0,'Estudio de Mercado':0,'Mantenimiento / Postventa':0,'Sin especificar':0};
+  const origenMap={'Lead propio / en frío':0,'Feria / Evento / Stand':0,'Estudio de Mercado':0,'Mantenimiento / Postventa':0,'Venta Cruzada':0,'Sin especificar':0};
   leadsEnPeriodo.forEach(o=>{ const k=o.origen_lead&&origenMap[o.origen_lead]!==undefined?o.origen_lead:'Sin especificar'; origenMap[k]=(origenMap[k]||0)+1; });
 
   // Pipeline por producto
