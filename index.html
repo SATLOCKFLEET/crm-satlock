@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777413969 -->
+<!-- build:1777414383 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1773,7 +1773,7 @@ function actualizarProductosEditar(){
 }
 async function guardarEdicion(id){
   // Obtener valores anteriores para detectar cambios
-  const {data:anterior}=await sb.from('oportunidades').select('estado,avance,producto,asunto,proxima_accion,notas,valor_estimado').eq('id',id).single();
+  const {data:anterior}=await sb.from('oportunidades').select('estado,avance,producto,proxima_accion,notas').eq('id',id).single();
   const notaTraz=document.getElementById('e-nota-traz')?.value.trim()||'';
   const nuevoEstado=document.getElementById('e-estado').value;
   const nuevoAvance=nuevoEstado==='cerrado'?100:nuevoEstado==='perdido'?0:(parseInt(document.getElementById('e-avance')?.value)||0);
@@ -1810,9 +1810,8 @@ async function guardarEdicion(id){
     estado:document.getElementById('e-estado').value,
     avance:(document.getElementById('e-estado').value==='cerrado'?100:parseInt(document.getElementById('e-avance').value)),
     proxima_accion:document.getElementById('e-prox').value,
-    fecha_proxima_accion:document.getElementById('e-fprox').value||null,
-    valor_estimado:parseFloat(document.getElementById('e-valor').value)||null,
-    notas:document.getElementById('e-notas').value,
+    fecha_proxima_accion:document.getElementById('e-proxima')?.value||document.getElementById('e-fprox')?.value||null,
+        notas:document.getElementById('e-notas').value,
   }).eq('id',id);
   if(error){alert('Error: '+error.message);return;}
 
