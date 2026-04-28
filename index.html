@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777402272 -->
+<!-- build:1777403055 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1620,21 +1620,37 @@ async function abrirEditar(id){
               </label>
             </div>
           </div>
-          <div style="grid-column:1/-1;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-blue);margin-top:4px">Venta única</div>
-          <div class="fg"><div class="flbl">Unidades</div><input class="finput" type="number" id="e-unidades" value="${r.unidades||''}" min="1"/></div>
-          <div class="fg"><div class="flbl">Valor unitario</div><input class="finput" type="number" id="e-valor-unit" value="${r.valor_unitario||''}" placeholder="0"/></div>
-          <div style="grid-column:1/-1;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-orange);margin-top:4px">Instalación</div>
-          <div class="fg"><div class="flbl">Unidades instalación</div><input class="finput" type="number" id="e-unidades-inst" value="${r.unidades_instalacion||''}" min="1"/></div>
-          <div class="fg"><div class="flbl">Valor instalación / unidad</div><input class="finput" type="number" id="e-valor-inst" value="${r.valor_instalacion||''}" placeholder="0"/></div>
-          <div class="fg"><div class="flbl">Tipo recurrencia</div>
-            <select class="fsel" id="e-tipo-rec">
-              <option value="mensual"${(r.tipo_recurrencia||'mensual')==='mensual'?' selected':''}>Mensual</option>
-              <option value="trimestral"${r.tipo_recurrencia==='trimestral'?' selected':''}>Trimestral</option>
-              <option value="semestral"${r.tipo_recurrencia==='semestral'?' selected':''}>Semestral</option>
-              <option value="anual"${r.tipo_recurrencia==='anual'?' selected':''}>Anual</option>
-            </select></div>
-          <div class="fg"><div class="flbl">Cantidad servicios</div><input class="finput" type="number" id="e-unidades-rec" value="${r.unidades_recurrentes||''}" min="1"/></div>
-          <div class="fg"><div class="flbl">Valor por período</div><input class="finput" type="number" id="e-valor-rec" value="${r.valor_recurrente||''}" placeholder="0"/></div>
+          <!-- Fila Venta única -->
+          <div class="fg full" style="background:var(--sat-blue-light);border-radius:6px;padding:10px 12px;margin-top:6px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-blue);margin-bottom:8px">Venta única</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div><div class="flbl">Unidades</div><input class="finput" type="number" id="e-unidades" value="${r.unidades||''}" min="1"/></div>
+              <div><div class="flbl">Valor por unidad</div><input class="finput" type="number" id="e-valor-unit" value="${r.valor_unitario||''}" placeholder="0"/></div>
+            </div>
+          </div>
+          <!-- Fila Instalación -->
+          <div class="fg full" style="background:var(--sat-orange-light);border-radius:6px;padding:10px 12px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-orange);margin-bottom:8px">Instalación</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div><div class="flbl">Unidades</div><input class="finput" type="number" id="e-unidades-inst" value="${r.unidades_instalacion||''}" min="1"/></div>
+              <div><div class="flbl">Valor por unidad</div><input class="finput" type="number" id="e-valor-inst" value="${r.valor_instalacion||''}" placeholder="0"/></div>
+            </div>
+          </div>
+          <!-- Fila Recurrencia -->
+          <div class="fg full" style="background:var(--purple-light);border-radius:6px;padding:10px 12px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#534AB7;margin-bottom:8px">Recurrencia</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+              <div><div class="flbl">Tipo</div>
+                <select class="fsel" id="e-tipo-rec">
+                  <option value="mensual"${(r.tipo_recurrencia||'mensual')==='mensual'?' selected':''}>Mensual</option>
+                  <option value="trimestral"${r.tipo_recurrencia==='trimestral'?' selected':''}>Trimestral</option>
+                  <option value="semestral"${r.tipo_recurrencia==='semestral'?' selected':''}>Semestral</option>
+                  <option value="anual"${r.tipo_recurrencia==='anual'?' selected':''}>Anual</option>
+                </select></div>
+              <div><div class="flbl">Cantidad servicios</div><input class="finput" type="number" id="e-unidades-rec" value="${r.unidades_recurrentes||''}" min="1"/></div>
+              <div><div class="flbl">Valor por período</div><input class="finput" type="number" id="e-valor-rec" value="${r.valor_recurrente||''}" placeholder="0"/></div>
+            </div>
+          </div>
           <div class="fg"><div class="flbl">N° propuesta</div>
             <div style="display:flex;gap:6px">
               <input class="finput" id="e-numprop" value="${(r.num_propuesta||'').replace(/"/g,'&quot;')}" style="font-family:'Courier New',monospace"/>
@@ -2854,17 +2870,17 @@ async function renderQCO(container){
   const sinCuota=metas.sinCuota||false;
 
   // Calcular automáticamente desde oportunidades
-  let query=sb.from('oportunidades').select('estado,created_at,updated_at').eq('usuario_id',USER.id);
-  const {data:ops}=await query;
+  const {data:ops}=await sb.from('oportunidades').select('id,empresa,estado,created_at,updated_at,producto,ciudad,unidades,valor_unitario,unidades_instalacion,valor_instalacion,unidades_recurrentes,valor_recurrente,tipo_recurrencia,moneda').eq('usuario_id',USER.id).order('created_at',{ascending:false});
   const allOps=ops||[];
 
   // Para Fleet: filtrar por quincena actual
   // Para Carga: todo el mes
+  const esQuincenal=PERFIL.linea==='fleet'&&PERFIL.rol!=='jefe_fleet';
   const enPeriodo=(fecha)=>{
     if(!fecha) return false;
     const d=new Date(fecha);
     if(d.getMonth()+1!==mes||d.getFullYear()!==anio) return false;
-    if(PERFIL.linea==='fleet'){
+    if(esQuincenal){
       const dia=d.getDate();
       return quincena===1?(dia>=1&&dia<=15):(dia>=16);
     }
@@ -2888,9 +2904,10 @@ async function renderQCO(container){
   const semC=semaforoRow(pctC),semQ=semaforoRow(pctQ),semCi=semaforoRow(pctCi);
   const overall=sinCuota?{cls:'card-blue',txt:'var(--sat-blue)'}:semaforoRow(puntaje);
 
-  const periodoLabel=PERFIL.linea==='fleet'
-    ?`Quincena ${quincena===1?'1 (1-15)':'2 (16-'+new Date(anio,mes,0).getDate()+')'} — ${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][mes-1]} ${anio}`
-    :`${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][mes-1]} ${anio}`;
+  const MESES_L=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const periodoLabel=esQuincenal
+    ?`Quincena ${quincena===1?'1 (1-15)':'2 (16-'+new Date(anio,mes,0).getDate()+')'} — ${MESES_L[mes-1]} ${anio}`
+    :`${MESES_L[mes-1]} ${anio}`;
 
   container.innerHTML=`
     <div style="max-width:480px;margin:0 auto">
@@ -2924,15 +2941,54 @@ async function renderQCO(container){
           </div>`).join('')}`:'<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px 0">Vista gerencial — sin cuota asignada</div>'}
       </div>
 
-      <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 16px">
+      <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px">
         <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">¿Cómo se calculan estos números?</div>
         <div style="font-size:11px;color:var(--text2);line-height:1.7">
           <strong>Contactos:</strong> leads creados en este período.<br>
-          <strong>Cotizaciones:</strong> leads en estado "Propuesta enviada" o "Cerrado" creados en este período.<br>
-          <strong>Cierres:</strong> leads marcados como "Cerrado" en este período.
+          <strong>Cotizaciones:</strong> leads con propuesta enviada o cerrado, creados en este período.<br>
+          <strong>Cierres:</strong> leads marcados como cerrado en este período.
         </div>
       </div>
+
+      <!-- Lista de clientes del período -->
+      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);margin-bottom:8px">Clientes en este período</div>
+      <div id="qco-lista-clientes"></div>
     </div>`;
+
+  // Renderizar lista de clientes
+  const ESTADOS_QCO={en_proceso:{label:'En proceso',color:'var(--sat-blue)'},propuesta_enviada:{label:'Prop. enviada',color:'var(--sat-orange)'},cerrado:{label:'Cerrado',color:'var(--green)'},perdido:{label:'Perdido',color:'var(--red)'}};
+  const opsPeriodo=allOps.filter(o=>enPeriodo(o.created_at)||enPeriodo(o.updated_at));
+  const listaEl=document.getElementById('qco-lista-clientes');
+  if(listaEl){
+    if(!opsPeriodo.length){
+      listaEl.innerHTML='<div class="empty">Sin leads en este período aún.</div>';
+    } else {
+      listaEl.innerHTML=opsPeriodo.map(o=>{
+        const st=ESTADOS_QCO[o.estado]||{label:o.estado,color:'var(--text3)'};
+        const totalUnica=(o.unidades||0)*(o.valor_unitario||0);
+        const totalInst=(o.unidades_instalacion||0)*(o.valor_instalacion||0);
+        const RMX={mensual:1,trimestral:3,semestral:6,anual:12};
+        const recMens=(o.unidades_recurrentes||0)*(o.valor_recurrente||0)/(RMX[o.tipo_recurrencia]||1);
+        const primeraFact=totalUnica+totalInst+((o.unidades_recurrentes||0)*(o.valor_recurrente||0));
+        const fmt=n=>n>0?'$ '+Math.round(n).toLocaleString('es-CO'):'—';
+        return `<div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);margin-bottom:8px;overflow:hidden">
+          <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer" onclick="abrirEditar('${o.id}')">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:500">${o.empresa||'—'}</div>
+              <div style="font-size:10px;color:var(--text3)">${o.producto||''} · ${o.ciudad||''}</div>
+            </div>
+            <span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:${st.color}22;color:${st.color}">${st.label}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:0.5px solid var(--border);background:var(--surface2)">
+            <div style="padding:6px 10px;border-right:0.5px solid var(--border);text-align:center"><div style="font-size:9px;color:var(--text3)">Venta única</div><div style="font-size:11px;font-weight:500;color:var(--sat-blue)">${fmt(totalUnica)}</div></div>
+            <div style="padding:6px 10px;border-right:0.5px solid var(--border);text-align:center"><div style="font-size:9px;color:var(--text3)">Instalación</div><div style="font-size:11px;font-weight:500;color:var(--sat-orange)">${fmt(totalInst)}</div></div>
+            <div style="padding:6px 10px;border-right:0.5px solid var(--border);text-align:center"><div style="font-size:9px;color:var(--text3)">Rec./mes</div><div style="font-size:11px;font-weight:500;color:#534AB7">${fmt(recMens)}</div></div>
+            <div style="padding:6px 10px;text-align:center"><div style="font-size:9px;color:var(--green)">1ª Factura</div><div style="font-size:11px;font-weight:600;color:var(--green)">${fmt(primeraFact)}</div></div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
 }
 async function registrarQCO(){
   const c=parseInt(prompt('Contactos nuevos:')||'0');
@@ -3919,7 +3975,7 @@ async function renderConsolidado(container){
       if(!fecha) return false;
       const d=new Date(fecha);
       if(d.getMonth()+1!==mes||d.getFullYear()!==anio) return false;
-      if(u.linea==='fleet'){const dia=d.getDate();return quincena===1?(dia>=1&&dia<=15):(dia>=16);}
+      if(u.linea==='fleet'&&u.rol!=='jefe_fleet'){const dia=d.getDate();return quincena===1?(dia>=1&&dia<=15):(dia>=16);}
       return true;
     };
     const tc=uops2.filter(o=>enPeriodoU(o.created_at)).length;
@@ -4019,9 +4075,12 @@ function renderPipelineDetallado(){
   const exec=document.getElementById('pipe-exec')?.value||'';
   const estado=document.getElementById('pipe-estado')?.value||'';
   
+  // Leer ejecutivo del filtro del consolidado si no hay filtro propio
+  const execConsol=document.getElementById('cf-exec-sel')?.value||'';
+  const execFinal=exec||execConsol;
   let ops=(window._opsDetalle||[]).filter(o=>{
     if(pais&&o.pais!==pais) return false;
-    if(exec&&o.usuario_id!==exec) return false;
+    if(execFinal&&o.usuario_id!==execFinal) return false;
     if(estado&&o.estado!==estado) return false;
     return true;
   });
