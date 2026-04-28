@@ -4,7 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CRM Satlock</title>
-<!-- build:1777414383 -->
+<!-- build:1777414654 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1775,18 +1775,18 @@ async function guardarEdicion(id){
   // Obtener valores anteriores para detectar cambios
   const {data:anterior}=await sb.from('oportunidades').select('estado,avance,producto,proxima_accion,notas').eq('id',id).single();
   const notaTraz=document.getElementById('e-nota-traz')?.value.trim()||'';
-  const nuevoEstado=document.getElementById('e-estado').value;
+  const nuevoEstado=document.getElementById('e-estado')?.value;
   const nuevoAvance=nuevoEstado==='cerrado'?100:nuevoEstado==='perdido'?0:(parseInt(document.getElementById('e-avance')?.value)||0);
 
   const {error}=await sb.from('oportunidades').update({
-    fecha:document.getElementById('e-fecha').value,
+    fecha:document.getElementById('e-fecha')?.value,
     linea:(document.getElementById('e-linea')?.value)||window._editandoLead?.linea||PERFIL.linea||'fleet',
     link_drive:document.getElementById('e-link')?.value||document.getElementById('e-linkdrive')?.value||'',
     de_mercadeo:document.getElementById('e-de-mercadeo')?.checked||false,
     es_lead_nuevo:document.getElementById('e-lead-nuevo')?.checked||false,
-    empresa:document.getElementById('e-empresa').value,
-    contacto:document.getElementById('e-contacto').value,
-    cargo_contacto:document.getElementById('e-cargo').value,
+    empresa:document.getElementById('e-empresa')?.value,
+    contacto:document.getElementById('e-contacto')?.value,
+    cargo_contacto:document.getElementById('e-cargo')?.value,
     producto:document.getElementById('e-producto')?.value||window._editandoLead?.producto||'',
     ciudad:document.getElementById('e-ciudad')?.value.trim()||'',
     pais:document.getElementById('e-pais')?.value||'Colombia',
@@ -1802,16 +1802,15 @@ async function guardarEdicion(id){
     unidades_recurrentes:parseInt(document.getElementById('e-unidades-rec')?.value||'0')||null,
     valor_recurrente:parseFloat(document.getElementById('e-valor-rec')?.value||'0')||null,
     tipo_recurrencia:document.getElementById('e-tipo-rec')?.value||null,
-    telefono:document.getElementById('e-tel').value,
-    correo:document.getElementById('e-correo').value,
-    num_propuesta:document.getElementById('e-numprop').value,
-    producto:document.getElementById('e-producto').value,
-    asunto:document.getElementById('e-asunto').value,
-    estado:document.getElementById('e-estado').value,
-    avance:(document.getElementById('e-estado').value==='cerrado'?100:parseInt(document.getElementById('e-avance').value)),
-    proxima_accion:document.getElementById('e-prox').value,
+    telefono:document.getElementById('e-tel')?.value,
+    correo:document.getElementById('e-correo')?.value,
+    num_propuesta:document.getElementById('e-numprop')?.value,
+    producto:document.getElementById('e-producto')?.value,
+    estado:document.getElementById('e-estado')?.value,
+    avance:(document.getElementById('e-estado')?.value==='cerrado'?100:parseInt(document.getElementById('e-avance')?.value)),
+    proxima_accion:document.getElementById('e-prox')?.value,
     fecha_proxima_accion:document.getElementById('e-proxima')?.value||document.getElementById('e-fprox')?.value||null,
-        notas:document.getElementById('e-notas').value,
+        notas:document.getElementById('e-notas')?.value,
   }).eq('id',id);
   if(error){alert('Error: '+error.message);return;}
 
