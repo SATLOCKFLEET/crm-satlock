@@ -1356,6 +1356,44 @@ function formatearMoneda(el){
   el.dataset.raw=v;
 }
 function limpiarForm(){['f-empresa','f-contacto','f-tel','f-correo','f-asunto','f-notas','f-prox'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const av=document.getElementById('f-avance');if(av){av.value=20;document.getElementById('f-avance-val').textContent='20%';}}
+// ── MODAL NIT DUPLICADO ───────────────────────────────────────────────────────
+function mostrarModalNITDuplicado({empresa,comercial,fecha,esAutorizado}){
+  return new Promise(resolve=>{
+    const prev=document.getElementById('modal-nit-dup');
+    if(prev) prev.remove();
+    const m=document.createElement('div');
+    m.id='modal-nit-dup';
+    m.style.cssText='position:fixed;inset:0;background:rgba(13,27,62,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
+    m.innerHTML=`
+      <div style="background:#fff;border-radius:14px;border-top:3px solid var(--sat-orange);padding:28px 28px 22px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.18)">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+          <span style="font-size:22px">⚠️</span>
+          <div style="font-size:15px;font-weight:600;color:var(--text)">NIT ya registrado</div>
+        </div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:20px">
+          <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+            <div><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Empresa</span><div style="font-weight:600;color:var(--text);margin-top:2px">${empresa}</div></div>
+            <div style="margin-top:10px"><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Asignado a</span><div style="font-weight:500;color:var(--sat-blue);margin-top:2px">${comercial}</div></div>
+            <div style="margin-top:10px"><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Apertura</span><div style="margin-top:2px">${fecha}</div></div>
+          </div>
+          ${esAutorizado
+            ? `<div style="font-size:12px;color:var(--teal-dark);background:var(--teal-light);border:0.5px solid var(--teal);border-radius:6px;padding:9px 12px">Como <strong>Jefe Comercial / Gerencia</strong> puede crear una nueva oportunidad sobre este NIT sin solicitar autorización. El registro quedará asignado a su perfil.</div>`
+            : `<div style="font-size:12px;color:var(--red-dark);background:var(--red-light);border:0.5px solid var(--red);border-radius:6px;padding:9px 12px">Para trabajar este cliente debe solicitar autorización a la Directora Comercial.</div>`
+          }
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="nit-dup-cancel" style="font-family:inherit;font-size:12px;padding:8px 18px;border:0.5px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer">Cancelar</button>
+          ${esAutorizado?`<button id="nit-dup-confirm" style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 18px;border:none;border-radius:6px;background:var(--sat-orange);color:#fff;cursor:pointer">Continuar de todos modos</button>`:''}
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    document.getElementById('nit-dup-cancel').onclick=()=>{m.remove();resolve(false);};
+    if(esAutorizado){
+      document.getElementById('nit-dup-confirm').onclick=()=>{m.remove();resolve(true);};
+    }
+    m.addEventListener('click',e=>{if(e.target===m){m.remove();resolve(false);}});
+  });
+}
 async function guardarOp(){
   const empresa=document.getElementById('f-empresa').value.trim();
   const contacto=document.getElementById('f-contacto').value.trim();
@@ -1377,10 +1415,15 @@ async function guardarOp(){
     const {data:nitCheck}=await sb.from('oportunidades').select('empresa,usuario_id,created_at,usuarios(nombre)').eq('nit',nit).limit(1);
     if(nitCheck&&nitCheck.length){
       const dup=nitCheck[0];
-      const comercial=dup.usuarios?.nombre||'otro comercial';
-      const fecha=dup.created_at?new Date(dup.created_at).toLocaleDateString('es-CO'):'fecha desconocida';
-      alert(`⚠ Este NIT ya está registrado en el CRM.\n\nEmpresa: ${dup.empresa}\nAsignado a: ${comercial}\nFecha de apertura: ${fecha}\n\nPara reasignar este lead debe solicitarlo a la Directora Comercial.`);
-      return;
+      // Si el NIT ya está asignado al mismo usuario que está creando, se permite sin restricción
+      if(dup.usuario_id!==USER.id){
+        const comercial=dup.usuarios?.nombre||'otro comercial';
+        const fecha=dup.created_at?new Date(dup.created_at).toLocaleDateString('es-CO'):'fecha desconocida';
+        const esAutorizado=['gerencia','jefe_fleet'].includes(PERFIL.rol);
+        // Para gerencia y jefe_fleet se ofrece override; para otros solo se informa
+        const continuar = await mostrarModalNITDuplicado({empresa:dup.empresa,comercial,fecha,esAutorizado});
+        if(!continuar) return;
+      }
     }
   }
 
