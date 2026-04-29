@@ -927,7 +927,7 @@ function renderNueva(container){
           <option value="perdido">Perdido</option>
         </select></div>
       <div class="fg"><div class="flbl">Empresa cliente</div><input class="finput" id="f-empresa" placeholder="Nombre empresa"/></div>
-      <div class="fg"><div class="flbl">NIT / RUC</div><input class="finput" id="f-nit" placeholder="Ej: 900123456-1"/></div>
+      <div class="fg"><div class="flbl">NIT / RUC</div><input class="finput" id="f-nit" placeholder="Ej: 900123456-1" onblur="autocompletarDesdeNIT(this.value)"/></div>
       <div class="fg"><div class="flbl">Nombre contacto</div><input class="finput" id="f-contacto" placeholder="Nombre completo"/></div>
       <div class="fg"><div class="flbl">Cargo del contacto</div><input class="finput" id="f-cargo" placeholder="Ej: Gerente de Flota"/></div>
       <div class="fg"><div class="flbl">Ciudad</div><input class="finput" id="f-ciudad" placeholder="Ej: Bogotá, Medellín, Guayaquil"/></div>
@@ -1357,6 +1357,60 @@ function formatearMoneda(el){
   if(v) el.value=parseInt(v).toLocaleString('es-CO');
   else el.value='';
   el.dataset.raw=v;
+}
+async function autocompletarDesdeNIT(nit){
+  nit = (nit||'').trim();
+  if(!nit) return;
+
+  // Buscar el registro más reciente del usuario con ese NIT
+  const {data:rows} = await sb.from('oportunidades')
+    .select('empresa,contacto,cargo_contacto,telefono,correo,ciudad,pais,linea,producto')
+    .eq('nit', nit)
+    .eq('usuario_id', USER.id)
+    .order('created_at', {ascending:false})
+    .limit(1);
+
+  if(!rows || !rows.length) return; // NIT no encontrado en sus registros, no hace nada
+
+  const r = rows[0];
+
+  // Toast de aviso
+  const toast = document.createElement('div');
+  toast.style.cssText='position:fixed;bottom:24px;right:24px;background:var(--teal);color:#fff;font-size:12px;font-weight:500;padding:10px 18px;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.18);z-index:9999;transition:opacity .4s';
+  toast.textContent='✓ Datos del cliente autocompletos';
+  document.body.appendChild(toast);
+  setTimeout(()=>{toast.style.opacity='0';setTimeout(()=>toast.remove(),400);},2800);
+
+  // Autocompletar campos de cliente
+  const set = (id,val)=>{ const el=document.getElementById(id); if(el&&val) el.value=val; };
+  set('f-empresa',    r.empresa);
+  set('f-contacto',   r.contacto);
+  set('f-cargo',      r.cargo_contacto);
+  set('f-tel',        r.telefono);
+  set('f-correo',     r.correo);
+  set('f-ciudad',     r.ciudad);
+
+  // País y moneda
+  if(r.pais){
+    const selPais = document.getElementById('f-pais');
+    if(selPais){
+      selPais.value = r.pais;
+      actualizarMonedaPais && actualizarMonedaPais();
+    }
+  }
+
+  // Línea y productos
+  if(r.linea){
+    const selLinea = document.getElementById('f-linea');
+    if(selLinea){
+      selLinea.value = r.linea;
+      actualizarProductosForm();
+      // Preseleccionar producto del último registro
+      if(r.producto){
+        setTimeout(()=>{ selProducto(r.producto); }, 50);
+      }
+    }
+  }
 }
 function limpiarForm(){['f-empresa','f-contacto','f-tel','f-correo','f-asunto','f-notas','f-prox'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const av=document.getElementById('f-avance');if(av){av.value=20;document.getElementById('f-avance-val').textContent='20%';}}
 // ── MODALES Y LÓGICA NIT DUPLICADO ──────────────────────────────────────────
