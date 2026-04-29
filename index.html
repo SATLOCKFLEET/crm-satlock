@@ -696,6 +696,9 @@ function construirTabs(){
     base.push({label:'Consolidado equipo',render:renderConsolidado});
     base.push({label:'KPIs & Analytics',render:renderKPIs});
   }
+  if(['gerencia','jefe_fleet'].includes(PERFIL.rol)){
+    base.push({label:'🔑 Solicitudes NIT',render:renderSolicitudesNIT});
+  }
   if(['alta_gerencia','gerencia','jefe_fleet','analista_comercial'].includes(PERFIL.rol)){
     base.push({label:'Alta Gerencia',render:renderAltaGerencia});
   }
@@ -1356,43 +1359,91 @@ function formatearMoneda(el){
   el.dataset.raw=v;
 }
 function limpiarForm(){['f-empresa','f-contacto','f-tel','f-correo','f-asunto','f-notas','f-prox'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});const av=document.getElementById('f-avance');if(av){av.value=20;document.getElementById('f-avance-val').textContent='20%';}}
-// ── MODAL NIT DUPLICADO ───────────────────────────────────────────────────────
-function mostrarModalNITDuplicado({empresa,comercial,fecha,esAutorizado}){
+// ── MODALES Y LÓGICA NIT DUPLICADO ──────────────────────────────────────────
+
+// Utilidad interna para crear modales genéricos
+function _modalBase(id, titulo, icono, bodyHtml, botonesHtml){
   return new Promise(resolve=>{
-    const prev=document.getElementById('modal-nit-dup');
-    if(prev) prev.remove();
+    const prev=document.getElementById(id); if(prev) prev.remove();
     const m=document.createElement('div');
-    m.id='modal-nit-dup';
+    m.id=id;
     m.style.cssText='position:fixed;inset:0;background:rgba(13,27,62,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px';
-    m.innerHTML=`
-      <div style="background:#fff;border-radius:14px;border-top:3px solid var(--sat-orange);padding:28px 28px 22px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.18)">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
-          <span style="font-size:22px">⚠️</span>
-          <div style="font-size:15px;font-weight:600;color:var(--text)">NIT ya registrado</div>
-        </div>
-        <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:20px">
-          <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px">
-            <div><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Empresa</span><div style="font-weight:600;color:var(--text);margin-top:2px">${empresa}</div></div>
-            <div style="margin-top:10px"><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Asignado a</span><div style="font-weight:500;color:var(--sat-blue);margin-top:2px">${comercial}</div></div>
-            <div style="margin-top:10px"><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Apertura</span><div style="margin-top:2px">${fecha}</div></div>
-          </div>
-          ${esAutorizado
-            ? `<div style="font-size:12px;color:var(--teal-dark);background:var(--teal-light);border:0.5px solid var(--teal);border-radius:6px;padding:9px 12px">Como <strong>Jefe Comercial / Gerencia</strong> puede crear una nueva oportunidad sobre este NIT sin solicitar autorización. El registro quedará asignado a su perfil.</div>`
-            : `<div style="font-size:12px;color:var(--red-dark);background:var(--red-light);border:0.5px solid var(--red);border-radius:6px;padding:9px 12px">Para trabajar este cliente debe solicitar autorización a la Directora Comercial.</div>`
-          }
-        </div>
-        <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button id="nit-dup-cancel" style="font-family:inherit;font-size:12px;padding:8px 18px;border:0.5px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer">Cancelar</button>
-          ${esAutorizado?`<button id="nit-dup-confirm" style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 18px;border:none;border-radius:6px;background:var(--sat-orange);color:#fff;cursor:pointer">Continuar de todos modos</button>`:''}
-        </div>
-      </div>`;
+    m.innerHTML=`<div style="background:#fff;border-radius:14px;border-top:3px solid var(--sat-orange);padding:28px 28px 22px;max-width:430px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.18)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <span style="font-size:22px">${icono}</span>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">${titulo}</div>
+      </div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:20px">${bodyHtml}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">${botonesHtml}</div>
+    </div>`;
     document.body.appendChild(m);
-    document.getElementById('nit-dup-cancel').onclick=()=>{m.remove();resolve(false);};
-    if(esAutorizado){
-      document.getElementById('nit-dup-confirm').onclick=()=>{m.remove();resolve(true);};
-    }
+    // bind botones por data-resolve
+    m.querySelectorAll('[data-resolve]').forEach(btn=>{
+      btn.onclick=()=>{m.remove();resolve(btn.dataset.resolve==='true');};
+    });
     m.addEventListener('click',e=>{if(e.target===m){m.remove();resolve(false);}});
   });
+}
+
+function _tarjetaCliente(empresa,comercial,extra){
+  return `<div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:14px">
+    <div><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Empresa</span>
+      <div style="font-weight:600;color:var(--text);margin-top:2px">${empresa}</div></div>
+    <div style="margin-top:8px"><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Ejecutivo actual</span>
+      <div style="font-weight:500;color:var(--sat-blue);margin-top:2px">${comercial}</div></div>
+    ${extra||''}
+  </div>`;
+}
+
+// MODAL 1: Venta cruzada — solo aviso, deja continuar
+function mostrarModalVentaCruzada({empresa,comercial,lineaDueno,lineaActual}){
+  const labDueno = lineaDueno==='fleet'?'Fleet':'Carga';
+  const labActual = lineaActual==='fleet'?'Fleet':'Carga';
+  const body = _tarjetaCliente(empresa,comercial,
+    `<div style="margin-top:8px"><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Línea del ejecutivo</span>
+      <div style="margin-top:2px">${labDueno}</div></div>`)
+    +`<div style="font-size:12px;color:var(--teal-dark);background:var(--teal-light);border:0.5px solid var(--teal);border-radius:6px;padding:9px 12px">
+      Este cliente tiene un ejecutivo asignado de la línea <strong>${labDueno}</strong>. Usted pertenece a la línea <strong>${labActual}</strong>, por lo que aplica <strong>venta cruzada</strong>. Puede registrar la oportunidad normalmente.
+    </div>`;
+  const btns=`<button data-resolve="false" style="font-family:inherit;font-size:12px;padding:8px 18px;border:0.5px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer">Cancelar</button>
+    <button data-resolve="true" style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 18px;border:none;border-radius:6px;background:var(--teal);color:#fff;cursor:pointer">Continuar — Venta cruzada</button>`;
+  return _modalBase('modal-nit-vc','Venta cruzada','🔄',body,btns);
+}
+
+// MODAL 2: Gerente hace override directo
+function mostrarModalGerenteOverride({empresa,comercial,fecha}){
+  const body = _tarjetaCliente(empresa,comercial,
+    `<div style="margin-top:8px"><span style="color:var(--text3);font-size:11px;text-transform:uppercase;letter-spacing:.06em">Apertura</span>
+      <div style="margin-top:2px">${fecha}</div></div>`)
+    +`<div style="font-size:12px;color:var(--teal-dark);background:var(--teal-light);border:0.5px solid var(--teal);border-radius:6px;padding:9px 12px">
+      Como <strong>Gerencia / Jefe Comercial</strong> puede registrar una nueva oportunidad sobre este NIT. El registro quedará asignado a su perfil.
+    </div>`;
+  const btns=`<button data-resolve="false" style="font-family:inherit;font-size:12px;padding:8px 18px;border:0.5px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer">Cancelar</button>
+    <button data-resolve="true" style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 18px;border:none;border-radius:6px;background:var(--sat-orange);color:#fff;cursor:pointer">Continuar de todos modos</button>`;
+  return _modalBase('modal-nit-ger','NIT ya registrado','⚠️',body,btns);
+}
+
+// MODAL 3: Ejecutivo misma línea — bloquea y genera solicitud
+async function crearSolicitudNIT({nit,empresa,duenoId,comercialDueno}){
+  // Verificar si ya existe una solicitud pendiente de este usuario para este NIT
+  const {data:dupSol}=await sb.from('solicitudes_nit')
+    .select('id').eq('nit',nit).eq('solicitante_id',USER.id).eq('estado','pendiente').limit(1);
+  if(dupSol&&dupSol.length){
+    await _modalBase('modal-nit-block','Solicitud ya enviada','🕐',
+      `<div style="font-size:13px;color:var(--text2)">Ya tiene una solicitud pendiente de autorización para el NIT de <strong>${empresa}</strong>. Espere la respuesta de su gerente.</div>`,
+      `<button data-resolve="false" style="font-family:inherit;font-size:12px;padding:8px 18px;border:0.5px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer">Entendido</button>`);
+    return;
+  }
+  const {error}=await sb.from('solicitudes_nit').insert({
+    nit, empresa, solicitante_id:USER.id, dueno_id:duenoId, estado:'pendiente'
+  });
+  if(error){alert('Error al generar la solicitud: '+error.message);return;}
+  await _modalBase('modal-nit-block','Solicitud enviada','📨',
+    _tarjetaCliente(empresa,comercialDueno,'')
+    +`<div style="font-size:12px;color:var(--amber);background:var(--amber-light);border:0.5px solid var(--amber);border-radius:6px;padding:9px 12px">
+      Este cliente ya pertenece a <strong>${comercialDueno}</strong> dentro de su misma línea. Se ha enviado una solicitud de autorización a su gerente. Podrá cotizar una vez sea aprobada.
+    </div>`,
+    `<button data-resolve="false" style="font-family:inherit;font-size:12px;padding:8px 18px;border:none;border-radius:6px;background:var(--sat-blue);color:#fff;cursor:pointer">Entendido</button>`);
 }
 async function guardarOp(){
   const empresa=document.getElementById('f-empresa').value.trim();
@@ -1410,19 +1461,32 @@ async function guardarOp(){
   if(!productoCheck){alert('Seleccione el producto.');return;}
   if(!tipoUnica&&!tipoRec){alert('Seleccione al menos un tipo de negocio (Venta única o Recurrente).');return;}
 
-  // Verificar NIT duplicado
+  // Verificar NIT duplicado — lógica completa
   if(nit){
-    const {data:nitCheck}=await sb.from('oportunidades').select('empresa,usuario_id,created_at,usuarios(nombre)').eq('nit',nit).limit(1);
+    const {data:nitCheck}=await sb.from('oportunidades').select('empresa,usuario_id,linea,created_at,usuarios(nombre,linea)').eq('nit',nit).limit(1);
     if(nitCheck&&nitCheck.length){
       const dup=nitCheck[0];
-      // Si el NIT ya está asignado al mismo usuario que está creando, se permite sin restricción
       if(dup.usuario_id!==USER.id){
-        const comercial=dup.usuarios?.nombre||'otro comercial';
-        const fecha=dup.created_at?new Date(dup.created_at).toLocaleDateString('es-CO'):'fecha desconocida';
-        const esAutorizado=['gerencia','jefe_fleet'].includes(PERFIL.rol);
-        // Para gerencia y jefe_fleet se ofrece override; para otros solo se informa
-        const continuar = await mostrarModalNITDuplicado({empresa:dup.empresa,comercial,fecha,esAutorizado});
-        if(!continuar) return;
+        const lineaDueno   = dup.usuarios?.linea || dup.linea || '';
+        const lineaActual  = PERFIL.linea || '';
+        const esGerente    = ['gerencia','jefe_fleet'].includes(PERFIL.rol);
+        const esVentaCruz  = lineaDueno && lineaActual && lineaDueno!==lineaActual;
+        const comercial    = dup.usuarios?.nombre||'otro comercial';
+        const fecha        = dup.created_at?new Date(dup.created_at).toLocaleDateString('es-CO'):'fecha desconocida';
+
+        if(esVentaCruz){
+          // Líneas diferentes → venta cruzada: solo aviso, continúa
+          const ok = await mostrarModalVentaCruzada({empresa:dup.empresa,comercial,lineaDueno,lineaActual});
+          if(!ok) return;
+        } else if(esGerente){
+          // Mismo rol gerente sobre NIT de otro → puede continuar directamente
+          const ok = await mostrarModalGerenteOverride({empresa:dup.empresa,comercial,fecha});
+          if(!ok) return;
+        } else {
+          // Misma línea, ejecutivo normal → genera solicitud y bloquea
+          await crearSolicitudNIT({nit,empresa,duenoId:dup.usuario_id,comercialDueno:comercial});
+          return;
+        }
       }
     }
   }
@@ -3532,6 +3596,114 @@ function renderDiarioLista(q, filtro){
       </div>
     </div>`;
   }).join('');
+}
+
+// ── SOLICITUDES NIT ──────────────────────────────────────────────────────────
+async function renderSolicitudesNIT(container){
+  container.innerHTML='<div class="loading">Cargando solicitudes...</div>';
+  const {data:sols,error}=await sb.from('solicitudes_nit')
+    .select('*,solicitante:solicitante_id(nombre,linea),dueno:dueno_id(nombre,linea)')
+    .order('created_at',{ascending:false});
+  if(error){container.innerHTML=`<div style="padding:24px;color:var(--red)">Error: ${error.message}<br><br><strong>Acción requerida en Supabase:</strong> Cree la tabla <code>solicitudes_nit</code> con las columnas:<br>id (uuid, pk, default gen_random_uuid()), nit (text), empresa (text), solicitante_id (uuid, fk usuarios.id), dueno_id (uuid, fk usuarios.id), estado (text, default 'pendiente'), resuelto_por (uuid, nullable), resuelto_at (timestamptz, nullable), created_at (timestamptz, default now())</div>`;return;}
+  const pendientes=(sols||[]).filter(s=>s.estado==='pendiente');
+  const resueltas=(sols||[]).filter(s=>s.estado!=='pendiente');
+  container.innerHTML=`
+    <div style="max-width:860px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div>
+          <div style="font-size:16px;font-weight:600;color:var(--text)">Solicitudes de autorización NIT</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">Gestione los accesos a clientes que ya tienen ejecutivo asignado</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span style="font-size:12px;background:var(--amber-light);color:var(--amber);border:0.5px solid var(--amber);border-radius:20px;padding:4px 12px;font-weight:600">${pendientes.length} pendiente${pendientes.length!==1?'s':''}</span>
+        </div>
+      </div>
+
+      ${pendientes.length?`
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:10px">Pendientes de resolución</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:28px">
+        ${pendientes.map(s=>`
+        <div style="background:var(--surface);border:0.5px solid var(--border);border-left:3px solid var(--amber);border-radius:var(--radius);padding:16px 18px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px">
+              <div style="font-size:14px;font-weight:600;color:var(--text)">${s.empresa}</div>
+              <div style="font-size:11px;font-family:'Courier New',monospace;color:var(--text3);margin-top:2px">NIT: ${s.nit}</div>
+              <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap">
+                <div>
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Solicitante</div>
+                  <div style="font-size:12px;font-weight:500;color:var(--sat-blue);margin-top:2px">${s.solicitante?.nombre||'—'}</div>
+                  <div style="font-size:10px;color:var(--text3)">${s.solicitante?.linea||''}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Dueño actual</div>
+                  <div style="font-size:12px;font-weight:500;color:var(--text2);margin-top:2px">${s.dueno?.nombre||'—'}</div>
+                  <div style="font-size:10px;color:var(--text3)">${s.dueno?.linea||''}</div>
+                </div>
+                <div>
+                  <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">Fecha solicitud</div>
+                  <div style="font-size:12px;margin-top:2px">${new Date(s.created_at).toLocaleDateString('es-CO')}</div>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-shrink:0">
+              <button onclick="resolverSolicitudNIT('${s.id}','rechazada','${(s.empresa||'').replace(/'/g,"\'")}','${s.solicitante?.nombre||''}')"
+                style="font-family:inherit;font-size:12px;font-weight:500;padding:8px 16px;border:0.5px solid var(--red);border-radius:6px;background:var(--red-light);color:var(--red-dark);cursor:pointer">
+                Rechazar
+              </button>
+              <button onclick="resolverSolicitudNIT('${s.id}','aprobada','${(s.empresa||'').replace(/'/g,"\'")}','${s.solicitante?.nombre||''}','${s.solicitante_id}','${s.nit}')"
+                style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;border:none;border-radius:6px;background:var(--teal);color:#fff;cursor:pointer">
+                Aprobar y reasignar
+              </button>
+            </div>
+          </div>
+        </div>`).join('')}
+      </div>`:`
+      <div style="background:var(--green-light);border:0.5px solid var(--green);border-radius:var(--radius);padding:16px 18px;margin-bottom:28px;font-size:13px;color:var(--teal-dark)">
+        ✅ No hay solicitudes pendientes de resolución.
+      </div>`}
+
+      ${resueltas.length?`
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:10px">Historial resuelto</div>
+      <div class="table-wrap"><table>
+        <thead><tr>
+          <th>Empresa</th><th>NIT</th><th>Solicitante</th><th>Dueño original</th><th>Decisión</th><th>Fecha</th>
+        </tr></thead>
+        <tbody>
+          ${resueltas.slice(0,30).map(s=>`<tr>
+            <td><strong style="font-size:12px">${s.empresa}</strong></td>
+            <td><span class="mono">${s.nit}</span></td>
+            <td style="font-size:12px">${s.solicitante?.nombre||'—'}</td>
+            <td style="font-size:12px;color:var(--text3)">${s.dueno?.nombre||'—'}</td>
+            <td><span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;${s.estado==='aprobada'?'background:var(--green-light);color:var(--green)':'background:var(--red-light);color:var(--red-dark)'}">${s.estado==='aprobada'?'Aprobada':'Rechazada'}</span></td>
+            <td style="font-size:11px;color:var(--text3)">${s.resuelto_at?new Date(s.resuelto_at).toLocaleDateString('es-CO'):'—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`:''}
+    </div>`;
+}
+
+async function resolverSolicitudNIT(id, decision, empresa, solicitanteNombre, solicitanteId, nit){
+  const esAprobacion = decision==='aprobada';
+  const confirmMsg = esAprobacion
+    ? `¿Aprobar la solicitud de ${solicitanteNombre} para cotizar a ${empresa}?\n\nEsto reasignará TODAS las oportunidades de este NIT al ejecutivo solicitante.`
+    : `¿Rechazar la solicitud de ${solicitanteNombre} para cotizar a ${empresa}?`;
+  if(!confirm(confirmMsg)) return;
+
+  // Si aprobada: reasignar todas las oportunidades del NIT al solicitante
+  if(esAprobacion && solicitanteId && nit){
+    const {error:errReasig}=await sb.from('oportunidades')
+      .update({usuario_id:solicitanteId})
+      .eq('nit',nit);
+    if(errReasig){alert('Error al reasignar oportunidades: '+errReasig.message);return;}
+  }
+
+  const {error}=await sb.from('solicitudes_nit').update({
+    estado:decision,
+    resuelto_por:USER.id,
+    resuelto_at:new Date().toISOString()
+  }).eq('id',id);
+  if(error){alert('Error al actualizar solicitud: '+error.message);return;}
+  renderSolicitudesNIT(document.getElementById('main-content'));
 }
 
 // ── ALTA GERENCIA ────────────────────────────────────────────────────────────
