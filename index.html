@@ -953,6 +953,13 @@ function renderNueva(container){
           </label>
         </div>
       </div>
+      <div class="fg"><div class="flbl">Modalidad estimada</div>
+        <div style="display:flex;gap:6px;padding-top:4px">
+          <button type="button" id="f-mod-venta" onclick="setModalidadForm('venta')" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 14px;border-radius:20px;border:1.5px solid var(--sat-blue);background:var(--sat-blue);color:#fff;cursor:pointer">Venta</button>
+          <button type="button" id="f-mod-comodato" onclick="setModalidadForm('comodato')" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 14px;border-radius:20px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text2);cursor:pointer">Comodato</button>
+          <input type="hidden" id="f-modalidad" value="venta"/>
+        </div>
+      </div>
     </div>
 
     <!-- PRODUCTO -->
@@ -1015,6 +1022,22 @@ function renderNueva(container){
           <div style="position:relative">
             <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--green)">$</span>
             <input class="finput" type="text" id="f-rec-mensual" readonly style="padding-left:20px;background:var(--green-light);color:var(--green);font-weight:500;cursor:default"/>
+          </div></div>
+      </div>
+      <!-- BLOQUE COMODATO -->
+      <div id="bloque-comodato" class="form-grid" style="margin-bottom:10px;border-top:0.5px solid var(--border);padding-top:10px;display:none">
+        <div style="grid-column:1/-1;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--teal);margin-bottom:4px">Comodato (hardware Satlock)</div>
+        <div class="fg"><div class="flbl">Unidades en comodato</div>
+          <input class="finput" type="number" id="f-unidades-como" min="1" placeholder="Ej: 10" oninput="calcularTamanoNegocio()"/></div>
+        <div class="fg"><div class="flbl">Valor comodato / dispositivo / mes</div>
+          <div style="position:relative">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3)">$</span>
+            <input class="finput" type="text" id="f-valor-como" placeholder="0" oninput="formatearMoneda(this);calcularTamanoNegocio()" style="padding-left:20px"/>
+          </div></div>
+        <div class="fg"><div class="flbl" style="color:var(--teal)">Total comodato / mes</div>
+          <div style="position:relative">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--teal)">$</span>
+            <input class="finput" type="text" id="f-total-como" readonly style="padding-left:20px;background:var(--teal-light);color:var(--teal-dark);font-weight:500;cursor:default"/>
           </div></div>
       </div>
       <div class="form-grid">
@@ -1160,8 +1183,9 @@ function selOrigenLead(idx){
 
 function calcularTamanoNegocio(){
   const REC_MESES = {mensual:1, trimestral:3, semestral:6, anual:12};
+  const modalidad = document.getElementById('f-modalidad')?.value || 'venta';
 
-  // Venta única
+  // Venta única (equipo)
   const unidades = parseInt(document.getElementById('f-unidades')?.value||'0');
   const valorUnitStr = (document.getElementById('f-valor-unit')?.dataset?.raw||document.getElementById('f-valor-unit')?.value||'0').replace(/[^0-9]/g,'');
   const valorUnit = parseFloat(valorUnitStr)||0;
@@ -1185,19 +1209,34 @@ function calcularTamanoNegocio(){
   const mesesPeriodo = REC_MESES[tipoRec]||1;
   const totalRecPeriodo = unidadesRec * valorRec;
   const recMensual = totalRecPeriodo / mesesPeriodo;
-
   const elR = document.getElementById('f-total-rec');
   if(elR) elR.value = totalRecPeriodo>0 ? totalRecPeriodo.toLocaleString('es-CO') : '';
   const elRM = document.getElementById('f-rec-mensual');
   if(elRM) elRM.value = recMensual>0 ? recMensual.toLocaleString('es-CO') : '';
 
-  // Pipeline total (venta única + instalación + recurrencia mensual)
-  const totalPipeline = totalUnica + totalInst + recMensual;
+  // Comodato
+  const unidadesComo = parseInt(document.getElementById('f-unidades-como')?.value||'0');
+  const valorComoStr = (document.getElementById('f-valor-como')?.dataset?.raw||document.getElementById('f-valor-como')?.value||'0').replace(/[^0-9]/g,'');
+  const valorComo = parseFloat(valorComoStr)||0;
+  const totalComoMes = unidadesComo * valorComo;
+  const elC = document.getElementById('f-total-como');
+  if(elC) elC.value = totalComoMes>0 ? totalComoMes.toLocaleString('es-CO') : '';
+
+  // Pipeline total según modalidad
+  // Venta: equipo + instalación + recurrencia mensual
+  // Comodato: instalación + recurrencia mensual + comodato mensual
+  const totalPipeline = modalidad==='comodato'
+    ? totalInst + recMensual + totalComoMes
+    : totalUnica + totalInst + recMensual;
   const el = document.getElementById('f-tamano');
   if(el) el.value = totalPipeline>0 ? totalPipeline.toLocaleString('es-CO') : '';
 
-  // Total primera factura = venta única + instalación + primera recurrencia anticipada (valor del período)
-  const primeraFactura = totalUnica + totalInst + totalRecPeriodo;
+  // Primera factura
+  // Venta: equipo + instalación + 1ra recurrencia
+  // Comodato: instalación + 1ra recurrencia + 1er comodato
+  const primeraFactura = modalidad==='comodato'
+    ? totalInst + totalRecPeriodo + totalComoMes
+    : totalUnica + totalInst + totalRecPeriodo;
   const elF = document.getElementById('f-primera-factura');
   if(elF) elF.value = primeraFactura>0 ? primeraFactura.toLocaleString('es-CO') : '';
 }
@@ -1363,6 +1402,39 @@ function actualizarColorAvance(){
   else color='var(--green)';
   label.style.color = color;
   slider.style.accentColor = color;
+}
+
+function setModalidadForm(mod){
+  document.getElementById('f-modalidad').value = mod;
+  const btnV = document.getElementById('f-mod-venta');
+  const btnC = document.getElementById('f-mod-comodato');
+  const bloqueC = document.getElementById('bloque-comodato');
+  if(btnV && btnC){
+    if(mod==='venta'){
+      btnV.style.background='var(--sat-blue)'; btnV.style.borderColor='var(--sat-blue)'; btnV.style.color='#fff';
+      btnC.style.background='var(--surface2)'; btnC.style.borderColor='var(--border)'; btnC.style.color='var(--text2)';
+    } else {
+      btnC.style.background='var(--teal)'; btnC.style.borderColor='var(--teal)'; btnC.style.color='#fff';
+      btnV.style.background='var(--surface2)'; btnV.style.borderColor='var(--border)'; btnV.style.color='var(--text2)';
+    }
+  }
+  if(bloqueC) bloqueC.style.display = mod==='comodato' ? '' : 'none';
+  calcularTamanoNegocio();
+}
+
+function setModalidadEdit(mod){
+  document.getElementById('e-modalidad').value = mod;
+  const btnV = document.getElementById('e-mod-venta');
+  const btnC = document.getElementById('e-mod-comodato');
+  if(btnV && btnC){
+    if(mod==='venta'){
+      btnV.style.background='var(--sat-blue)'; btnV.style.borderColor='var(--sat-blue)'; btnV.style.color='#fff';
+      btnC.style.background='var(--surface2)'; btnC.style.borderColor='var(--border)'; btnC.style.color='var(--text2)';
+    } else {
+      btnC.style.background='var(--teal)'; btnC.style.borderColor='var(--teal)'; btnC.style.color='#fff';
+      btnV.style.background='var(--surface2)'; btnV.style.borderColor='var(--border)'; btnV.style.color='var(--text2)';
+    }
+  }
 }
 
 function toggleBloqueVentas(){
@@ -1611,7 +1683,12 @@ async function guardarOp(){
     unidades_recurrentes:parseInt(document.getElementById('f-unidades-rec')?.value||'0')||null,
     valor_unitario:parseFloat((document.getElementById('f-valor-unit')?.dataset?.raw||'0').replace(/[^0-9]/g,''))||null,
     valor_recurrente:parseFloat((document.getElementById('f-valor-rec')?.dataset?.raw||'0').replace(/[^0-9]/g,''))||null,
-    fecha_inicio_gestion:fechaHoy
+    fecha_inicio_gestion:fechaHoy,
+    modalidad:document.getElementById('f-modalidad')?.value||'venta',
+    unidades_comodato:parseInt(document.getElementById('f-unidades-como')?.value||'0')||null,
+    valor_comodato:parseFloat((document.getElementById('f-valor-como')?.dataset?.raw||document.getElementById('f-valor-como')?.value||'0').replace(/[^0-9]/g,''))||null,
+    unidades_instalacion:parseInt(document.getElementById('f-unidades-inst')?.value||'0')||null,
+    valor_instalacion:parseFloat((document.getElementById('f-valor-inst')?.dataset?.raw||document.getElementById('f-valor-inst')?.value||'0').replace(/[^0-9]/g,''))||null
   });
   if(error){alert('Error al guardar: '+error.message);return;}
   if(esLeadNuevo) await registrarQCOAuto(1,estadoInicial==='propuesta_enviada'?1:0,estadoInicial==='cerrado'?1:0);
@@ -1866,6 +1943,14 @@ async function abrirEditar(id){
               </label>
             </div>
           </div>
+          <div class="fg full"><div class="flbl">Modalidad del negocio</div>
+            <div style="display:flex;gap:6px;padding-top:4px;align-items:center">
+              <button type="button" id="e-mod-venta" onclick="setModalidadEdit('venta')" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 14px;border-radius:20px;border:1.5px solid ${(r.modalidad||'venta')==='venta'?'var(--sat-blue)':'var(--border)'};background:${(r.modalidad||'venta')==='venta'?'var(--sat-blue)':'var(--surface2)'};color:${(r.modalidad||'venta')==='venta'?'#fff':'var(--text2)'};cursor:pointer">Venta</button>
+              <button type="button" id="e-mod-comodato" onclick="setModalidadEdit('comodato')" style="font-family:inherit;font-size:11px;font-weight:600;padding:5px 14px;border-radius:20px;border:1.5px solid ${r.modalidad==='comodato'?'var(--teal)':'var(--border)'};background:${r.modalidad==='comodato'?'var(--teal)':'var(--surface2)'};color:${r.modalidad==='comodato'?'#fff':'var(--text2)'};cursor:pointer">Comodato</button>
+              <input type="hidden" id="e-modalidad" value="${r.modalidad||'venta'}"/>
+              ${r.modalidad==='comodato'?`<span style="font-size:10px;background:var(--teal-light);color:var(--teal-dark);padding:2px 8px;border-radius:10px;font-weight:600">Hardware Satlock</span>`:''}
+            </div>
+          </div>
           <!-- Venta única -->
           <div class="fg full" style="background:var(--sat-blue-light);border-radius:6px;padding:10px 12px">
             <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--sat-blue);margin-bottom:8px">Venta única</div>
@@ -1895,6 +1980,14 @@ async function abrirEditar(id){
                 </select></div>
               <div><div class="flbl">Cantidad servicios</div><input class="finput" type="number" id="e-unidades-rec" value="${r.unidades_recurrentes||''}" min="1"/></div>
               <div><div class="flbl">Valor por período</div><input class="finput" type="number" id="e-valor-rec" value="${r.valor_recurrente||''}" placeholder="0"/></div>
+            </div>
+          </div>
+          <!-- Comodato edición -->
+          <div class="fg full" style="background:var(--teal-light);border-radius:6px;padding:10px 12px;border:0.5px solid var(--teal)">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--teal-dark);margin-bottom:8px">Comodato (hardware Satlock)</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div><div class="flbl">Unidades en comodato</div><input class="finput" type="number" id="e-unidades-como" value="${r.unidades_comodato||''}" min="1" placeholder="Ej: 10"/></div>
+              <div><div class="flbl">Valor comodato / dispositivo / mes</div><input class="finput" type="number" id="e-valor-como" value="${r.valor_comodato||''}" placeholder="0"/></div>
             </div>
           </div>
           <div class="fg"><div class="flbl">N° propuesta</div><input class="finput" id="e-numprop" value="${(r.num_propuesta||'').replace(/"/g,'&quot;')}"/>
@@ -1991,6 +2084,9 @@ async function guardarEdicion(id){
     unidades_recurrentes:parseInt(document.getElementById('e-unidades-rec')?.value||'0')||null,
     valor_recurrente:parseFloat(document.getElementById('e-valor-rec')?.value||'0')||null,
     tipo_recurrencia:document.getElementById('e-tipo-rec')?.value||null,
+    modalidad:document.getElementById('e-modalidad')?.value||'venta',
+    unidades_comodato:parseInt(document.getElementById('e-unidades-como')?.value||'0')||null,
+    valor_comodato:parseFloat(document.getElementById('e-valor-como')?.value||'0')||null,
     telefono:document.getElementById('e-tel')?.value,
     correo:document.getElementById('e-correo')?.value,
     num_propuesta:document.getElementById('e-numprop')?.value,
@@ -3911,6 +4007,12 @@ async function renderAltaGerencia(container){
         </div>
       </div>
       <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Modalidad</div>
+        <div style="display:flex;gap:3px">
+          ${['todos','venta','comodato'].map(m=>`<button id="ag-mo-${m}" class="fbtn${(_agFilter.modalidad||'todos')===m?' active':''}" onclick="setAgFilter('modalidad','${m}')">${m==='todos'?'Todas':m.charAt(0).toUpperCase()+m.slice(1)}</button>`).join('')}
+        </div>
+      </div>
+      <div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Ejecutivo</div>
         <select class="fsel" id="ag-exec-sel" onchange="setAgFilter('ejecutivo',this.value)" style="font-size:11px;padding:5px 8px">
           <option value="">Todos</option>
@@ -3973,6 +4075,7 @@ function renderAgContent(){
     if((_agFilter.pais||'todos')!=='todos' && (o.pais||'Colombia')!==_agFilter.pais) return false;
     if(_agFilter.linea!=='todos' && o.linea!==_agFilter.linea) return false;
     if(_agFilter.ejecutivo && o.usuario_id!==_agFilter.ejecutivo) return false;
+    if((_agFilter.modalidad||'todos')!=='todos' && (o.modalidad||'venta')!==_agFilter.modalidad) return false;
     return true;
   });
   let gestFilt = gest.filter(g => {
@@ -4106,6 +4209,45 @@ function renderAgContent(){
           <div style="font-size:17px;font-weight:400;color:${k.color};line-height:1.2">${k.val}</div>
           <div style="font-size:10px;color:var(--text3);margin-top:4px">${k.sub}</div>
         </div>`).join('')}
+    </div>
+
+    <!-- ═══════════ FILA 2B: DESGLOSE MODALIDAD + SIMULADOR ═══════════ -->
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin-bottom:8px">Por modalidad — ${label}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
+      ${['venta','comodato'].map(mod=>{
+        const mOps = opsActivas.filter(o=>(o.modalidad||'venta')===mod);
+        const mCerr = cerradosEnPeriodo.filter(o=>(o.modalidad||'venta')===mod);
+        const mPipe = mOps.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0);
+        const mComoMRR = mOps.reduce((s,o)=>s+toUSD((o.unidades_comodato||0)*(o.valor_comodato||0),o.moneda||'COP'),0);
+        const mRecMRR = mOps.reduce((s,o)=>s+recMesUSD(o),0);
+        const col = mod==='venta'?'var(--sat-blue)':'var(--teal)';
+        return `<div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px;border-top:3px solid ${col}">
+          <div style="font-size:12px;font-weight:600;color:${col};margin-bottom:10px">${mod.charAt(0).toUpperCase()+mod.slice(1)}</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div><div style="font-size:9px;color:var(--text3)">Pipeline activo</div><div style="font-size:13px;font-weight:500;color:#534AB7">${fmtUSD(mPipe)}</div></div>
+            <div><div style="font-size:9px;color:var(--text3)">Leads activos</div><div style="font-size:13px;font-weight:500;color:var(--sat-blue)">${mOps.length}</div></div>
+            <div><div style="font-size:9px;color:var(--text3)">MRR recurrencia</div><div style="font-size:13px;font-weight:500;color:var(--green)">${fmtUSD(mRecMRR)}</div></div>
+            ${mod==='comodato'?`<div><div style="font-size:9px;color:var(--text3)">MRR comodato</div><div style="font-size:13px;font-weight:500;color:var(--teal)">${fmtUSD(mComoMRR)}</div></div>`:`<div><div style="font-size:9px;color:var(--text3)">Cierres período</div><div style="font-size:13px;font-weight:500;color:var(--green)">${mCerr.length}</div></div>`}
+          </div>
+        </div>`;
+      }).join('')}
+      <!-- SIMULADOR -->
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px;border-top:3px solid var(--sat-orange)">
+        <div style="font-size:12px;font-weight:600;color:var(--sat-orange);margin-bottom:4px">Simulador de pipeline</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:10px">¿Y si todo el pipeline activo cerrara en...?</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="background:var(--sat-blue-light);border-radius:6px;padding:10px 12px">
+            <div style="font-size:10px;color:var(--sat-blue);font-weight:600;margin-bottom:4px">Todo en Venta</div>
+            <div style="font-size:13px;font-weight:600;color:var(--sat-blue)">${fmtUSD(opsActivas.reduce((s,o)=>s+unicoUSD(o)+toUSD((o.unidades_instalacion||0)*(o.valor_instalacion||0),o.moneda||'COP')+recMesUSD(o),0))}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">Equipo + instalación + MRR</div>
+          </div>
+          <div style="background:var(--teal-light);border-radius:6px;padding:10px 12px">
+            <div style="font-size:10px;color:var(--teal-dark);font-weight:600;margin-bottom:4px">Todo en Comodato</div>
+            <div style="font-size:13px;font-weight:600;color:var(--teal-dark)">${fmtUSD(opsActivas.reduce((s,o)=>s+toUSD((o.unidades_instalacion||0)*(o.valor_instalacion||0),o.moneda||'COP')+recMesUSD(o)+toUSD((o.unidades_comodato||0)*(o.valor_comodato||0),o.moneda||'COP'),0))}</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">Instalación + MRR + comodato</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ═══════════ FILA 3: DESGLOSE PAÍS + LÍNEA ═══════════ -->
