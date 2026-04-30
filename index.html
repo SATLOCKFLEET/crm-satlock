@@ -1205,26 +1205,41 @@ function calcularTamanoNegocio(){
 async function generarNumeroPropuesta(campoId){
   campoId = campoId || 'f-numprop';
 
-  // Detectar país para el prefijo
-  const paisVal = document.getElementById('f-pais')?.value || document.getElementById('e-pais')?.value || '';
-  const esEcuador = PERFIL?.regional?.toLowerCase().includes('ecuador') || paisVal === 'Ecuador';
-  const esMexico = paisVal === 'México';
-  const prefijo = esEcuador ? 'EGC' : esMexico ? 'MGC' : 'GC';
-  const paisKey = esEcuador ? 'Ecuador' : esMexico ? 'Mexico' : 'Colombia';
+  // Detectar país — leer todos los posibles campos de país en el DOM
+  const fPais = document.getElementById('f-pais');
+  const ePais = document.getElementById('e-pais');
+  const paisVal = (fPais ? fPais.value : '') || (ePais ? ePais.value : '') || 'Colombia';
 
-  // ── Consecutivo global por país usando tabla consecutivos_propuesta ──────
-  // Si la tabla no existe aún, fallback al método legado
+  const esEcuador = paisVal.trim() === 'Ecuador';
+  const esMexico  = paisVal.trim() === 'México' || paisVal.trim() === 'Mexico';
+  const prefijo   = esEcuador ? 'EGC' : esMexico ? 'MGC' : 'GC';
+  const paisKey   = esEcuador ? 'Ecuador' : esMexico ? 'Mexico' : 'Colombia';
+
+  console.log('[Consecutivo] paisVal='+paisVal+' paisKey='+paisKey+' prefijo='+prefijo);
+
   let consecutivo = 1;
   try {
-    // Intentar leer el registro del país
+    // Leer registro del país en la tabla de consecutivos
     const {data: reg, error: errRead} = await sb
       .from('consecutivos_propuesta')
       .select('id, consecutivo')
       .eq('pais', paisKey)
       .limit(1);
 
-    if(errRead || !reg || !reg.length){
-      // La tabla no existe o no hay registro: calcular desde oportunidades (legado)
+    console.log('[Consecutivo] registro leído:', JSON.stringify(reg), 'error:', errRead?.message);
+
+    if(!errRead && reg && reg.length){
+      // ── Ruta principal: tabla de consecutivos existe y tiene el registro ──
+      const actual = reg[0].consecutivo;
+      consecutivo = actual + 1;
+      const {error: errUpd} = await sb.from('consecutivos_propuesta')
+        .update({ consecutivo: consecutivo })
+        .eq('id', reg[0].id);
+      if(errUpd) console.error('[Consecutivo] error al actualizar:', errUpd.message);
+      else console.log('[Consecutivo] actualizado a', consecutivo);
+    } else {
+      // ── Fallback: leer máximo desde oportunidades ──
+      console.warn('[Consecutivo] fallback a oportunidades - reg vacío o error');
       const {data: ops} = await sb.from('oportunidades')
         .select('num_propuesta')
         .or('num_propuesta.like.GC%,num_propuesta.like.EGC%,num_propuesta.like.MGC%')
@@ -1239,16 +1254,9 @@ async function generarNumeroPropuesta(campoId){
         if(m2) maxC = Math.max(maxC, parseInt(m2[1]));
       });
       consecutivo = maxC + 1;
-    } else {
-      // Incrementar el consecutivo en la tabla de forma atómica
-      const actual = reg[0].consecutivo;
-      consecutivo = actual + 1;
-      await sb.from('consecutivos_propuesta')
-        .update({ consecutivo: consecutivo })
-        .eq('id', reg[0].id);
     }
   } catch(e){
-    // Fallback silencioso
+    console.error('[Consecutivo] excepción:', e.message);
     consecutivo = 1;
   }
 
@@ -1257,6 +1265,7 @@ async function generarNumeroPropuesta(campoId){
   const mm = String(hoy.getMonth()+1).padStart(2,'0');
   const yy = String(hoy.getFullYear()).slice(-2);
   const num = `${prefijo}-${dd}${mm}${yy}-${String(consecutivo).padStart(4,'0')}`;
+  console.log('[Consecutivo] número generado:', num);
   const el = document.getElementById(campoId);
   if(el) el.value = num;
 }
