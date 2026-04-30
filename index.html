@@ -1215,31 +1215,28 @@ async function generarNumeroPropuesta(campoId){
   const prefijo   = esEcuador ? 'EGC' : esMexico ? 'MGC' : 'GC';
   const paisKey   = esEcuador ? 'Ecuador' : esMexico ? 'Mexico' : 'Colombia';
 
-  console.log('[Consecutivo] paisVal='+paisVal+' paisKey='+paisKey+' prefijo='+prefijo);
-
   let consecutivo = 1;
   try {
-    // Leer registro del país en la tabla de consecutivos
-    const {data: reg, error: errRead} = await sb
+    // Leer todos los registros de consecutivos y filtrar por prefijo
+    const {data: todos, error: errRead} = await sb
       .from('consecutivos_propuesta')
-      .select('id, consecutivo')
-      .eq('pais', paisKey)
-      .limit(1);
+      .select('id, pais, consecutivo');
 
-    console.log('[Consecutivo] registro leído:', JSON.stringify(reg), 'error:', errRead?.message);
+    const reg = (todos||[]).find(r => {
+      const p = (r.pais||'').trim().toLowerCase();
+      if(prefijo === 'EGC') return p === 'ecuador';
+      if(prefijo === 'MGC') return p === 'mexico' || p === 'méxico';
+      return p === 'colombia';
+    });
 
-    if(!errRead && reg && reg.length){
-      // ── Ruta principal: tabla de consecutivos existe y tiene el registro ──
-      const actual = reg[0].consecutivo;
+    if(!errRead && reg){
+      const actual = reg.consecutivo;
       consecutivo = actual + 1;
-      const {error: errUpd} = await sb.from('consecutivos_propuesta')
+      await sb.from('consecutivos_propuesta')
         .update({ consecutivo: consecutivo })
-        .eq('id', reg[0].id);
-      if(errUpd) console.error('[Consecutivo] error al actualizar:', errUpd.message);
-      else console.log('[Consecutivo] actualizado a', consecutivo);
+        .eq('id', reg.id);
     } else {
-      // ── Fallback: leer máximo desde oportunidades ──
-      console.warn('[Consecutivo] fallback a oportunidades - reg vacío o error');
+      // Fallback: leer máximo desde oportunidades
       const {data: ops} = await sb.from('oportunidades')
         .select('num_propuesta')
         .or('num_propuesta.like.GC%,num_propuesta.like.EGC%,num_propuesta.like.MGC%')
@@ -1256,7 +1253,6 @@ async function generarNumeroPropuesta(campoId){
       consecutivo = maxC + 1;
     }
   } catch(e){
-    console.error('[Consecutivo] excepción:', e.message);
     consecutivo = 1;
   }
 
@@ -1265,7 +1261,6 @@ async function generarNumeroPropuesta(campoId){
   const mm = String(hoy.getMonth()+1).padStart(2,'0');
   const yy = String(hoy.getFullYear()).slice(-2);
   const num = `${prefijo}-${dd}${mm}${yy}-${String(consecutivo).padStart(4,'0')}`;
-  console.log('[Consecutivo] número generado:', num);
   const el = document.getElementById(campoId);
   if(el) el.value = num;
 }
