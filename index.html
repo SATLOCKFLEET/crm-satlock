@@ -3845,150 +3845,463 @@ async function resolverSolicitudNIT(id, decision, empresa, solicitanteNombre, so
 }
 
 // ── ALTA GERENCIA ────────────────────────────────────────────────────────────
+// ── ALTA GERENCIA — filtro global ────────────────────────────────────────────
+let _agFilter = { periodo:'mes', pais:'todos', linea:'todos', ejecutivo:'' };
+
 async function renderAltaGerencia(container){
-  container.innerHTML='<div class="loading">Cargando vista global...</div>';
+  container.innerHTML='<div class="loading">Cargando dashboard gerencial...</div>';
   if(!window.Plotly){
     await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdn.plot.ly/plotly-2.35.2.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); });
   }
 
-  // Obtener TRM desde API pública
-  let trmCOP=4200, trmMXN=17; // valores por defecto
-  let trmFecha='(valor por defecto)';
+  // TRM
+  let trmCOP=4200, trmMXN=17, trmFecha='(estimada)';
   try {
-    // TRM COP/USD desde exchangerate-api (gratuita)
-    const r = await fetch('https://open.er-api.com/v6/latest/USD');
-    const d = await r.json();
-    if(d.rates){
-      trmCOP = d.rates.COP||4200;
-      trmMXN = d.rates.MXN||17;
-      trmFecha = 'actualizada '+new Date(d.time_last_update_utc).toLocaleDateString('es-CO');
-    }
-  } catch(e){ console.warn('TRM no disponible, usando valor por defecto'); }
+    const r=await fetch('https://open.er-api.com/v6/latest/USD');
+    const d=await r.json();
+    if(d.rates){ trmCOP=d.rates.COP||4200; trmMXN=d.rates.MXN||17; trmFecha='actualizada '+new Date(d.time_last_update_utc).toLocaleDateString('es-CO'); }
+  } catch(e){}
 
-  const {data:ops}=await sb.from('oportunidades').select('*,usuarios(nombre,linea)').order('created_at');
-  const {data:usuarios}=await sb.from('usuarios').select('id,nombre,linea,rol').neq('rol','alta_gerencia');
-  const allOps=ops||[];
+  const [opsRes, gestRes, usuRes] = await Promise.all([
+    sb.from('oportunidades').select('*,usuarios(nombre,linea,rol)').order('created_at',{ascending:true}),
+    sb.from('gestiones').select('oportunidad_id,usuario_id,fecha,tipo,nota,created_at').order('fecha'),
+    sb.from('usuarios').select('id,nombre,linea,rol').neq('rol','alta_gerencia').order('nombre')
+  ]);
+  window._agOps     = opsRes.data  || [];
+  window._agGest    = gestRes.data || [];
+  window._agUsuarios= usuRes.data  || [];
+  window._agTRM     = { cop:trmCOP, mxn:trmMXN };
 
-  // Convertir a USD
-  const toUSD=(valor,moneda)=>{
-    if(!valor) return 0;
-    if(moneda==='USD') return valor;
-    if(moneda==='MXN') return valor/trmMXN;
-    return valor/trmCOP; // COP por defecto
-  };
+  const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const anio = new Date().getFullYear();
 
-  const REC_M={mensual:1,trimestral:3,semestral:6,anual:12};
-  const recMensualUSD=o=>{
-    const raw=(o.unidades_recurrentes||0)*(o.valor_recurrente||0);
-    const mensual=raw/(REC_M[o.tipo_recurrencia]||1);
-    return toUSD(mensual,o.moneda||'COP');
-  };
-  const unicoUSD=o=>toUSD((o.unidades||0)*(o.valor_unitario||0),o.moneda||'COP');
-
-  const opsActivas=allOps.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado));
-  const pipelineUSD=opsActivas.reduce((s,o)=>s+unicoUSD(o)+recMensualUSD(o),0);
-  const pipelineUnicoUSD=opsActivas.reduce((s,o)=>s+unicoUSD(o),0);
-  const pipelineRecUSD=opsActivas.reduce((s,o)=>s+recMensualUSD(o),0);
-
-  const fmt=n=>'US$ '+Math.round(n).toLocaleString('es-CO');
-  const hoy=new Date();
-  const mes=hoy.getMonth()+1,anio=hoy.getFullYear();
-  const cerradosMes=allOps.filter(o=>o.estado==='cerrado'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===mes&&new Date(o.updated_at).getFullYear()===anio);
-  const cerradosMesUSD=cerradosMes.reduce((s,o)=>s+unicoUSD(o)+recMensualUSD(o),0);
-
-  // Por país
-  const PAISES=['Colombia','Ecuador','México'];
-  const porPais=PAISES.map(p=>({
-    pais:p,
-    moneda:p==='Ecuador'?'USD':p==='México'?'MXN':'COP',
-    activos:opsActivas.filter(o=>(o.pais||'Colombia')===p),
-    cerrados:allOps.filter(o=>o.estado==='cerrado'&&(o.pais||'Colombia')===p)
-  })).map(p=>({
-    ...p,
-    pipelineUSD:p.activos.reduce((s,o)=>s+unicoUSD(o)+recMensualUSD(o),0),
-    cerradosUSD:p.cerrados.reduce((s,o)=>s+unicoUSD(o)+recMensualUSD(o),0),
-    leads:p.activos.length
-  }));
-
-  container.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+  container.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:14px;font-weight:500">Vista Global — Alta Gerencia</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:2px">Todos los valores en USD · TRM ${trmFecha}: $1 USD = ${Math.round(trmCOP).toLocaleString('es-CO')} COP / ${trmMXN.toFixed(2)} MXN</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">Alta Gerencia — Dashboard Comercial</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">TRM ${trmFecha} · $1 USD = ${Math.round(trmCOP).toLocaleString('es-CO')} COP / ${trmMXN.toFixed(2)} MXN</div>
+      </div>
+      <button onclick="exportarExcel()" style="font-family:inherit;font-size:11px;padding:7px 14px;border:0.5px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer">⬇ Exportar Excel</button>
+    </div>
+
+    <!-- FILTROS -->
+    <div style="background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:18px;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Período</div>
+        <div style="display:flex;gap:3px;flex-wrap:wrap">
+          ${['mes','Q1','Q2','Q3','Q4','año'].map(p=>`<button id="ag-p-${p}" class="fbtn${_agFilter.periodo===p?' active':''}" onclick="setAgFilter('periodo','${p}')">${p==='mes'?'Mes':p==='año'?'Año':p}</button>`).join('')}
+        </div>
+      </div>
+      <div id="ag-mes-wrap" style="${_agFilter.periodo==='mes'?'':'display:none'}">
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Mes</div>
+        <select class="fsel" id="ag-mes-sel" onchange="setAgFilter('mes',this.value)" style="font-size:11px;padding:5px 8px">
+          ${MESES.map((m,i)=>`<option value="${i+1}"${i+1===new Date().getMonth()+1?' selected':''}>${m} ${anio}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">País</div>
+        <div style="display:flex;gap:3px">
+          ${['todos','Colombia','Ecuador','México'].map(p=>`<button id="ag-pa-${p}" class="fbtn${(_agFilter.pais||'todos')===p?' active':''}" onclick="setAgFilter('pais','${p}')">${p==='todos'?'Todos':p}</button>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Línea</div>
+        <div style="display:flex;gap:3px">
+          ${['todos','fleet','carga'].map(l=>`<button id="ag-li-${l}" class="fbtn${_agFilter.linea===l?' active':''}" onclick="setAgFilter('linea','${l}')">${l==='todos'?'Todas':l.charAt(0).toUpperCase()+l.slice(1)}</button>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px">Ejecutivo</div>
+        <select class="fsel" id="ag-exec-sel" onchange="setAgFilter('ejecutivo',this.value)" style="font-size:11px;padding:5px 8px">
+          <option value="">Todos</option>
+          ${(window._agUsuarios||[]).map(u=>`<option value="${u.id}"${_agFilter.ejecutivo===u.id?' selected':''}>${u.nombre}</option>`).join('')}
+        </select>
       </div>
     </div>
 
-    <!-- KPIs globales en USD -->
-    <div class="kpi-section"><div class="kpi-section-title">Pipeline global en USD</div>
-    <div class="kpi-cards">
-      <div class="kpi-card" style="border-top-color:#534AB7"><div class="kpi-lbl">Pipeline total global</div><div class="kpi-val" style="font-size:18px;color:#534AB7">${fmt(pipelineUSD)}</div><div class="kpi-sub">${opsActivas.length} leads activos</div></div>
-      <div class="kpi-card"><div class="kpi-lbl">Pipeline venta única</div><div class="kpi-val" style="font-size:18px;color:var(--sat-blue)">${fmt(pipelineUnicoUSD)}</div></div>
-      <div class="kpi-card green"><div class="kpi-lbl">Pipeline recurrencia/mes</div><div class="kpi-val" style="font-size:18px;color:var(--green)">${fmt(pipelineRecUSD)}</div><div class="kpi-sub">equivalente mensual normalizado</div></div>
-      <div class="kpi-card orange"><div class="kpi-lbl">Cerrados este mes</div><div class="kpi-val" style="font-size:18px;color:var(--sat-orange)">${fmt(cerradosMesUSD)}</div><div class="kpi-sub">${cerradosMes.length} negocios</div></div>
-    </div></div>
+    <div id="ag-content"></div>`;
 
-    <!-- Por país -->
-    <div class="kpi-section"><div class="kpi-section-title">Desglose por país</div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-bottom:16px">
-      ${porPais.map(p=>`
-        <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:16px;border-top:3px solid var(--sat-blue)">
-          <div style="font-size:13px;font-weight:500;margin-bottom:12px">${p.pais} <span style="font-size:10px;color:var(--text3)">(${p.moneda})</span></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-            <div><div style="font-size:10px;color:var(--text3)">Pipeline USD</div><div style="font-size:16px;font-weight:300;color:#534AB7">${fmt(p.pipelineUSD)}</div></div>
-            <div><div style="font-size:10px;color:var(--text3)">Leads activos</div><div style="font-size:16px;font-weight:300;color:var(--sat-blue)">${p.leads}</div></div>
-            <div><div style="font-size:10px;color:var(--text3)">Total cerrados USD</div><div style="font-size:16px;font-weight:300;color:var(--green)">${fmt(p.cerradosUSD)}</div></div>
-            <div><div style="font-size:10px;color:var(--text3)">Negocios cerrados</div><div style="font-size:16px;font-weight:300;color:var(--green)">${p.cerrados.length}</div></div>
-          </div>
-        </div>`).join('')}
-    </div></div>
-
-    <!-- Gráfico pipeline por país -->
-    <div class="kpi-section"><div class="kpi-section-title">Distribución global</div>
-    <div class="charts-grid">
-      <div class="chart-wrap"><div class="chart-title">Pipeline por país (USD)</div><div id="ag-chart-pais" style="height:220px"></div></div>
-      <div class="chart-wrap"><div class="chart-title">Leads activos por ejecutivo</div><div id="ag-chart-exec" style="height:220px"></div></div>
-    </div></div>
-
-    <!-- Tabla por ejecutivo en USD -->
-    <div class="kpi-section"><div class="kpi-section-title">Rendimiento por ejecutivo (USD)</div>
-    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
-      <thead><tr style="background:var(--surface2);border-bottom:0.5px solid var(--border)">
-        ${['Ejecutivo','País/Línea','Leads activos','Pipeline USD','Rec./mes USD','Cerrados'].map(h=>`<th style="text-align:${h==='Ejecutivo'?'left':'center'};padding:9px 8px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text3)">${h}</th>`).join('')}
-      </tr></thead>
-      <tbody>${(usuarios||[]).map(u=>{
-        const uOps=opsActivas.filter(o=>o.usuario_id===u.id);
-        const uPipe=uOps.reduce((s,o)=>s+unicoUSD(o)+recMensualUSD(o),0);
-        const uRec=uOps.reduce((s,o)=>s+recMensualUSD(o),0);
-        const uCerr=allOps.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado').length;
-        return `<tr style="border-bottom:0.5px solid var(--border)">
-          <td style="padding:9px 8px;font-weight:500">${u.nombre}</td>
-          <td style="text-align:center;padding:9px 8px"><span style="font-size:10px;padding:2px 6px;border-radius:3px;background:var(--surface2)">${u.linea}</span></td>
-          <td style="text-align:center;color:var(--sat-blue)">${uOps.length}</td>
-          <td style="text-align:center;font-weight:500;color:#534AB7">${fmt(uPipe)}</td>
-          <td style="text-align:center;color:var(--green)">${fmt(uRec)}</td>
-          <td style="text-align:center;color:var(--green)">${uCerr}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table></div></div>`;
-
-  // Gráficos
-  const plotBg='rgba(0,0,0,0)';
-  const pL=(e={})=>({paper_bgcolor:plotBg,plot_bgcolor:plotBg,font:{family:'inherit',size:11},margin:{l:40,r:10,t:10,b:40},showlegend:false,...e});
-
-  Plotly.newPlot('ag-chart-pais',[{
-    type:'pie',labels:porPais.map(p=>p.pais),values:porPais.map(p=>Math.round(p.pipelineUSD)),
-    marker:{colors:['#19428C','#E8460A','#534AB7']},textinfo:'label+percent',
-    hovertemplate:'%{label}: US$ %{value:,.0f}<extra></extra>'
-  }],pL({margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',y:-0.15}}),{responsive:true,displayModeBar:false});
-
-  const execPipe=(usuarios||[]).map(u=>({
-    n:u.nombre.split(' ')[0],
-    v:Math.round(opsActivas.filter(o=>o.usuario_id===u.id).reduce((s,o)=>s+unicoUSD(o)+recMensualUSD(o),0))
-  })).filter(e=>e.v>0).sort((a,b)=>b.v-a.v);
-  if(execPipe.length){
-    Plotly.newPlot('ag-chart-exec',[{type:'bar',orientation:'h',y:execPipe.map(e=>e.n),x:execPipe.map(e=>e.v),marker:{color:'#19428C'},text:execPipe.map(e=>'US$ '+e.v.toLocaleString('es-CO')),textposition:'outside'}],pL({margin:{l:80,r:80,t:10,b:30}}),{responsive:true,displayModeBar:false});
-  }
+  renderAgContent();
 }
+
+function setAgFilter(key, val){
+  _agFilter[key] = val;
+  const wrap = document.getElementById('ag-mes-wrap');
+  if(key==='periodo' && wrap) wrap.style.display = val==='mes' ? '' : 'none';
+  renderAgContent();
+}
+
+function getAgRango(){
+  const anio = new Date().getFullYear();
+  const p = _agFilter.periodo;
+  const mesSel = parseInt(document.getElementById('ag-mes-sel')?.value || new Date().getMonth()+1);
+  if(p==='mes') return {meses:[mesSel],anio,label:['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][mesSel-1]+' '+anio};
+  if(p==='Q1') return {meses:[1,2,3],anio,label:'Q1 '+anio};
+  if(p==='Q2') return {meses:[4,5,6],anio,label:'Q2 '+anio};
+  if(p==='Q3') return {meses:[7,8,9],anio,label:'Q3 '+anio};
+  if(p==='Q4') return {meses:[10,11,12],anio,label:'Q4 '+anio};
+  return {meses:[1,2,3,4,5,6,7,8,9,10,11,12],anio,label:'Año '+anio};
+}
+
+function renderAgContent(){
+  const content = document.getElementById('ag-content');
+  if(!content) return;
+
+  const ops      = window._agOps      || [];
+  const gest     = window._agGest     || [];
+  const usuarios = window._agUsuarios || [];
+  const trmCOP   = window._agTRM?.cop || 4200;
+  const trmMXN   = window._agTRM?.mxn || 17;
+  const {meses, anio, label} = getAgRango();
+
+  // ── Helpers de moneda ──
+  const toUSD = (valor, moneda) => {
+    if(!valor || valor===0) return 0;
+    if(moneda==='USD') return valor;
+    if(moneda==='MXN') return valor / trmMXN;
+    return valor / trmCOP;
+  };
+  const REC_M = {mensual:1, trimestral:3, semestral:6, anual:12};
+  const unicoUSD  = o => toUSD((o.unidades||0)*(o.valor_unitario||0), o.moneda||'COP');
+  const recMesUSD = o => { const raw=(o.unidades_recurrentes||0)*(o.valor_recurrente||0); return toUSD(raw/(REC_M[o.tipo_recurrencia]||1), o.moneda||'COP'); };
+  const fmtUSD = n => 'US$ ' + Math.round(n).toLocaleString('es-CO');
+  const fmtN   = n => Math.round(n).toLocaleString('es-CO');
+  const enPeriodo = fecha => { if(!fecha) return false; const d=new Date(fecha); return meses.includes(d.getMonth()+1) && d.getFullYear()===anio; };
+
+  // ── Aplicar filtros ──
+  let opsFilt = ops.filter(o => {
+    if((_agFilter.pais||'todos')!=='todos' && (o.pais||'Colombia')!==_agFilter.pais) return false;
+    if(_agFilter.linea!=='todos' && o.linea!==_agFilter.linea) return false;
+    if(_agFilter.ejecutivo && o.usuario_id!==_agFilter.ejecutivo) return false;
+    return true;
+  });
+  let gestFilt = gest.filter(g => {
+    if(_agFilter.ejecutivo && g.usuario_id!==_agFilter.ejecutivo) return false;
+    return true;
+  });
+  let execFilt = usuarios.filter(u => {
+    if(_agFilter.linea!=='todos' && u.linea!==_agFilter.linea && u.linea!=='ambas') return false;
+    if(_agFilter.ejecutivo && u.id!==_agFilter.ejecutivo) return false;
+    return true;
+  });
+
+  // ── KPIs principales ──
+  const opsActivas       = opsFilt.filter(o => ['en_proceso','propuesta_enviada'].includes(o.estado));
+  const leadsEnPeriodo   = opsFilt.filter(o => enPeriodo(o.created_at));
+  const cerradosEnPeriodo= opsFilt.filter(o => o.estado==='cerrado' && enPeriodo(o.updated_at));
+  const perdidosEnPeriodo= opsFilt.filter(o => o.estado==='perdido' && enPeriodo(o.updated_at));
+  const gestEnPeriodo    = gestFilt.filter(g => enPeriodo(g.fecha));
+  const propEnviadas     = opsFilt.filter(o => (o.estado==='propuesta_enviada' || o.estado==='cerrado') && enPeriodo(o.updated_at));
+  const tasa = leadsEnPeriodo.length > 0 ? Math.round(cerradosEnPeriodo.length / leadsEnPeriodo.length * 100) : 0;
+  const tasaPropCierre = propEnviadas.length > 0 ? Math.round(cerradosEnPeriodo.length / propEnviadas.length * 100) : 0;
+
+  // ── KPIs financieros en USD ──
+  const pipelineUSD      = opsActivas.reduce((s,o) => s + unicoUSD(o) + recMesUSD(o), 0);
+  const pipelineUnicoUSD = opsActivas.reduce((s,o) => s + unicoUSD(o), 0);
+  const pipelineRecUSD   = opsActivas.reduce((s,o) => s + recMesUSD(o), 0);
+  const cerradosUSD      = cerradosEnPeriodo.reduce((s,o) => s + unicoUSD(o) + recMesUSD(o), 0);
+  const recurrenteMRR    = opsFilt.filter(o=>o.estado==='cerrado').reduce((s,o)=>s+recMesUSD(o),0);
+
+  // ── Ciclo de venta promedio ──
+  const diasCiclo = o => { if(!o.fecha_inicio_gestion||!o.updated_at) return null; return Math.round((new Date(o.updated_at)-new Date(o.fecha_inicio_gestion))/(1000*60*60*24)); };
+  const cierresDiasCiclo = cerradosEnPeriodo.map(diasCiclo).filter(d=>d!==null&&d>=0);
+  const promCiclo = cierresDiasCiclo.length ? Math.round(cierresDiasCiclo.reduce((s,d)=>s+d,0)/cierresDiasCiclo.length) : null;
+
+  // ── Por país ──
+  const PAISES = ['Colombia','Ecuador','México'];
+  const porPais = PAISES.map(p => {
+    const pOps = opsFilt.filter(o=>(o.pais||'Colombia')===p);
+    const pActivas = pOps.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado));
+    const pCerrados = pOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.updated_at));
+    return { pais:p, activas:pActivas.length, cerrados:pCerrados.length,
+      pipelineUSD: pActivas.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0),
+      cerradosUSD: pCerrados.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0) };
+  });
+
+  // ── Por línea ──
+  const porLinea = ['fleet','carga'].map(l => {
+    const lOps = opsFilt.filter(o=>o.linea===l);
+    const lActivas = lOps.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado));
+    const lCerrados = lOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.updated_at));
+    return { linea:l, activas:lActivas.length, cerrados:lCerrados.length,
+      pipelineUSD: lActivas.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0) };
+  });
+
+  // ── Por producto ──
+  const prodMap = {};
+  opsActivas.forEach(o => {
+    if(!o.producto) return;
+    if(!prodMap[o.producto]) prodMap[o.producto] = {pipeline:0, unidades:0, leads:0};
+    prodMap[o.producto].pipeline += unicoUSD(o) + recMesUSD(o);
+    prodMap[o.producto].unidades += (o.unidades||0) + (o.unidades_recurrentes||0);
+    prodMap[o.producto].leads++;
+  });
+  const prodEntries = Object.entries(prodMap).sort((a,b)=>b[1].pipeline-a[1].pipeline);
+
+  // ── Origen leads ──
+  const origenMap = {};
+  leadsEnPeriodo.forEach(o => { const k=o.origen_lead||'Sin especificar'; origenMap[k]=(origenMap[k]||0)+1; });
+
+  // ── Evolución mensual (año completo) ──
+  const mesesAnio = Array.from({length:12},(_,i)=>i+1);
+  const MESES=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+  // ── Tabla por ejecutivo ──
+  const execData = execFilt.map(u => {
+    const uActivas  = opsFilt.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado));
+    const uLeads    = opsFilt.filter(o=>o.usuario_id===u.id&&enPeriodo(o.created_at)).length;
+    const uCierres  = opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.updated_at)).length;
+    const uPerdidos = opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='perdido'&&enPeriodo(o.updated_at)).length;
+    const uGest     = gestFilt.filter(g=>g.usuario_id===u.id&&enPeriodo(g.fecha)).length;
+    const uPipe     = uActivas.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0);
+    const uRec      = uActivas.reduce((s,o)=>s+recMesUSD(o),0);
+    const uTasa     = uLeads>0 ? Math.round(uCierres/uLeads*100) : 0;
+    const uCiclos   = opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.updated_at)).map(diasCiclo).filter(d=>d!==null&&d>=0);
+    const uPromCiclo= uCiclos.length ? Math.round(uCiclos.reduce((s,d)=>s+d,0)/uCiclos.length) : null;
+    return {u, uLeads, uCierres, uPerdidos, uGest, uPipe, uRec, uTasa, uPromCiclo};
+  }).sort((a,b) => b.uCierres-a.uCierres || b.uLeads-a.uLeads);
+
+  // ── Semáforo de rendimiento ──
+  const semaforo = pct => pct>=80 ? {color:'var(--green)',bg:'var(--green-light)',icon:'●'} : pct>=50 ? {color:'var(--amber)',bg:'var(--amber-light)',icon:'●'} : {color:'var(--red)',bg:'var(--red-light)',icon:'●'};
+
+  // ── Render HTML ──
+  content.innerHTML = `
+    <div style="font-size:11px;color:var(--text3);margin-bottom:14px">
+      Mostrando: <strong>${label}</strong>${(_agFilter.pais||'todos')!=='todos'?' · '+_agFilter.pais:''}${_agFilter.linea!=='todos'?' · Línea '+_agFilter.linea.charAt(0).toUpperCase()+_agFilter.linea.slice(1):''}${_agFilter.ejecutivo?' · '+usuarios.find(u=>u.id===_agFilter.ejecutivo)?.nombre:''}
+      &nbsp;·&nbsp; Valores financieros en USD
+    </div>
+
+    <!-- ═══════════ FILA 1: TARJETAS ACTIVIDAD ═══════════ -->
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin-bottom:8px">Actividad comercial — ${label}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+      ${[
+        {lbl:'Leads nuevos',val:leadsEnPeriodo.length,color:'var(--sat-blue)',sub:'en el período'},
+        {lbl:'Propuestas',val:propEnviadas.length,color:'#534AB7',sub:'enviadas'},
+        {lbl:'Cierres',val:cerradosEnPeriodo.length,color:'var(--green)',sub:'en el período'},
+        {lbl:'Perdidos',val:perdidosEnPeriodo.length,color:'var(--red)',sub:'en el período'},
+        {lbl:'Gestiones',val:gestEnPeriodo.length,color:'var(--text2)',sub:'interacciones'},
+        {lbl:'Conv. lead→cierre',val:tasa+'%',color:'var(--sat-orange)',sub:'tasa de conversión'},
+        {lbl:'Conv. prop.→cierre',val:tasaPropCierre+'%',color:'var(--teal)',sub:'propuesta a cierre'},
+        {lbl:'Ciclo promedio',val:promCiclo!==null?promCiclo+'d':'—',color:'var(--text2)',sub:'días apertura→cierre'},
+      ].map(k=>`
+        <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px 14px 10px;border-top:3px solid ${k.color}">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${k.lbl}</div>
+          <div style="font-size:22px;font-weight:300;color:${k.color};line-height:1">${k.val}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px">${k.sub}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- ═══════════ FILA 2: TARJETAS FINANCIERAS ═══════════ -->
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin-bottom:8px">Financiero en USD</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:20px">
+      ${[
+        {lbl:'Pipeline total activo',val:fmtUSD(pipelineUSD),color:'#534AB7',sub:opsActivas.length+' leads activos'},
+        {lbl:'Pipeline venta única',val:fmtUSD(pipelineUnicoUSD),color:'var(--sat-blue)',sub:'un solo cobro'},
+        {lbl:'Pipeline recurrente/mes',val:fmtUSD(pipelineRecUSD),color:'var(--teal)',sub:'MRR potencial en pipeline'},
+        {lbl:'Cerrado en período',val:fmtUSD(cerradosUSD),color:'var(--green)',sub:cerradosEnPeriodo.length+' negocios'},
+        {lbl:'MRR acumulado',val:fmtUSD(recurrenteMRR),color:'var(--green)',sub:'todos los cerrados recurrentes'},
+      ].map(k=>`
+        <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px 14px 10px;border-top:3px solid ${k.color}">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px">${k.lbl}</div>
+          <div style="font-size:17px;font-weight:400;color:${k.color};line-height:1.2">${k.val}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:4px">${k.sub}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- ═══════════ FILA 3: DESGLOSE PAÍS + LÍNEA ═══════════ -->
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:20px">
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin-bottom:8px">Por país</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+          ${porPais.map(p=>`
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px">
+            <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:8px">${p.pais==='México'?'🇲🇽':p.pais==='Ecuador'?'🇪🇨':'🇨🇴'} ${p.pais}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div><div style="font-size:9px;color:var(--text3)">Pipeline</div><div style="font-size:13px;font-weight:500;color:#534AB7">${fmtUSD(p.pipelineUSD)}</div></div>
+              <div><div style="font-size:9px;color:var(--text3)">Activos</div><div style="font-size:13px;font-weight:500;color:var(--sat-blue)">${p.activas}</div></div>
+              <div><div style="font-size:9px;color:var(--text3)">Cerrado</div><div style="font-size:13px;font-weight:500;color:var(--green)">${fmtUSD(p.cerradosUSD)}</div></div>
+              <div><div style="font-size:9px;color:var(--text3)">Cierres</div><div style="font-size:13px;font-weight:500;color:var(--green)">${p.cerrados}</div></div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin-bottom:8px">Por línea</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${porLinea.map(l=>`
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px;border-left:3px solid ${l.linea==='fleet'?'var(--sat-blue)':'var(--sat-orange)'}">
+            <div style="font-size:12px;font-weight:600;color:${l.linea==='fleet'?'var(--sat-blue)':'var(--sat-orange)'};margin-bottom:8px">${l.linea.charAt(0).toUpperCase()+l.linea.slice(1)}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">
+              <div><div style="font-size:9px;color:var(--text3)">Pipeline</div><div style="font-size:12px;font-weight:500;color:#534AB7">${fmtUSD(l.pipelineUSD)}</div></div>
+              <div><div style="font-size:9px;color:var(--text3)">Activos</div><div style="font-size:12px;color:var(--sat-blue)">${l.activas}</div></div>
+              <div><div style="font-size:9px;color:var(--text3)">Cierres</div><div style="font-size:12px;color:var(--green)">${l.cerrados}</div></div>
+            </div>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════ FILA 4: GRÁFICAS ═══════════ -->
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin-bottom:8px">Análisis gráfico</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px">Embudo de conversión — ${label}</div>
+        <div id="ag-chart-embudo" style="height:200px"></div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px">Pipeline por ejecutivo (USD)</div>
+        <div id="ag-chart-exec-pipe" style="height:200px"></div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px">Cierres por ejecutivo — ${label}</div>
+        <div id="ag-chart-exec-cierres" style="height:200px"></div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px">Pipeline por producto (USD)</div>
+        <div id="ag-chart-prod" style="height:200px"></div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px">Evolución de leads y cierres — ${anio}</div>
+        <div id="ag-chart-evol" style="height:200px"></div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px">Origen de leads — ${label}</div>
+        <div id="ag-chart-origen" style="height:200px"></div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px">Pipeline por país (USD)</div>
+        <div id="ag-chart-pais" style="height:200px"></div>
+      </div>
+      <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px">
+        <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px">Ciclo de venta por ejecutivo (días prom.)</div>
+        <div id="ag-chart-ciclo" style="height:200px"></div>
+      </div>
+    </div>
+
+    <!-- ═══════════ FILA 5: TABLA EJECUTIVOS ═══════════ -->
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin-bottom:8px">Rendimiento por ejecutivo</div>
+    <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:var(--surface2);border-bottom:0.5px solid var(--border)">
+              ${['Ejecutivo','Línea','Leads','Propuestas','Cierres','Perdidos','Conv.','Gestiones','Pipeline USD','Rec./mes USD','Ciclo prom.'].map((h,i)=>`
+              <th style="text-align:${i===0?'left':'center'};padding:10px ${i===0?'14':'8'}px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);white-space:nowrap">${h}</th>`).join('')}
+            </tr>
+          </thead>
+          <tbody>
+            ${execData.map((e,idx)=>{
+              const sf = semaforo(e.uTasa);
+              return `<tr style="border-bottom:0.5px solid var(--border);background:${idx%2===0?'var(--surface)':'var(--surface2)'}">
+                <td style="padding:10px 14px;font-weight:500;white-space:nowrap">${e.u.nombre}</td>
+                <td style="text-align:center;padding:8px"><span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:3px;background:${e.u.linea==='fleet'?'var(--sat-blue-light)':'rgba(232,70,10,.1)'};color:${e.u.linea==='fleet'?'var(--sat-blue)':'var(--sat-orange)'}">${e.u.linea}</span></td>
+                <td style="text-align:center;color:var(--sat-blue);font-size:15px;font-weight:300">${e.uLeads}</td>
+                <td style="text-align:center;color:#534AB7;font-size:15px;font-weight:300">${propEnviadas.filter(o=>o.usuario_id===e.u.id).length}</td>
+                <td style="text-align:center;color:var(--green);font-size:15px;font-weight:300">${e.uCierres}</td>
+                <td style="text-align:center;color:var(--red);font-size:15px;font-weight:300">${e.uPerdidos}</td>
+                <td style="text-align:center"><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${sf.bg};color:${sf.color}">${e.uTasa}%</span></td>
+                <td style="text-align:center;color:var(--text2)">${e.uGest}</td>
+                <td style="text-align:center;font-weight:500;color:#534AB7">${fmtUSD(e.uPipe)}</td>
+                <td style="text-align:center;font-weight:500;color:var(--green)">${fmtUSD(e.uRec)}</td>
+                <td style="text-align:center;color:var(--text2)">${e.uPromCiclo!==null?e.uPromCiclo+'d':'—'}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  // ═══════════ GRÁFICAS PLOTLY ═══════════
+  const plotBg  = 'rgba(0,0,0,0)';
+  const pFont   = {family:'inherit',size:11,color:'#5a5a56'};
+  const pL = (e={}) => ({paper_bgcolor:plotBg,plot_bgcolor:plotBg,font:pFont,margin:{l:40,r:20,t:10,b:40},showlegend:false,...e});
+  const SAT_COLORS = ['#19428C','#E8460A','#534AB7','#1D9E75','#BA7517','#E24B4A','#378ADD','#639922'];
+
+  // Embudo
+  Plotly.newPlot('ag-chart-embudo',[{type:'funnel',
+    y:['Leads creados','En proceso','Prop. enviada','Cerrados'],
+    x:[leadsEnPeriodo.length,
+       opsActivas.filter(o=>o.estado==='en_proceso').length,
+       opsActivas.filter(o=>o.estado==='propuesta_enviada').length,
+       cerradosEnPeriodo.length],
+    textinfo:'value+percent initial',
+    marker:{color:['#19428C','#378ADD','#BA7517','#1D9E75']}
+  }],pL({margin:{l:110,r:20,t:10,b:10}}),{responsive:true,displayModeBar:false});
+
+  // Pipeline por ejecutivo (barras horizontales)
+  const execPipeSort = execData.filter(e=>e.uPipe>0).sort((a,b)=>b.uPipe-a.uPipe);
+  if(execPipeSort.length){
+    Plotly.newPlot('ag-chart-exec-pipe',[{type:'bar',orientation:'h',
+      y:execPipeSort.map(e=>e.u.nombre.split(' ')[0]),
+      x:execPipeSort.map(e=>Math.round(e.uPipe)),
+      marker:{color:'#19428C'},
+      text:execPipeSort.map(e=>fmtUSD(e.uPipe)),textposition:'outside'
+    }],pL({margin:{l:80,r:90,t:10,b:30}}),{responsive:true,displayModeBar:false});
+  } else { document.getElementById('ag-chart-exec-pipe').innerHTML='<div class="empty" style="padding:60px 0;text-align:center;color:var(--text3)">Sin datos</div>'; }
+
+  // Cierres por ejecutivo
+  const execCierSort = execData.filter(e=>e.uCierres>0).sort((a,b)=>b.uCierres-a.uCierres);
+  if(execCierSort.length){
+    Plotly.newPlot('ag-chart-exec-cierres',[{type:'bar',
+      x:execCierSort.map(e=>e.u.nombre.split(' ')[0]),
+      y:execCierSort.map(e=>e.uCierres),
+      marker:{color:execCierSort.map((_,i)=>SAT_COLORS[i%SAT_COLORS.length])},
+      text:execCierSort.map(e=>e.uCierres),textposition:'outside'
+    }],pL({margin:{l:30,r:20,t:20,b:60},xaxis:{tickangle:-20}}),{responsive:true,displayModeBar:false});
+  } else { document.getElementById('ag-chart-exec-cierres').innerHTML='<div class="empty" style="padding:60px 0;text-align:center;color:var(--text3)">Sin cierres en el período</div>'; }
+
+  // Pipeline por producto
+  if(prodEntries.length){
+    Plotly.newPlot('ag-chart-prod',[{type:'bar',orientation:'h',
+      y:prodEntries.slice(0,10).map(e=>e[0]),
+      x:prodEntries.slice(0,10).map(e=>Math.round(e[1].pipeline)),
+      marker:{color:'#534AB7'},
+      text:prodEntries.slice(0,10).map(e=>fmtUSD(e[1].pipeline)),textposition:'outside'
+    }],pL({margin:{l:80,r:90,t:10,b:30}}),{responsive:true,displayModeBar:false});
+  } else { document.getElementById('ag-chart-prod').innerHTML='<div class="empty" style="padding:60px 0;text-align:center;color:var(--text3)">Sin datos</div>'; }
+
+  // Evolución mensual
+  Plotly.newPlot('ag-chart-evol',[
+    {name:'Leads',type:'bar',x:mesesAnio.map(m=>MESES[m-1]),
+     y:mesesAnio.map(m=>opsFilt.filter(o=>o.created_at&&new Date(o.created_at).getMonth()+1===m&&new Date(o.created_at).getFullYear()===anio).length),
+     marker:{color:'#19428C'},opacity:.8},
+    {name:'Cierres',type:'bar',x:mesesAnio.map(m=>MESES[m-1]),
+     y:mesesAnio.map(m=>opsFilt.filter(o=>o.estado==='cerrado'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===m&&new Date(o.updated_at).getFullYear()===anio).length),
+     marker:{color:'#1D9E75'},opacity:.9}
+  ],pL({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.25},margin:{l:30,r:10,t:10,b:60}}),{responsive:true,displayModeBar:false});
+
+  // Origen leads
+  const origenKeys = Object.keys(origenMap).filter(k=>origenMap[k]>0);
+  if(origenKeys.length){
+    Plotly.newPlot('ag-chart-origen',[{type:'pie',
+      labels:origenKeys, values:origenKeys.map(k=>origenMap[k]),
+      hole:.4, marker:{colors:SAT_COLORS}, textinfo:'label+value',
+      hovertemplate:'%{label}: %{value}<extra></extra>'
+    }],pL({margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',y:-0.2}}),{responsive:true,displayModeBar:false});
+  } else { document.getElementById('ag-chart-origen').innerHTML='<div class="empty" style="padding:60px 0;text-align:center;color:var(--text3)">Sin datos de origen</div>'; }
+
+  // Pipeline por país (dona)
+  const paisConDatos = porPais.filter(p=>p.pipelineUSD>0);
+  if(paisConDatos.length){
+    Plotly.newPlot('ag-chart-pais',[{type:'pie',
+      labels:paisConDatos.map(p=>p.pais), values:paisConDatos.map(p=>Math.round(p.pipelineUSD)),
+      hole:.45, marker:{colors:['#19428C','#E8460A','#534AB7']},
+      hovertemplate:'%{label}: US$ %{value:,.0f}<extra></extra>',textinfo:'label+percent'
+    }],pL({margin:{l:10,r:10,t:10,b:10},showlegend:true,legend:{orientation:'h',y:-0.2}}),{responsive:true,displayModeBar:false});
+  } else { document.getElementById('ag-chart-pais').innerHTML='<div class="empty" style="padding:60px 0;text-align:center;color:var(--text3)">Sin datos</div>'; }
+
+  // Ciclo de venta por ejecutivo
+  const execCicloData = execData.filter(e=>e.uPromCiclo!==null).sort((a,b)=>a.uPromCiclo-b.uPromCiclo);
+  if(execCicloData.length){
+    Plotly.newPlot('ag-chart-ciclo',[{type:'bar',orientation:'h',
+      y:execCicloData.map(e=>e.u.nombre.split(' ')[0]),
+      x:execCicloData.map(e=>e.uPromCiclo),
+      marker:{color:'#BA7517'},
+      text:execCicloData.map(e=>e.uPromCiclo+'d'),textposition:'outside'
+    }],pL({margin:{l:80,r:50,t:10,b:30}}),{responsive:true,displayModeBar:false});
+  } else { document.getElementById('ag-chart-ciclo').innerHTML='<div class="empty" style="padding:60px 0;text-align:center;color:var(--text3)">Sin cierres con fechas completas</div>'; }
+}
+
 
 // ── KPIs & ANALYTICS ────────────────────────────────────────────────────────
 let _kpiFilter = { periodo:'mes', linea:'todos', ejecutivo:'', pais:'todos' };
