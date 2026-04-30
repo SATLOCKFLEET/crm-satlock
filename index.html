@@ -249,9 +249,10 @@ tbody tr:hover{background:var(--surface2)}
 
 /* Vista mensual */
 .cal-month-wrap{flex:1;overflow-y:auto;display:flex;flex-direction:column}
-.cal-month-header{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:0.5px solid var(--border);flex-shrink:0}
-.cal-month-dow{text-align:center;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);padding:8px 0}
+.cal-month-header{display:none}
+.cal-month-dow{display:none}
 .cal-month-grid{display:grid;grid-template-columns:repeat(7,1fr);flex:1}
+.cal-month-dow-inline{text-align:center;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);padding:8px 4px;border-bottom:0.5px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:2}
 .cal-month-cell{border-right:0.5px solid var(--border);border-bottom:0.5px solid var(--border);padding:4px;min-height:90px;cursor:pointer;transition:background .1s;position:relative}
 .cal-month-cell:nth-child(7n){border-right:none}
 .cal-month-cell:hover{background:var(--surface2)}
@@ -2551,8 +2552,8 @@ async function drawMonth(){
   }
 
   let html=`<div class="cal-month-wrap">
-    <div class="cal-month-header">${DAYS.map(d=>`<div class="cal-month-dow">${d}</div>`).join('')}</div>
-    <div class="cal-month-grid">`;
+    <div class="cal-month-grid">
+    ${DAYS.map(d=>`<div class="cal-month-dow-inline">${d}</div>`).join('')}`;
 
   for(let i=firstDay-1;i>=0;i--){
     const dd=daysInPrev-i;
