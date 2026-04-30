@@ -1677,33 +1677,45 @@ async function guardarOp(){
 
   // Verificar NIT duplicado — lógica completa
   if(nit){
-    // Buscar específicamente registros del NIT que pertenezcan a OTRO usuario
+    // Buscar todos los registros del NIT que pertenezcan a OTRO usuario
     const {data:nitAll}=await sb.from('oportunidades')
-      .select('empresa,usuario_id,linea,created_at,usuarios(nombre,linea)')
+      .select('empresa,usuario_id,linea,created_at,usuarios(nombre,linea,rol)')
       .eq('nit',nit)
-      .neq('usuario_id',USER.id)
-      .limit(1);
-    if(nitAll&&nitAll.length){
-      const dup=nitAll[0];
-      const lineaDueno  = dup.usuarios?.linea || dup.linea || '';
-      const lineaActual = PERFIL.linea || '';
-      const esGerente   = ['gerencia','jefe_fleet'].includes(PERFIL.rol);
-      const esVentaCruz = lineaDueno && lineaActual && lineaDueno!==lineaActual;
-      const comercial   = dup.usuarios?.nombre||'otro comercial';
-      const fecha       = dup.created_at?new Date(dup.created_at).toLocaleDateString('es-CO'):'fecha desconocida';
+      .neq('usuario_id',USER.id);
 
-      if(esVentaCruz){
-        // Líneas diferentes → venta cruzada: aviso informativo, continúa
-        const ok = await mostrarModalVentaCruzada({empresa:dup.empresa,comercial,lineaDueno,lineaActual});
-        if(!ok) return;
-      } else if(esGerente){
-        // Gerente sobre NIT de otro → puede continuar con confirmación
-        const ok = await mostrarModalGerenteOverride({empresa:dup.empresa,comercial,fecha});
-        if(!ok) return;
-      } else {
+    if(nitAll&&nitAll.length){
+      // Línea del ejecutivo que intenta crear: leer del formulario (fuente más confiable)
+      const lineaActual = document.getElementById('f-linea')?.value || PERFIL.linea || '';
+      const esGerente   = ['gerencia','jefe_fleet','alta_gerencia'].includes(PERFIL.rol);
+
+      // Buscar si hay algún registro de la misma línea (conflicto real)
+      const dupMismaLinea = nitAll.find(r => {
+        const ld = r.usuarios?.linea || r.linea || '';
+        return ld === lineaActual;
+      });
+      // Buscar si hay algún registro de línea diferente (venta cruzada)
+      const dupOtraLinea = nitAll.find(r => {
+        const ld = r.usuarios?.linea || r.linea || '';
+        return ld && ld !== lineaActual;
+      });
+
+      if(dupMismaLinea && !esGerente){
         // Misma línea, ejecutivo normal → bloquea y genera solicitud
-        await crearSolicitudNIT({nit,empresa,duenoId:dup.usuario_id,comercialDueno:comercial});
+        const comercial = dupMismaLinea.usuarios?.nombre||'otro comercial';
+        await crearSolicitudNIT({nit,empresa,duenoId:dupMismaLinea.usuario_id,comercialDueno:comercial});
         return;
+      } else if(dupMismaLinea && esGerente){
+        // Misma línea pero es gerente → puede continuar con confirmación
+        const comercial = dupMismaLinea.usuarios?.nombre||'otro comercial';
+        const fecha = dupMismaLinea.created_at?new Date(dupMismaLinea.created_at).toLocaleDateString('es-CO'):'fecha desconocida';
+        const ok = await mostrarModalGerenteOverride({empresa:dupMismaLinea.empresa,comercial,fecha});
+        if(!ok) return;
+      } else if(dupOtraLinea && !dupMismaLinea){
+        // Solo hay registros de otra línea → venta cruzada, aviso y continúa
+        const comercial  = dupOtraLinea.usuarios?.nombre||'otro comercial';
+        const lineaDueno = dupOtraLinea.usuarios?.linea || dupOtraLinea.linea || '';
+        const ok = await mostrarModalVentaCruzada({empresa:dupOtraLinea.empresa,comercial,lineaDueno,lineaActual});
+        if(!ok) return;
       }
     }
     // Si el NIT existe pero todos son registros propios → se permite sin restricción
