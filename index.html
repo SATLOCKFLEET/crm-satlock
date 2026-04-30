@@ -3247,6 +3247,7 @@ async function renderDiario(container){
         <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--sat-blue);margin-bottom:8px;display:flex;align-items:center;gap:6px">
           Gestión de leads
           <span id="leads-count" style="font-size:10px;font-weight:400;background:var(--sat-blue-light);color:var(--sat-blue);padding:1px 6px;border-radius:10px"></span>
+          <button onclick="abrirModalLead()" title="Nuevo lead" style="margin-left:auto;width:22px;height:22px;border-radius:50%;border:1.5px solid var(--sat-blue);background:var(--sat-blue-light);color:var(--sat-blue);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">+</button>
         </div>
         <div id="diario-lista"></div>
       </div>
@@ -3254,6 +3255,7 @@ async function renderDiario(container){
         <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#534AB7;margin-bottom:8px;display:flex;align-items:center;gap:6px">
           Tareas administrativas
           <span id="tareas-count" style="font-size:10px;font-weight:400;background:var(--purple-light);color:#534AB7;padding:1px 6px;border-radius:10px"></span>
+          <button onclick="abrirModalTarea()" title="Nueva tarea" style="margin-left:auto;width:22px;height:22px;border-radius:50%;border:1.5px solid #534AB7;background:var(--purple-light);color:#534AB7;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0">+</button>
         </div>
         <div id="tareas-lista-midia"></div>
       </div>
@@ -3261,6 +3263,78 @@ async function renderDiario(container){
 
   renderDiarioLista('', 'todos');
 }
+
+// ── MODALES RÁPIDOS DESDE MI DÍA ─────────────────────────────────────────────
+
+function _modalFormBase(tipoInicial){
+  // Eliminar instancia previa
+  const prev=document.getElementById('modal-midia-form');
+  if(prev) prev.remove();
+
+  const m=document.createElement('div');
+  m.id='modal-midia-form';
+  m.style.cssText='position:fixed;inset:0;background:rgba(13,27,62,0.6);display:flex;align-items:flex-start;justify-content:center;z-index:9998;padding:20px;overflow-y:auto';
+
+  // Contenedor del formulario — replica el form-card original
+  const wrap=document.createElement('div');
+  wrap.style.cssText='background:#fff;border-radius:14px;width:100%;max-width:720px;margin:auto;box-shadow:0 16px 48px rgba(0,0,0,0.22);overflow:hidden';
+
+  // Header del modal
+  wrap.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:0.5px solid var(--border);background:var(--surface)">
+      <div style="font-size:14px;font-weight:600;color:var(--text)" id="modal-form-titulo">Nueva oportunidad / Tarea</div>
+      <button onclick="document.getElementById('modal-midia-form').remove()" style="background:none;border:none;font-size:18px;color:var(--text3);cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div style="padding:20px" id="modal-form-body"></div>`;
+
+  m.appendChild(wrap);
+  document.body.appendChild(m);
+
+  // Renderizar el formulario completo dentro del modal
+  const body=document.getElementById('modal-form-body');
+  const tempDiv=document.createElement('div');
+  tempDiv.className='form-card';
+  // Inyectar el mismo HTML que renderNueva pero sin el wrapper form-card externo
+  renderNueva(tempDiv);
+  // Extraer solo el innerHTML del form-card generado
+  const fc=tempDiv.querySelector('.form-card');
+  if(fc) body.innerHTML=fc.innerHTML;
+  else body.innerHTML=tempDiv.innerHTML;
+
+  // Inicializar campos igual que renderNueva
+  const fFecha=document.getElementById('f-fecha');
+  if(fFecha && !fFecha.value) fFecha.value=fechaHoyLocal();
+  actualizarProductosForm && actualizarProductosForm();
+  actualizarColorAvance && actualizarColorAvance();
+
+  // Preseleccionar el tipo correcto
+  if(tipoInicial==='tarea'){
+    const radioTarea=document.querySelector('input[name="f-tipo-reg"][value="tarea"]');
+    if(radioTarea){ radioTarea.checked=true; toggleTipoRegistro(); }
+    document.getElementById('modal-form-titulo').textContent='Nueva tarea administrativa';
+  } else {
+    const radioLead=document.querySelector('input[name="f-tipo-reg"][value="lead"]');
+    if(radioLead){ radioLead.checked=true; toggleTipoRegistro(); }
+    document.getElementById('modal-form-titulo').textContent='Nuevo lead comercial';
+  }
+
+  // Sobreescribir el botón Guardar para que también cierre el modal
+  const btnGuardar=body.querySelector('button.btn-pri');
+  if(btnGuardar){
+    btnGuardar.onclick=async ()=>{
+      await guardarRegistro();
+      // guardarRegistro llama switchTab(2) o redirige; cerramos el modal si aún existe
+      const mo=document.getElementById('modal-midia-form');
+      if(mo) mo.remove();
+    };
+  }
+
+  // Cerrar al hacer clic en el overlay
+  m.addEventListener('click',e=>{ if(e.target===m) m.remove(); });
+}
+
+function abrirModalLead(){ _modalFormBase('lead'); }
+function abrirModalTarea(){ _modalFormBase('tarea'); }
 
 function ultimaGestion(opId){
   const gg = (window._diarioGestiones||[]).filter(g=>g.oportunidad_id===opId);
@@ -3293,11 +3367,14 @@ function semaforoDiario(opId, fechaInicio, estado){
 async function completarTareaAdmin(id){
   await sb.from('tareas_admin').update({done:true}).eq('id',id);
   const idx=(window._tareasAdmin||[]).findIndex(t=>t.id===id);
-  if(idx>-1) window._tareasAdmin[idx].done=true;
-  // También mover a completadas
-  const tarea=window._tareasAdmin[idx];
-  if(tarea && !(window._tareasCompletadas||[]).find(t=>t.id===id)){
-    window._tareasCompletadas=[tarea,...(window._tareasCompletadas||[])];
+  if(idx>-1){
+    const tarea=window._tareasAdmin[idx];
+    tarea.done=true;
+    // Mover a completadas y SACAR de pendientes
+    if(!(window._tareasCompletadas||[]).find(t=>t.id===id)){
+      window._tareasCompletadas=[tarea,...(window._tareasCompletadas||[])];
+    }
+    window._tareasAdmin=window._tareasAdmin.filter(t=>t.id!==id);
   }
   renderDiarioLista(document.getElementById('diario-search')?.value||'',_diarioFiltro);
 }
