@@ -1025,20 +1025,30 @@ function renderNueva(container){
           </div></div>
       </div>
       <!-- BLOQUE COMODATO -->
-      <div id="bloque-comodato" class="form-grid" style="margin-bottom:10px;border-top:0.5px solid var(--border);padding-top:10px;display:none">
-        <div style="grid-column:1/-1;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--teal);margin-bottom:4px">Comodato (hardware Satlock)</div>
-        <div class="fg"><div class="flbl">Unidades en comodato</div>
-          <input class="finput" type="number" id="f-unidades-como" min="1" placeholder="Ej: 10" oninput="calcularTamanoNegocio()"/></div>
-        <div class="fg"><div class="flbl">Valor comodato / dispositivo / mes</div>
-          <div style="position:relative">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--text3)">$</span>
-            <input class="finput" type="text" id="f-valor-como" placeholder="0" oninput="formatearMoneda(this);calcularTamanoNegocio()" style="padding-left:20px"/>
-          </div></div>
-        <div class="fg"><div class="flbl" style="color:var(--teal)">Total comodato / mes</div>
-          <div style="position:relative">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--teal)">$</span>
-            <input class="finput" type="text" id="f-total-como" readonly style="padding-left:20px;background:var(--teal-light);color:var(--teal-dark);font-weight:500;cursor:default"/>
-          </div></div>
+      <div id="bloque-comodato" style="margin-bottom:10px;border-top:0.5px solid var(--border);padding-top:10px;display:none">
+        <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--teal);margin-bottom:10px">Comodato — hardware Satlock (el equipo nunca es propiedad del cliente)</div>
+        <div class="form-grid" style="margin-bottom:10px">
+          <div class="fg"><div class="flbl">Unidades en comodato</div>
+            <input class="finput" type="number" id="f-unidades-como" min="1" placeholder="Ej: 10" oninput="calcularTamanoNegocio()"/></div>
+        </div>
+        <!-- Tres plazos -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+          ${[{id:'12',label:'12 meses',color:'var(--sat-blue)',bg:'var(--sat-blue-light)'},{id:'24',label:'24 meses',color:'var(--teal)',bg:'var(--teal-light)'},{id:'36',label:'36 meses',color:'var(--green)',bg:'var(--green-light)'}].map(p=>`
+          <div style="background:${p.bg};border-radius:8px;padding:10px 12px;border:0.5px solid ${p.color}">
+            <div style="font-size:10px;font-weight:700;color:${p.color};text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px">${p.label}</div>
+            <div class="fg" style="margin-bottom:6px"><div class="flbl">Valor / dispositivo / mes</div>
+              <div style="position:relative">
+                <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11px;color:${p.color}">$</span>
+                <input class="finput" type="text" id="f-como-${p.id}" placeholder="0" oninput="formatearMoneda(this);calcularTamanoNegocio()" style="padding-left:18px;font-size:12px"/>
+              </div></div>
+            <div class="fg"><div class="flbl" style="color:${p.color}">Total / mes (${p.id}m)</div>
+              <div style="position:relative">
+                <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11px;color:${p.color}">$</span>
+                <input class="finput" type="text" id="f-total-como-${p.id}" readonly style="padding-left:18px;background:#fff;color:${p.color};font-weight:600;font-size:12px;cursor:default"/>
+              </div></div>
+          </div>`).join('')}
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text3)">💡 El plazo definitivo se confirma al cerrar el negocio. En pipeline se usa el valor a <strong>24 meses</strong> como referencia.</div>
       </div>
       <div class="form-grid">
         <div class="fg"><div class="flbl" style="color:var(--sat-orange)">Pipeline total del cliente (COP)</div>
@@ -1214,13 +1224,20 @@ function calcularTamanoNegocio(){
   const elRM = document.getElementById('f-rec-mensual');
   if(elRM) elRM.value = recMensual>0 ? recMensual.toLocaleString('es-CO') : '';
 
-  // Comodato
+  // Comodato — calcular totales por plazo y usar 24m como referencia para pipeline
   const unidadesComo = parseInt(document.getElementById('f-unidades-como')?.value||'0');
-  const valorComoStr = (document.getElementById('f-valor-como')?.dataset?.raw||document.getElementById('f-valor-como')?.value||'0').replace(/[^0-9]/g,'');
-  const valorComo = parseFloat(valorComoStr)||0;
-  const totalComoMes = unidadesComo * valorComo;
-  const elC = document.getElementById('f-total-como');
-  if(elC) elC.value = totalComoMes>0 ? totalComoMes.toLocaleString('es-CO') : '';
+  const getValComo = id => parseFloat((document.getElementById(id)?.dataset?.raw||document.getElementById(id)?.value||'0').replace(/[^0-9]/g,''))||0;
+  const valComo12 = getValComo('f-como-12');
+  const valComo24 = getValComo('f-como-24');
+  const valComo36 = getValComo('f-como-36');
+  const totalComo12 = unidadesComo * valComo12;
+  const totalComo24 = unidadesComo * valComo24;
+  const totalComo36 = unidadesComo * valComo36;
+  const setTC = (id, val) => { const el=document.getElementById(id); if(el) el.value = val>0?val.toLocaleString('es-CO'):''; };
+  setTC('f-total-como-12', totalComo12);
+  setTC('f-total-como-24', totalComo24);
+  setTC('f-total-como-36', totalComo36);
+  const totalComoMes = totalComo24; // referencia pipeline = 24 meses
 
   // Pipeline total según modalidad
   // Venta: equipo + instalación + recurrencia mensual
@@ -1686,7 +1703,9 @@ async function guardarOp(){
     fecha_inicio_gestion:fechaHoy,
     modalidad:document.getElementById('f-modalidad')?.value||'venta',
     unidades_comodato:parseInt(document.getElementById('f-unidades-como')?.value||'0')||null,
-    valor_comodato:parseFloat((document.getElementById('f-valor-como')?.dataset?.raw||document.getElementById('f-valor-como')?.value||'0').replace(/[^0-9]/g,''))||null,
+    valor_comodato_12:parseFloat((document.getElementById('f-como-12')?.dataset?.raw||document.getElementById('f-como-12')?.value||'0').replace(/[^0-9]/g,''))||null,
+    valor_comodato_24:parseFloat((document.getElementById('f-como-24')?.dataset?.raw||document.getElementById('f-como-24')?.value||'0').replace(/[^0-9]/g,''))||null,
+    valor_comodato_36:parseFloat((document.getElementById('f-como-36')?.dataset?.raw||document.getElementById('f-como-36')?.value||'0').replace(/[^0-9]/g,''))||null,
     unidades_instalacion:parseInt(document.getElementById('f-unidades-inst')?.value||'0')||null,
     valor_instalacion:parseFloat((document.getElementById('f-valor-inst')?.dataset?.raw||document.getElementById('f-valor-inst')?.value||'0').replace(/[^0-9]/g,''))||null
   });
@@ -1982,13 +2001,29 @@ async function abrirEditar(id){
               <div><div class="flbl">Valor por período</div><input class="finput" type="number" id="e-valor-rec" value="${r.valor_recurrente||''}" placeholder="0"/></div>
             </div>
           </div>
-          <!-- Comodato edición -->
-          <div class="fg full" style="background:var(--teal-light);border-radius:6px;padding:10px 12px;border:0.5px solid var(--teal)">
-            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--teal-dark);margin-bottom:8px">Comodato (hardware Satlock)</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-              <div><div class="flbl">Unidades en comodato</div><input class="finput" type="number" id="e-unidades-como" value="${r.unidades_comodato||''}" min="1" placeholder="Ej: 10"/></div>
-              <div><div class="flbl">Valor comodato / dispositivo / mes</div><input class="finput" type="number" id="e-valor-como" value="${r.valor_comodato||''}" placeholder="0"/></div>
+          <!-- Comodato edición — 3 plazos -->
+          <div class="fg full" style="background:var(--teal-light);border-radius:8px;padding:12px 14px;border:0.5px solid var(--teal)">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--teal-dark);margin-bottom:10px">Comodato — hardware Satlock</div>
+            <div style="margin-bottom:10px"><div class="flbl">Unidades en comodato</div>
+              <input class="finput" type="number" id="e-unidades-como" value="${r.unidades_comodato||''}" min="1" placeholder="Ej: 10"/></div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+              <div style="background:#fff;border-radius:6px;padding:8px 10px;border:0.5px solid var(--sat-blue)">
+                <div style="font-size:10px;font-weight:700;color:var(--sat-blue);margin-bottom:6px">12 MESES</div>
+                <div class="flbl">Valor / dispositivo / mes</div>
+                <input class="finput" type="number" id="e-como-12" value="${r.valor_comodato_12||''}" placeholder="0" style="font-size:12px"/>
+              </div>
+              <div style="background:#fff;border-radius:6px;padding:8px 10px;border:0.5px solid var(--teal)">
+                <div style="font-size:10px;font-weight:700;color:var(--teal);margin-bottom:6px">24 MESES</div>
+                <div class="flbl">Valor / dispositivo / mes</div>
+                <input class="finput" type="number" id="e-como-24" value="${r.valor_comodato_24||''}" placeholder="0" style="font-size:12px"/>
+              </div>
+              <div style="background:#fff;border-radius:6px;padding:8px 10px;border:0.5px solid var(--green)">
+                <div style="font-size:10px;font-weight:700;color:var(--green);margin-bottom:6px">36 MESES</div>
+                <div class="flbl">Valor / dispositivo / mes</div>
+                <input class="finput" type="number" id="e-como-36" value="${r.valor_comodato_36||''}" placeholder="0" style="font-size:12px"/>
+              </div>
             </div>
+            <div style="margin-top:8px;font-size:10px;color:var(--teal-dark)">El plazo definitivo se confirma al cerrar. Pipeline usa valor a <strong>24 meses</strong> como referencia.</div>
           </div>
           <div class="fg"><div class="flbl">N° propuesta</div><input class="finput" id="e-numprop" value="${(r.num_propuesta||'').replace(/"/g,'&quot;')}"/>
             <button onclick="generarNumeroPropuesta('e-numprop')" style="font-family:inherit;font-size:10px;margin-top:4px;padding:3px 8px;border:0.5px solid var(--sat-blue);border-radius:4px;background:var(--sat-blue-light);color:var(--sat-blue);cursor:pointer">Generar</button>
@@ -2086,7 +2121,9 @@ async function guardarEdicion(id){
     tipo_recurrencia:document.getElementById('e-tipo-rec')?.value||null,
     modalidad:document.getElementById('e-modalidad')?.value||'venta',
     unidades_comodato:parseInt(document.getElementById('e-unidades-como')?.value||'0')||null,
-    valor_comodato:parseFloat(document.getElementById('e-valor-como')?.value||'0')||null,
+    valor_comodato_12:parseFloat(document.getElementById('e-como-12')?.value||'0')||null,
+    valor_comodato_24:parseFloat(document.getElementById('e-como-24')?.value||'0')||null,
+    valor_comodato_36:parseFloat(document.getElementById('e-como-36')?.value||'0')||null,
     telefono:document.getElementById('e-tel')?.value,
     correo:document.getElementById('e-correo')?.value,
     num_propuesta:document.getElementById('e-numprop')?.value,
@@ -4218,7 +4255,7 @@ function renderAgContent(){
         const mOps = opsActivas.filter(o=>(o.modalidad||'venta')===mod);
         const mCerr = cerradosEnPeriodo.filter(o=>(o.modalidad||'venta')===mod);
         const mPipe = mOps.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0);
-        const mComoMRR = mOps.reduce((s,o)=>s+toUSD((o.unidades_comodato||0)*(o.valor_comodato||0),o.moneda||'COP'),0);
+        const mComoMRR = mOps.reduce((s,o)=>s+toUSD((o.unidades_comodato||0)*(o.valor_comodato_24||o.valor_comodato||0),o.moneda||'COP'),0);
         const mRecMRR = mOps.reduce((s,o)=>s+recMesUSD(o),0);
         const col = mod==='venta'?'var(--sat-blue)':'var(--teal)';
         return `<div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px;border-top:3px solid ${col}">
@@ -4244,7 +4281,7 @@ function renderAgContent(){
           <div style="background:var(--teal-light);border-radius:6px;padding:10px 12px">
             <div style="font-size:10px;color:var(--teal-dark);font-weight:600;margin-bottom:4px">Todo en Comodato</div>
             <div style="font-size:13px;font-weight:600;color:var(--teal-dark)">${fmtUSD(opsActivas.reduce((s,o)=>s+toUSD((o.unidades_instalacion||0)*(o.valor_instalacion||0),o.moneda||'COP')+recMesUSD(o)+toUSD((o.unidades_comodato||0)*(o.valor_comodato||0),o.moneda||'COP'),0))}</div>
-            <div style="font-size:10px;color:var(--text3);margin-top:2px">Instalación + MRR + comodato</div>
+            <div style="font-size:10px;color:var(--text3);margin-top:2px">Instalación + MRR + comodato (ref. 24m)</div>
           </div>
         </div>
       </div>
