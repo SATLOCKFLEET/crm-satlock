@@ -657,26 +657,25 @@ document.addEventListener('DOMContentLoaded',()=>{
   // Flag para bloquear el flujo normal si estamos en modo recovery
   window._modoRecovery = false;
 
-  // Detectar token de recovery en la URL ANTES de cualquier otra cosa
-  const hashParams = new URLSearchParams(window.location.hash.replace('#',''));
-  if(hashParams.get('type')==='recovery' || window.location.hash.includes('type=recovery')){
-    window._modoRecovery = true;
-    mostrarFormNuevaPassword();
-  }
-
   sb.auth.onAuthStateChange(async(event,session)=>{
     if(event==='PASSWORD_RECOVERY'){
       window._modoRecovery = true;
       mostrarFormNuevaPassword();
       return;
     }
-    if(window._modoRecovery) return; // Bloquear flujo normal durante recovery
+    if(window._modoRecovery) return;
     if(event==='SIGNED_IN'&&session&&!PERFIL){USER=session.user;await cargarPerfil();}
   });
-  sb.auth.getSession().then(({data:{session}})=>{
-    if(window._modoRecovery) return; // Bloquear flujo normal durante recovery
-    if(session&&!PERFIL){USER=session.user;cargarPerfil();}
-  });
+
+  // Dejar que Supabase procese el hash primero (100ms),
+  // luego verificar sesión solo si no estamos en modo recovery
+  setTimeout(()=>{
+    if(window._modoRecovery) return;
+    sb.auth.getSession().then(({data:{session}})=>{
+      if(window._modoRecovery) return;
+      if(session&&!PERFIL){USER=session.user;cargarPerfil();}
+    });
+  }, 150);
 });
 
 // ── APP INIT ──────────────────────────────────────────────────────────────────
