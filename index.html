@@ -1204,35 +1204,58 @@ function calcularTamanoNegocio(){
 
 async function generarNumeroPropuesta(campoId){
   campoId = campoId || 'f-numprop';
-  // Detectar país del ejecutivo para el prefijo
-  // Ecuador: EGC-DDMMAA-XXXX, Colombia/México: GC-DDMMAA-XXXX
+
+  // Detectar país para el prefijo
   const paisVal = document.getElementById('f-pais')?.value || document.getElementById('e-pais')?.value || '';
   const esEcuador = PERFIL?.regional?.toLowerCase().includes('ecuador') || paisVal === 'Ecuador';
   const esMexico = paisVal === 'México';
   const prefijo = esEcuador ? 'EGC' : esMexico ? 'MGC' : 'GC';
-  
-  // Consultar el último consecutivo global
-  const {data} = await sb.from('oportunidades')
-    .select('num_propuesta')
-    .or('num_propuesta.like.GC%,num_propuesta.like.EGC%,num_propuesta.like.MGC%')
-    .order('created_at',{ascending:false})
-    .limit(50);
-  
-  let maxConsec = 0;
-  (data||[]).forEach(o=>{
-    if(!o.num_propuesta) return;
-    const m = o.num_propuesta.match(/(?:EGC|GC)-\d{6}-(\d{4})/);
-    if(m) maxConsec = Math.max(maxConsec, parseInt(m[1]));
-    // También buscar formato antiguo CRM
-    const m2 = o.num_propuesta.match(/CRM(\d{4})/);
-    if(m2) maxConsec = Math.max(maxConsec, parseInt(m2[1]));
-  });
-  
-  const consecutivo = maxConsec + 1;
+  const paisKey = esEcuador ? 'Ecuador' : esMexico ? 'Mexico' : 'Colombia';
+
+  // ── Consecutivo global por país usando tabla consecutivos_propuesta ──────
+  // Si la tabla no existe aún, fallback al método legado
+  let consecutivo = 1;
+  try {
+    // Intentar leer el registro del país
+    const {data: reg, error: errRead} = await sb
+      .from('consecutivos_propuesta')
+      .select('id, consecutivo')
+      .eq('pais', paisKey)
+      .limit(1);
+
+    if(errRead || !reg || !reg.length){
+      // La tabla no existe o no hay registro: calcular desde oportunidades (legado)
+      const {data: ops} = await sb.from('oportunidades')
+        .select('num_propuesta')
+        .or('num_propuesta.like.GC%,num_propuesta.like.EGC%,num_propuesta.like.MGC%')
+        .order('created_at',{ascending:false})
+        .limit(200);
+      let maxC = 0;
+      (ops||[]).forEach(o=>{
+        if(!o.num_propuesta) return;
+        const m = o.num_propuesta.match(/(?:EGC|MGC|GC)-\d{6}-(\d{4})/);
+        if(m) maxC = Math.max(maxC, parseInt(m[1]));
+        const m2 = o.num_propuesta.match(/CRM(\d{4})/);
+        if(m2) maxC = Math.max(maxC, parseInt(m2[1]));
+      });
+      consecutivo = maxC + 1;
+    } else {
+      // Incrementar el consecutivo en la tabla de forma atómica
+      const actual = reg[0].consecutivo;
+      consecutivo = actual + 1;
+      await sb.from('consecutivos_propuesta')
+        .update({ consecutivo: consecutivo })
+        .eq('id', reg[0].id);
+    }
+  } catch(e){
+    // Fallback silencioso
+    consecutivo = 1;
+  }
+
   const hoy = new Date();
-  const dd=String(hoy.getDate()).padStart(2,'0');
-  const mm=String(hoy.getMonth()+1).padStart(2,'0');
-  const yy=String(hoy.getFullYear()).slice(-2);
+  const dd = String(hoy.getDate()).padStart(2,'0');
+  const mm = String(hoy.getMonth()+1).padStart(2,'0');
+  const yy = String(hoy.getFullYear()).slice(-2);
   const num = `${prefijo}-${dd}${mm}${yy}-${String(consecutivo).padStart(4,'0')}`;
   const el = document.getElementById(campoId);
   if(el) el.value = num;
