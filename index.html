@@ -3267,7 +3267,6 @@ async function renderDiario(container){
 // ── MODALES RÁPIDOS DESDE MI DÍA ─────────────────────────────────────────────
 
 function _modalFormBase(tipoInicial){
-  // Eliminar instancia previa
   const prev=document.getElementById('modal-midia-form');
   if(prev) prev.remove();
 
@@ -3275,55 +3274,35 @@ function _modalFormBase(tipoInicial){
   m.id='modal-midia-form';
   m.style.cssText='position:fixed;inset:0;background:rgba(13,27,62,0.6);display:flex;align-items:flex-start;justify-content:center;z-index:9998;padding:20px;overflow-y:auto';
 
-  // Contenedor del formulario — replica el form-card original
-  const wrap=document.createElement('div');
-  wrap.style.cssText='background:#fff;border-radius:14px;width:100%;max-width:720px;margin:auto;box-shadow:0 16px 48px rgba(0,0,0,0.22);overflow:hidden';
+  const titulo = tipoInicial==='tarea' ? 'Nueva tarea administrativa' : 'Nuevo lead comercial';
 
-  // Header del modal
-  wrap.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:0.5px solid var(--border);background:var(--surface)">
-      <div style="font-size:14px;font-weight:600;color:var(--text)" id="modal-form-titulo">Nueva oportunidad / Tarea</div>
-      <button onclick="document.getElementById('modal-midia-form').remove()" style="background:none;border:none;font-size:18px;color:var(--text3);cursor:pointer;line-height:1">✕</button>
-    </div>
-    <div style="padding:20px" id="modal-form-body"></div>`;
+  m.innerHTML=`
+    <div style="background:#fff;border-radius:14px;width:100%;max-width:720px;margin:auto;box-shadow:0 16px 48px rgba(0,0,0,0.22);overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:0.5px solid var(--border);background:var(--surface)">
+        <div style="font-size:14px;font-weight:600;color:var(--text)">${titulo}</div>
+        <button onclick="document.getElementById('modal-midia-form').remove()" style="background:none;border:none;font-size:18px;color:var(--text3);cursor:pointer;line-height:1">✕</button>
+      </div>
+      <div style="padding:20px" id="modal-form-body"></div>
+    </div>`;
 
-  m.appendChild(wrap);
+  // Insertar en DOM PRIMERO para que los IDs sean accesibles
   document.body.appendChild(m);
 
-  // Renderizar el formulario completo dentro del modal
+  // Ahora sí renderizar el formulario (los getElementById funcionarán)
   const body=document.getElementById('modal-form-body');
-  const tempDiv=document.createElement('div');
-  tempDiv.className='form-card';
-  // Inyectar el mismo HTML que renderNueva pero sin el wrapper form-card externo
-  renderNueva(tempDiv);
-  // Extraer solo el innerHTML del form-card generado
-  const fc=tempDiv.querySelector('.form-card');
-  if(fc) body.innerHTML=fc.innerHTML;
-  else body.innerHTML=tempDiv.innerHTML;
+  renderNueva(body);
 
-  // Inicializar campos igual que renderNueva
-  const fFecha=document.getElementById('f-fecha');
-  if(fFecha && !fFecha.value) fFecha.value=fechaHoyLocal();
-  actualizarProductosForm && actualizarProductosForm();
-  actualizarColorAvance && actualizarColorAvance();
-
-  // Preseleccionar el tipo correcto
+  // Preseleccionar el tipo correcto después de que el DOM esté listo
   if(tipoInicial==='tarea'){
-    const radioTarea=document.querySelector('input[name="f-tipo-reg"][value="tarea"]');
+    const radioTarea=document.querySelector('#modal-midia-form input[name="f-tipo-reg"][value="tarea"]');
     if(radioTarea){ radioTarea.checked=true; toggleTipoRegistro(); }
-    document.getElementById('modal-form-titulo').textContent='Nueva tarea administrativa';
-  } else {
-    const radioLead=document.querySelector('input[name="f-tipo-reg"][value="lead"]');
-    if(radioLead){ radioLead.checked=true; toggleTipoRegistro(); }
-    document.getElementById('modal-form-titulo').textContent='Nuevo lead comercial';
   }
 
-  // Sobreescribir el botón Guardar para que también cierre el modal
+  // Sobreescribir botón Guardar para cerrar el modal tras guardar
   const btnGuardar=body.querySelector('button.btn-pri');
   if(btnGuardar){
     btnGuardar.onclick=async ()=>{
       await guardarRegistro();
-      // guardarRegistro llama switchTab(2) o redirige; cerramos el modal si aún existe
       const mo=document.getElementById('modal-midia-form');
       if(mo) mo.remove();
     };
