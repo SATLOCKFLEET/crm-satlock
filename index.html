@@ -938,7 +938,7 @@ function renderNueva(container){
           <option value="perdido">Perdido</option>
         </select></div>
       <div class="fg"><div class="flbl">Empresa cliente</div><input class="finput" id="f-empresa" placeholder="Nombre empresa"/></div>
-      <div class="fg"><div class="flbl">NIT / RUC</div><input class="finput" id="f-nit" placeholder="Ej: 900123456-1" onblur="autocompletarDesdeNIT(this.value)"/></div>
+      <div class="fg"><div class="flbl">NIT / RUC</div><input class="finput" id="f-nit" placeholder="Ej: 900123456" oninput="limpiarNIT(this)" onblur="autocompletarDesdeNIT(this.value)"/><div id="f-nit-hint" style="font-size:10px;color:var(--red);margin-top:3px;display:none"></div></div>
       <div class="fg"><div class="flbl">Nombre contacto</div><input class="finput" id="f-contacto" placeholder="Nombre completo"/></div>
       <div class="fg"><div class="flbl">Cargo del contacto</div><input class="finput" id="f-cargo" placeholder="Ej: Gerente de Flota"/></div>
       <div class="fg"><div class="flbl">Ciudad</div><input class="finput" id="f-ciudad" placeholder="Ej: Bogotá, Medellín, Guayaquil"/></div>
@@ -1485,6 +1485,29 @@ function formatearMoneda(el){
   else el.value='';
   el.dataset.raw=v;
 }
+function limpiarNIT(input){
+  const pais = document.getElementById('f-pais')?.value || 'Colombia';
+  if(pais !== 'Colombia') return; // Solo restringir para Colombia
+  // Eliminar todo lo que no sea dígito
+  const limpio = input.value.replace(/[^0-9]/g,'');
+  input.value = limpio;
+  const hint = document.getElementById('f-nit-hint');
+  if(!hint) return;
+  if(limpio.length === 0){
+    hint.style.display='none'; hint.textContent='';
+  } else if(limpio.length < 9){
+    hint.style.display='block'; hint.textContent=`${limpio.length}/9 dígitos`;
+    hint.style.color='var(--amber)';
+  } else if(limpio.length === 9){
+    hint.style.display='block'; hint.textContent='✓ NIT válido';
+    hint.style.color='var(--green)';
+  } else {
+    // Truncar a 9
+    input.value = limpio.slice(0,9);
+    hint.style.display='block'; hint.textContent='Máximo 9 dígitos para Colombia';
+    hint.style.color='var(--red)';
+  }
+}
 async function autocompletarDesdeNIT(nit){
   nit = (nit||'').trim();
   if(!nit) return;
@@ -1641,6 +1664,16 @@ async function guardarOp(){
   if(!origenCheck){alert('Seleccione el origen del lead.');return;}
   if(!productoCheck){alert('Seleccione el producto.');return;}
   if(!tipoUnica&&!tipoRec){alert('Seleccione al menos un tipo de negocio (Venta única o Recurrente).');return;}
+
+  // Validar formato NIT para Colombia
+  const paisFormNIT = document.getElementById('f-pais')?.value || 'Colombia';
+  if(nit && paisFormNIT === 'Colombia'){
+    if(!/^\d{9}$/.test(nit)){
+      alert('El NIT para Colombia debe tener exactamente 9 dígitos numéricos, sin puntos, guiones ni caracteres especiales.\nEjemplo: 900123456');
+      document.getElementById('f-nit')?.focus();
+      return;
+    }
+  }
 
   // Verificar NIT duplicado — lógica completa
   if(nit){
