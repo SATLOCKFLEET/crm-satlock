@@ -3729,10 +3729,19 @@ async function guardarSeguimientoTarea(tareaId){
     if(idx>-1) window._tareasAdmin[idx].fecha_limite=proxGest;
   }
   if(error){alert('Error: '+error.message);return;}
-  document.getElementById('st-nota').value='';
-  // Refrescar el modal
-  document.getElementById('modal-tarea').remove();
-  editarTareaAdmin(tareaId);
+  document.getElementById('modal-tarea')?.remove();
+
+  // Si la nueva fecha es futura (no hoy ni vencida), sacar la tarea de la vista actual
+  const hoyCheck = fechaHoyLocal();
+  if(proxGest && proxGest > hoyCheck){
+    // Fecha futura: quitar de _tareasAdmin temporalmente para que no aparezca hoy
+    // Al recargar MI DÍA se volverá a cargar desde BD con la fecha correcta
+    window._tareasAdmin = (window._tareasAdmin||[]).filter(t=>t.id!==tareaId);
+    renderDiarioLista(document.getElementById('diario-search')?.value||'', _diarioFiltro);
+  } else {
+    // Fecha hoy o vencida: refrescar el modal con los nuevos datos
+    editarTareaAdmin(tareaId);
+  }
 }
 
 async function guardarEdicionTarea(id){
