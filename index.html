@@ -842,10 +842,20 @@ function renderOpRows(rows, filtro, q){
       <td><span class="pill ${cfg.cls}"><span class="dot"></span>${cfg.label}</span></td>
       ${esJefe?`<td style="font-size:11px;color:var(--text2)">${r.usuarios?.nombre||'Sin perfil'}</td>`:''}
       <td style="white-space:nowrap">
-        ${['jefe_fleet','jefe_proyectos'].includes(PERFIL.rol)?`
-          <button class="icon-btn" onclick="abrirEditar('${r.id}')" title="Editar">✎</button>
-          ${r.num_propuesta?'':` <button class="icon-btn" onclick="confirmarBorrar('${r.id}','${r.empresa}')" title="Eliminar" style="color:var(--red)">✕</button>`}
-        `:`<button class="btn-sec" onclick="abrirEditar('${r.id}')" style="font-size:11px;color:var(--sat-blue);border-color:var(--sat-blue);background:var(--sat-blue-light)">Visualizar</button>`}
+        ${(()=>{
+          const esJefeOGerente=['jefe_fleet','jefe_proyectos','gerencia','alta_gerencia'].includes(PERFIL.rol);
+          const esPropio = r.usuario_id === USER.id;
+          const tienePropuesta = !!(r.num_propuesta && r.num_propuesta.trim());
+          if(esJefeOGerente){
+            return `<button class="icon-btn" onclick="abrirEditar('${r.id}')" title="Editar">✎</button>`
+              + (tienePropuesta?'':` <button class="icon-btn" onclick="confirmarBorrar('${r.id}','${(r.empresa||'').replace(/'/g,"\'")}')" title="Eliminar" style="color:var(--red)">✕</button>`);
+          } else if(esPropio){
+            return `<button class="icon-btn" onclick="abrirEditar('${r.id}')" title="Editar">✎</button>`
+              + (tienePropuesta?`<span title="No se puede eliminar: ya tiene propuesta generada" style="font-size:10px;color:var(--text3);cursor:default;padding:0 4px">🔒</span>`:` <button class="icon-btn" onclick="confirmarBorrar('${r.id}','${(r.empresa||'').replace(/'/g,"\'")}')" title="Eliminar" style="color:var(--red)">✕</button>`);
+          } else {
+            return `<button class="btn-sec" onclick="abrirEditar('${r.id}')" style="font-size:11px;color:var(--sat-blue);border-color:var(--sat-blue);background:var(--sat-blue-light)">Ver</button>`;
+          }
+        })()}
       </td>
     </tr>`;
   }).join('');
@@ -1634,32 +1644,36 @@ async function guardarOp(){
 
   // Verificar NIT duplicado — lógica completa
   if(nit){
-    const {data:nitCheck}=await sb.from('oportunidades').select('empresa,usuario_id,linea,created_at,usuarios(nombre,linea)').eq('nit',nit).limit(1);
-    if(nitCheck&&nitCheck.length){
-      const dup=nitCheck[0];
-      if(dup.usuario_id!==USER.id){
-        const lineaDueno   = dup.usuarios?.linea || dup.linea || '';
-        const lineaActual  = PERFIL.linea || '';
-        const esGerente    = ['gerencia','jefe_fleet'].includes(PERFIL.rol);
-        const esVentaCruz  = lineaDueno && lineaActual && lineaDueno!==lineaActual;
-        const comercial    = dup.usuarios?.nombre||'otro comercial';
-        const fecha        = dup.created_at?new Date(dup.created_at).toLocaleDateString('es-CO'):'fecha desconocida';
+    // Buscar específicamente registros del NIT que pertenezcan a OTRO usuario
+    const {data:nitAll}=await sb.from('oportunidades')
+      .select('empresa,usuario_id,linea,created_at,usuarios(nombre,linea)')
+      .eq('nit',nit)
+      .neq('usuario_id',USER.id)
+      .limit(1);
+    if(nitAll&&nitAll.length){
+      const dup=nitAll[0];
+      const lineaDueno  = dup.usuarios?.linea || dup.linea || '';
+      const lineaActual = PERFIL.linea || '';
+      const esGerente   = ['gerencia','jefe_fleet'].includes(PERFIL.rol);
+      const esVentaCruz = lineaDueno && lineaActual && lineaDueno!==lineaActual;
+      const comercial   = dup.usuarios?.nombre||'otro comercial';
+      const fecha       = dup.created_at?new Date(dup.created_at).toLocaleDateString('es-CO'):'fecha desconocida';
 
-        if(esVentaCruz){
-          // Líneas diferentes → venta cruzada: solo aviso, continúa
-          const ok = await mostrarModalVentaCruzada({empresa:dup.empresa,comercial,lineaDueno,lineaActual});
-          if(!ok) return;
-        } else if(esGerente){
-          // Mismo rol gerente sobre NIT de otro → puede continuar directamente
-          const ok = await mostrarModalGerenteOverride({empresa:dup.empresa,comercial,fecha});
-          if(!ok) return;
-        } else {
-          // Misma línea, ejecutivo normal → genera solicitud y bloquea
-          await crearSolicitudNIT({nit,empresa,duenoId:dup.usuario_id,comercialDueno:comercial});
-          return;
-        }
+      if(esVentaCruz){
+        // Líneas diferentes → venta cruzada: aviso informativo, continúa
+        const ok = await mostrarModalVentaCruzada({empresa:dup.empresa,comercial,lineaDueno,lineaActual});
+        if(!ok) return;
+      } else if(esGerente){
+        // Gerente sobre NIT de otro → puede continuar con confirmación
+        const ok = await mostrarModalGerenteOverride({empresa:dup.empresa,comercial,fecha});
+        if(!ok) return;
+      } else {
+        // Misma línea, ejecutivo normal → bloquea y genera solicitud
+        await crearSolicitudNIT({nit,empresa,duenoId:dup.usuario_id,comercialDueno:comercial});
+        return;
       }
     }
+    // Si el NIT existe pero todos son registros propios → se permite sin restricción
   }
 
   const asunto=document.getElementById('f-asunto').value.trim();
