@@ -719,14 +719,16 @@ function construirTabs(){
     {label:'Agenda',render:renderAgenda},
     {label:'15 · 5 · 1',render:renderQCO},
   ];
-  if(['gerencia','jefe_fleet','jefe_proyectos','analista_comercial'].includes(PERFIL.rol)){
+  // Roles gerenciales — acceso completo a todas las pestañas de gestión
+  const ROLES_GERENCIA=['alta_gerencia','gerencia','jefe_fleet','analista_comercial','jefe_proyectos'];
+  if(ROLES_GERENCIA.includes(PERFIL.rol)){
     base.push({label:'Consolidado equipo',render:renderConsolidado});
     base.push({label:'KPIs & Analytics',render:renderKPIs});
   }
-  if(['gerencia','jefe_fleet'].includes(PERFIL.rol)){
+  if(['gerencia','jefe_fleet','alta_gerencia'].includes(PERFIL.rol)){
     base.push({label:'🔑 Solicitudes NIT',render:renderSolicitudesNIT});
   }
-  if(['alta_gerencia','gerencia','jefe_fleet','analista_comercial'].includes(PERFIL.rol)){
+  if(ROLES_GERENCIA.includes(PERFIL.rol)){
     base.push({label:'Alta Gerencia',render:renderAltaGerencia});
   }
   return base;
@@ -3294,23 +3296,26 @@ function getSemaforo(pct){
   return {color:'var(--red)',bg:'var(--red-light)',label:'Bajo meta'};
 }
 async function renderQCO(container){
-  const hoy=new Date();
-  const mes=hoy.getMonth()+1; const anio=hoy.getFullYear();
+  window._qcoContainer=container;
+  await _cargarQCO(container);
+}
+async function refrescarQCO(){
+  if(window._qcoContainer) await _cargarQCO(window._qcoContainer);
+}
+async function _cargarQCO(container){
+  const {meses,anio,label}=getPeriodoMeses();
   const quincena=getQuincenaActual();
   const metas=getMetasQCO(PERFIL.linea, PERFIL.rol);
   const sinCuota=metas.sinCuota||false;
 
-  // Calcular automáticamente desde oportunidades
   const {data:ops}=await sb.from('oportunidades').select('id,empresa,estado,created_at,updated_at,producto,ciudad,unidades,valor_unitario,unidades_instalacion,valor_instalacion,unidades_recurrentes,valor_recurrente,tipo_recurrencia,moneda').eq('usuario_id',USER.id).order('created_at',{ascending:false});
   const allOps=ops||[];
 
-  // Para Fleet: filtrar por quincena actual
-  // Para Carga: todo el mes
-  const esQuincenal=PERFIL.linea==='fleet'&&PERFIL.rol!=='jefe_fleet';
+  const esQuincenal=PERFIL.linea==='fleet'&&PERFIL.rol!=='jefe_fleet'&&_periodoFiltro.tipo==='mes';
   const enPeriodo=(fecha)=>{
     if(!fecha) return false;
     const d=new Date(fecha);
-    if(d.getMonth()+1!==mes||d.getFullYear()!==anio) return false;
+    if(!meses.includes(d.getMonth()+1)||d.getFullYear()!==anio) return false;
     if(esQuincenal){
       const dia=d.getDate();
       return quincena===1?(dia>=1&&dia<=15):(dia>=16);
@@ -3318,31 +3323,27 @@ async function renderQCO(container){
     return true;
   };
 
-  // Contactos = leads creados en el período
   const contactos=allOps.filter(o=>enPeriodo(o.created_at)).length;
-  // Cotizaciones = leads que están en propuesta_enviada O llegaron a ese estado (aproximado: leads con propuesta o cerrado)
-  const cotizaciones=allOps.filter(o=>
-    ['propuesta_enviada','cerrado'].includes(o.estado) && enPeriodo(o.created_at)
-  ).length;
-  // Cierres = leads cerrados en el período
+  const cotizaciones=allOps.filter(o=>['propuesta_enviada','cerrado'].includes(o.estado)&&enPeriodo(o.created_at)).length;
   const cierres=allOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.updated_at)).length;
 
   const pctC=sinCuota?100:Math.min(100,metas.c>0?Math.round(contactos/metas.c*100):0);
   const pctQ=sinCuota?100:Math.min(100,metas.q>0?Math.round(cotizaciones/metas.q*100):0);
   const pctCi=sinCuota?100:Math.min(100,metas.ci>0?Math.round(cierres/metas.ci*100):0);
   const puntaje=calcPuntaje(contactos,cotizaciones,cierres,metas);
-
   const semC=semaforoRow(pctC),semQ=semaforoRow(pctQ),semCi=semaforoRow(pctCi);
   const overall=sinCuota?{cls:'card-blue',txt:'var(--sat-blue)'}:semaforoRow(puntaje);
 
-  const MESES_L=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const periodoLabel=esQuincenal
-    ?`Quincena ${quincena===1?'1 (1-15)':'2 (16-'+new Date(anio,mes,0).getDate()+')'} — ${MESES_L[mes-1]} ${anio}`
-    :`${MESES_L[mes-1]} ${anio}`;
+    ?`Quincena ${quincena===1?'1 (1-15)':'2 (16-'+new Date(anio,meses[0],0).getDate()+')'} — ${label}`
+    :label;
 
   container.innerHTML=`
-    <div style="max-width:480px;margin:0 auto">
-      <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px">15 · 5 · 1</div>
+    <div style="max-width:520px;margin:0 auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:13px;font-weight:500;color:var(--text)">15 · 5 · 1</div>
+        ${renderSelectorPeriodo('qco')}
+      </div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:16px">${periodoLabel} — calculado automáticamente desde tus leads</div>
 
       <div class="exec-card-151 ${overall.cls}" style="margin-bottom:16px">
@@ -4067,6 +4068,63 @@ async function resolverSolicitudNIT(id, decision, empresa, solicitanteNombre, so
 // ── ALTA GERENCIA ────────────────────────────────────────────────────────────
 // ── ALTA GERENCIA — filtro global ────────────────────────────────────────────
 let _agFilter = { periodo:'mes', pais:'todos', linea:'todos', ejecutivo:'' };
+
+// ── PERÍODO GLOBAL para 15·5·1 y Consolidado ─────────────────────────────────
+let _periodoFiltro = {
+  tipo: 'mes',  // 'mes' | 'Q1'|'Q2'|'Q3'|'Q4' | 'anio'
+  mes: new Date().getMonth()+1,
+  anio: new Date().getFullYear()
+};
+const MESES_NOM=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+const MESES_L=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function getPeriodoMeses(){
+  const {tipo,mes,anio}=_periodoFiltro;
+  if(tipo==='mes') return {meses:[mes],anio,label:MESES_L[mes-1]+' '+anio};
+  if(tipo==='Q1') return {meses:[1,2,3],anio,label:'Q1 '+anio};
+  if(tipo==='Q2') return {meses:[4,5,6],anio,label:'Q2 '+anio};
+  if(tipo==='Q3') return {meses:[7,8,9],anio,label:'Q3 '+anio};
+  if(tipo==='Q4') return {meses:[10,11,12],anio,label:'Q4 '+anio};
+  // Año: todos los meses hasta hoy
+  const hoy=new Date();
+  const mesesHastaHoy=anio===hoy.getFullYear()
+    ? Array.from({length:hoy.getMonth()+1},(_,i)=>i+1)
+    : [1,2,3,4,5,6,7,8,9,10,11,12];
+  return {meses:mesesHastaHoy,anio,label:'Año '+anio};
+}
+
+function renderSelectorPeriodo(onCambio){
+  const hoy=new Date();
+  const anio=hoy.getFullYear();
+  const {tipo,mes} = _periodoFiltro;
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+    <div style="display:flex;gap:3px">
+      ${['mes','Q1','Q2','Q3','Q4','anio'].map(p=>`
+        <button class="fbtn${tipo===p?' active':''}" onclick="setPeriodoFiltro('tipo','${p}','${onCambio}')">${p==='mes'?'Mes':p==='anio'?'Año':p}</button>
+      `).join('')}
+    </div>
+    <div id="sel-mes-wrap" style="${tipo==='mes'?'':'display:none'}">
+      <select class="fsel" id="sel-mes" onchange="setPeriodoFiltro('mes',this.value,'${onCambio}')" style="font-size:11px;padding:4px 8px">
+        ${Array.from({length:12},(_,i)=>`<option value="${i+1}"${i+1===mes?' selected':''}>${MESES_NOM[i]} ${anio}</option>`).join('')}
+      </select>
+    </div>
+  </div>`;
+}
+
+function setPeriodoFiltro(key, val, onCambio){
+  if(key==='tipo') _periodoFiltro.tipo=val;
+  if(key==='mes') _periodoFiltro.mes=parseInt(val);
+  const wrap=document.getElementById('sel-mes-wrap');
+  if(wrap) wrap.style.display=_periodoFiltro.tipo==='mes'?'':'none';
+  // Refrescar botones activos
+  ['mes','Q1','Q2','Q3','Q4','anio'].forEach(p=>{
+    const btn=document.querySelector(`.fbtn[onclick*="'tipo','${p}'"]`);
+    if(btn) btn.classList.toggle('active', _periodoFiltro.tipo===p);
+  });
+  // Llamar la función de refresco
+  if(onCambio==='qco') refrescarQCO();
+  else if(onCambio==='consolidado') refrescarConsolidado();
+}
 
 async function renderAltaGerencia(container){
   container.innerHTML='<div class="loading">Cargando dashboard gerencial...</div>';
@@ -4921,24 +4979,30 @@ function getMetasQCO(linea){
   return {c:15,q:5,ci:1,periodo:linea==='fleet'?'quincenal':'mensual',periodoLabel:linea==='fleet'?'quincena':'mes'};
 }
 async function renderConsolidado(container){
+  window._consContainer=container;
+  await _cargarConsolidado(container);
+}
+async function refrescarConsolidado(){
+  if(window._consContainer) await _cargarConsolidado(window._consContainer);
+}
+async function _cargarConsolidado(container){
   container.innerHTML='<div class="loading">Cargando consolidado...</div>';
+  const {meses,anio,label}=getPeriodoMeses();
   const {data:usuarios}=await sb.from('usuarios').select('*').neq('rol','gerencia').order('nombre');
   const {data:ops}=await sb.from('oportunidades').select('usuario_id,estado,fecha_inicio_gestion,updated_at,created_at,de_mercadeo,valor_unitario,unidades,valor_recurrente,unidades_recurrentes,producto,origen_lead,tipo_recurrencia');
   const {data:gestAll}=await sb.from('gestiones').select('usuario_id,fecha,tipo').order('fecha',{ascending:false});
-  const hoy=new Date();
-  const mes=hoy.getMonth()+1;const anio=hoy.getFullYear();
   const quincena=getQuincenaActual();
   const qco=[];
 
   function buildExec(u,idx){
     const metas=getMetasQCO(u.linea, u.rol);
-    // Calcular desde oportunidades automáticamente
     const uops2=ops?.filter(o=>o.usuario_id===u.id)||[];
+    const esQ=u.linea==='fleet'&&u.rol!=='jefe_fleet'&&_periodoFiltro.tipo==='mes';
     const enPeriodoU=(fecha)=>{
       if(!fecha) return false;
       const d=new Date(fecha);
-      if(d.getMonth()+1!==mes||d.getFullYear()!==anio) return false;
-      if(u.linea==='fleet'&&u.rol!=='jefe_fleet'){const dia=d.getDate();return quincena===1?(dia>=1&&dia<=15):(dia>=16);}
+      if(!meses.includes(d.getMonth()+1)||d.getFullYear()!==anio) return false;
+      if(esQ){const dia=d.getDate();return quincena===1?(dia>=1&&dia<=15):(dia>=16);}
       return true;
     };
     const tc=uops2.filter(o=>enPeriodoU(o.created_at)).length;
@@ -4960,7 +5024,7 @@ async function renderConsolidado(container){
     // Pipeline y leads del ejecutivo
     const uPipeline=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
     const uRec=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
-    const uGestMes=(gestAll||[]).filter(g=>g.usuario_id===u.id&&g.fecha&&new Date(g.fecha).getMonth()+1===mes&&new Date(g.fecha).getFullYear()===anio).length;
+    const uGestMes=(gestAll||[]).filter(g=>g.usuario_id===u.id&&g.fecha&&meses.includes(new Date(g.fecha).getMonth()+1)&&new Date(g.fecha).getFullYear()===anio).length;
     const tasaConv=tci>0&&tc>0?Math.round(tci/tc*100):0;
     return {u,tc,tq,tci,cerrados,proceso,puntaje,metas,color,diasProm,uPipeline,uRec,uGestMes,tasaConv};
   }
@@ -4971,15 +5035,16 @@ async function renderConsolidado(container){
   const carga=(usuarios?.filter(u=>u.linea==='carga')||[]).map((u,i)=>buildExec(u,i));
   const periodoStr=`${quincena===1?'1ª':'2ª'} quincena Fleet · Mes completo Carga`;
 
+  const periodoStr=label;
   container.innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
       <span style="font-size:13px;font-weight:500">Consolidado del equipo — 15·5·1</span>
-      <div style="display:flex;gap:8px;align-items:center">
-        <span style="font-size:11px;color:var(--text3)">${periodoStr}</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        ${renderSelectorPeriodo('consolidado')}
         <button class="btn-pri" onclick="exportarExcel()" style="font-size:11px;padding:5px 12px">Exportar Excel</button>
       </div>
     </div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:16px">Puntaje: contactos ×40% + cotizaciones ×35% + cierres ×25%</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px">Período: <strong>${periodoStr}</strong> &nbsp;·&nbsp; Puntaje: contactos ×40% + cotizaciones ×35% + cierres ×25%</div>
 
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
       <div style="display:flex;gap:4px">
