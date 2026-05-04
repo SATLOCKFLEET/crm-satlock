@@ -4070,13 +4070,13 @@ async function resolverSolicitudNIT(id, decision, empresa, solicitanteNombre, so
 let _agFilter = { periodo:'mes', pais:'todos', linea:'todos', ejecutivo:'' };
 
 // ── PERÍODO GLOBAL para 15·5·1 y Consolidado ─────────────────────────────────
-let _periodoFiltro = {
-  tipo: 'mes',  // 'mes' | 'Q1'|'Q2'|'Q3'|'Q4' | 'anio'
+var _periodoFiltro = {
+  tipo: 'mes',
   mes: new Date().getMonth()+1,
   anio: new Date().getFullYear()
 };
-const MESES_NOM=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-const MESES_L=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+var MESES_NOM=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+var MESES_L=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
 function getPeriodoMeses(){
   const {tipo,mes,anio}=_periodoFiltro;
@@ -4085,7 +4085,6 @@ function getPeriodoMeses(){
   if(tipo==='Q2') return {meses:[4,5,6],anio,label:'Q2 '+anio};
   if(tipo==='Q3') return {meses:[7,8,9],anio,label:'Q3 '+anio};
   if(tipo==='Q4') return {meses:[10,11,12],anio,label:'Q4 '+anio};
-  // Año: todos los meses hasta hoy
   const hoy=new Date();
   const mesesHastaHoy=anio===hoy.getFullYear()
     ? Array.from({length:hoy.getMonth()+1},(_,i)=>i+1)
@@ -4094,37 +4093,39 @@ function getPeriodoMeses(){
 }
 
 function renderSelectorPeriodo(onCambio){
-  const hoy=new Date();
-  const anio=hoy.getFullYear();
-  const {tipo,mes} = _periodoFiltro;
-  return `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-    <div style="display:flex;gap:3px">
-      ${['mes','Q1','Q2','Q3','Q4','anio'].map(p=>`
-        <button class="fbtn${tipo===p?' active':''}" onclick="setPeriodoFiltro('tipo','${p}','${onCambio}')">${p==='mes'?'Mes':p==='anio'?'Año':p}</button>
-      `).join('')}
-    </div>
-    <div id="sel-mes-wrap" style="${tipo==='mes'?'':'display:none'}">
-      <select class="fsel" id="sel-mes" onchange="setPeriodoFiltro('mes',this.value,'${onCambio}')" style="font-size:11px;padding:4px 8px">
-        ${Array.from({length:12},(_,i)=>`<option value="${i+1}"${i+1===mes?' selected':''}>${MESES_NOM[i]} ${anio}</option>`).join('')}
-      </select>
-    </div>
-  </div>`;
+  var anio=_periodoFiltro.anio;
+  var tipo=_periodoFiltro.tipo;
+  var mes=_periodoFiltro.mes;
+  var periodos=['mes','Q1','Q2','Q3','Q4','anio'];
+  var labels={mes:'Mes',Q1:'Q1',Q2:'Q2',Q3:'Q3',Q4:'Q4',anio:'Año'};
+  var html='<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"><div style="display:flex;gap:3px">';
+  for(var i=0;i<periodos.length;i++){
+    var p=periodos[i];
+    var act=tipo===p?' active':'';
+    html+='<button class="fbtn'+act+'" data-periodo="'+p+'" data-cb="'+onCambio+'" onclick="handlePeriodo(this)">'+labels[p]+'</button>';
+  }
+  html+='</div><div id="sel-mes-wrap" style="'+(tipo==='mes'?'':'display:none')+'">';
+  html+='<select class="fsel" id="sel-mes" data-cb="'+onCambio+'" onchange="handleMesSel(this)" style="font-size:11px;padding:4px 8px">';
+  for(var m=1;m<=12;m++){
+    var sel=m===mes?' selected':'';
+    html+='<option value="'+m+'"'+sel+'>'+MESES_NOM[m-1]+' '+anio+'</option>';
+  }
+  html+='</select></div></div>';
+  return html;
 }
+function handlePeriodo(btn){ setPeriodoFiltro('tipo',btn.dataset.periodo,btn.dataset.cb); }
+function handleMesSel(sel){ setPeriodoFiltro('mes',sel.value,sel.dataset.cb); }
 
 function setPeriodoFiltro(key, val, onCambio){
   if(key==='tipo') _periodoFiltro.tipo=val;
   if(key==='mes') _periodoFiltro.mes=parseInt(val);
   const wrap=document.getElementById('sel-mes-wrap');
   if(wrap) wrap.style.display=_periodoFiltro.tipo==='mes'?'':'none';
-  // Refrescar botones activos
-  ['mes','Q1','Q2','Q3','Q4','anio'].forEach(p=>{
-    const btn=document.querySelector(`.fbtn[onclick*="'tipo','${p}'"]`);
-    if(btn) btn.classList.toggle('active', _periodoFiltro.tipo===p);
-  });
-  // Llamar la función de refresco
   if(onCambio==='qco') refrescarQCO();
   else if(onCambio==='consolidado') refrescarConsolidado();
 }
+
+
 
 async function renderAltaGerencia(container){
   container.innerHTML='<div class="loading">Cargando dashboard gerencial...</div>';
@@ -5033,7 +5034,6 @@ async function _cargarConsolidado(container){
 
   const flota=(usuarios?.filter(u=>u.linea==='fleet')||[]).map((u,i)=>buildExec(u,i));
   const carga=(usuarios?.filter(u=>u.linea==='carga')||[]).map((u,i)=>buildExec(u,i));
-  const periodoStr=`${quincena===1?'1ª':'2ª'} quincena Fleet · Mes completo Carga`;
 
   const periodoStr=label;
   container.innerHTML=`
