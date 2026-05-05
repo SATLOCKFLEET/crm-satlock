@@ -2152,15 +2152,27 @@ async function guardarGestionDesdeFicha(opId){
     proxima_gestion:proxGest||null
   }).select('oportunidad_id,fecha,tipo,nota,proxima_gestion,created_at').single();
   if(error){alert('Error: '+error.message);return;}
+
+  // Actualizar fecha_proxima_accion en la tabla oportunidades
+  // para que MI DÍA refleje la nueva fecha y deje de mostrar como vencida
+  if(proxGest){
+    await sb.from('oportunidades')
+      .update({fecha_proxima_accion: proxGest, proxima_accion: nota.slice(0,120)})
+      .eq('id', opId);
+    // Actualizar también en memoria local
+    const idxOp = (window._diarioOps||[]).findIndex(o=>o.id===opId);
+    if(idxOp>-1) window._diarioOps[idxOp].fecha_proxima_accion = proxGest;
+  }
+
   // Actualizar diario en memoria
   if(!window._diarioGestiones) window._diarioGestiones=[];
   window._diarioGestiones.unshift(data);
   // Reabrir la ficha para reflejar la nueva gestión
-  document.getElementById('modal-editar').remove();
+  document.getElementById('modal-editar')?.remove();
   abrirEditar(opId);
-  // Si el diario está visible, actualizarlo
+  // Refrescar MI DÍA
   const q=document.getElementById('diario-search')?.value||'';
-  renderDiarioLista(q);
+  renderDiarioLista(q, _diarioFiltro);
 }
 function actualizarProductosEditar(){
   const linea=document.getElementById('e-linea').value;
