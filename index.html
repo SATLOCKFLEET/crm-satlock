@@ -4939,35 +4939,103 @@ function renderKPIContent(){
 async function exportarExcel(){
   const {data:ops}=await sb.from('oportunidades').select('*,usuarios(nombre,cargo,linea)').order('fecha',{ascending:false});
   if(!ops||!ops.length){alert('Sin datos para exportar.');return;}
-  const rows=ops.map(r=>({
-    'Fecha':r.fecha||'',
-    'Ejecutivo':r.usuarios?.nombre||'',
-    'Cargo':r.usuarios?.cargo||'',
-    'Línea':r.linea||'',
-    'Empresa':r.empresa||'',
-    'Contacto':r.contacto||'',
-    'Cargo contacto':r.cargo_contacto||'',
-    'Teléfono':r.telefono||'',
-    'Correo':r.correo||'',
-    'Producto':r.producto||'',
-    'Asunto':r.asunto||'',
-    'N° Propuesta':r.num_propuesta||'',
-    'Link Drive':r.link_drive||'',
-    'Estado':ESTADOS[r.estado]?.label||r.estado||'',
-    'Avance %':r.avance||0,
-    'Valor estimado COP':r.valor_estimado||0,
-    'Próxima acción':r.proxima_accion||'',
-    'Fecha próx. acción':r.fecha_proxima_accion||'',
-    'Lead nuevo':r.es_lead_nuevo?'Sí':'No',
-    'Notas':r.notas||''
-  }));
-  // Usar SheetJS via CDN
+
+  const rows=ops.map(r=>{
+    // Totales calculados
+    const totalUnica   = (r.unidades||0)*(r.valor_unitario||0);
+    const totalInst    = (r.unidades_instalacion||0)*(r.valor_instalacion||0);
+    const totalRecPer  = (r.unidades_recurrentes||0)*(r.valor_recurrente||0);
+    const REC_M        = {mensual:1,trimestral:3,semestral:6,anual:12};
+    const recMensual   = totalRecPer/(REC_M[r.tipo_recurrencia]||1);
+    const totalComo12  = (r.unidades_comodato||0)*(r.valor_comodato_12||0);
+    const totalComo24  = (r.unidades_comodato||0)*(r.valor_comodato_24||0);
+    const totalComo36  = (r.unidades_comodato||0)*(r.valor_comodato_36||0);
+    const modalidad    = r.modalidad||'venta';
+    const primeraFact  = modalidad==='comodato'
+      ? totalInst + totalRecPer + totalComo24
+      : totalUnica + totalInst + totalRecPer;
+    const pipelineMes  = modalidad==='comodato'
+      ? totalInst + recMensual + totalComo24
+      : totalUnica + totalInst + recMensual;
+
+    return {
+      // ── Identificación ──
+      'Fecha apertura'          : r.fecha||'',
+      'Ejecutivo'               : r.usuarios?.nombre||'',
+      'Cargo ejecutivo'         : r.usuarios?.cargo||'',
+      'Línea'                   : r.linea||'',
+      'País'                    : r.pais||'Colombia',
+      'Ciudad'                  : r.ciudad||'',
+      'Moneda'                  : r.moneda||'COP',
+
+      // ── Cliente ──
+      'NIT'                     : r.nit||'',
+      'Empresa'                 : r.empresa||'',
+      'Contacto'                : r.contacto||'',
+      'Cargo contacto'          : r.cargo_contacto||'',
+      'Teléfono'                : r.telefono||'',
+      'Correo'                  : r.correo||'',
+
+      // ── Oportunidad ──
+      'Producto'                : r.producto||'',
+      'Asunto'                  : r.asunto||'',
+      'N° Propuesta'            : r.num_propuesta||'',
+      'Link Drive'              : r.link_drive||'',
+      'Origen lead'             : r.origen_lead||'',
+      'Lead nuevo'              : r.es_lead_nuevo?'Sí':'No',
+      'De mercadeo'             : r.de_mercadeo?'Sí':'No',
+      'Modalidad'               : modalidad,
+
+      // ── Estado ──
+      'Estado'                  : ESTADOS[r.estado]?.label||r.estado||'',
+      'Avance %'                : r.avance||0,
+      'Próxima acción'          : r.proxima_accion||'',
+      'Fecha próx. acción'      : r.fecha_proxima_accion||'',
+      'Fecha inicio gestión'    : r.fecha_inicio_gestion||'',
+
+      // ── Venta única (equipo) ──
+      'Unidades equipo'         : r.unidades||0,
+      'Valor unit. equipo'      : r.valor_unitario||0,
+      'Total venta única'       : totalUnica||0,
+
+      // ── Instalación ──
+      'Unidades instalación'    : r.unidades_instalacion||0,
+      'Valor unit. instalación' : r.valor_instalacion||0,
+      'Total instalación'       : totalInst||0,
+
+      // ── Recurrencia ──
+      'Tipo recurrencia'        : r.tipo_recurrencia||'',
+      'Unidades recurrentes'    : r.unidades_recurrentes||0,
+      'Valor unit. recurrente'  : r.valor_recurrente||0,
+      'Total recurrencia/período': totalRecPer||0,
+      'Recurrencia mensual'     : Math.round(recMensual)||0,
+
+      // ── Comodato ──
+      'Unidades comodato'       : r.unidades_comodato||0,
+      'Valor comodato 12m/disp' : r.valor_comodato_12||0,
+      'Total comodato 12m/mes'  : totalComo12||0,
+      'Valor comodato 24m/disp' : r.valor_comodato_24||0,
+      'Total comodato 24m/mes'  : totalComo24||0,
+      'Valor comodato 36m/disp' : r.valor_comodato_36||0,
+      'Total comodato 36m/mes'  : totalComo36||0,
+
+      // ── Resumen financiero ──
+      '1ª Factura estimada'     : Math.round(primeraFact)||0,
+      'Pipeline mensual'        : Math.round(pipelineMes)||0,
+
+      // ── Notas ──
+      'Notas'                   : r.notas||''
+    };
+  });
+
   const script=document.createElement('script');
   script.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
   script.onload=()=>{
     const wb=XLSX.utils.book_new();
     const ws=XLSX.utils.json_to_sheet(rows);
-    ws['!cols']=[{wch:12},{wch:20},{wch:22},{wch:8},{wch:28},{wch:22},{wch:18},{wch:14},{wch:28},{wch:16},{wch:30},{wch:14},{wch:40},{wch:16},{wch:8},{wch:16},{wch:28},{wch:16},{wch:8},{wch:40}];
+    // Anchos de columna
+    const wch=[12,20,18,8,12,16,8, 14,28,22,18,14,28, 18,30,14,40,16,10,10,10, 14,8,28,12,16, 12, 12,14,12,12, 14,12,16,12,14, 12,14,12,14,12,14,12, 16,16, 40];
+    ws['!cols']=wch.map(w=>({wch:w}));
     XLSX.utils.book_append_sheet(wb,ws,'Oportunidades');
     const ts=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'-');
     XLSX.writeFile(wb,`CRM_Satlock_${ts}.xlsx`);
