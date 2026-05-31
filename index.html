@@ -6706,17 +6706,24 @@ function habilitarBotonesPostGuardado(sol) {
   solicitudGuardada = sol;
   ['btn-enviar','btn-excel','btn-pdf'].forEach(id => {
     const btn = document.getElementById(id);
+    if (!btn) return;
     btn.disabled = false;
     btn.style.opacity = '1';
     btn.style.cursor = 'pointer';
     btn.removeAttribute('title');
   });
+  // Restaurar color verde Excel y rojo PDF
+  const bExcel = document.getElementById('btn-excel');
+  const bPdf   = document.getElementById('btn-pdf');
+  if (bExcel) bExcel.style.background = '#1D6F42';
+  if (bPdf)   bPdf.style.background   = '#C0392B';
 }
 
 function bloquearBotonesPostGuardado() {
   solicitudGuardada = null;
   ['btn-enviar','btn-excel','btn-pdf'].forEach(id => {
     const btn = document.getElementById(id);
+    if (!btn) return;
     btn.disabled = true;
     btn.style.opacity = '0.45';
     btn.style.cursor = 'not-allowed';
@@ -6969,8 +6976,13 @@ function renderHistorial(data) {
       <td class="monto">${formatCOP(s.total_general)}</td>
       <td><span class="badge badge-${s.estado.toLowerCase()}">${s.estado}</span></td>
       <td style="white-space:nowrap">${s.ejecutivo.split(' ').slice(0,2).join(' ')}</td>
-      <td style="white-space:nowrap">
+      <td style="white-space:nowrap;display:flex;gap:5px;align-items:center;">
         <button class="btn-add-sm" onclick="verDetalle('${s.consecutivo}')">Ver</button>
+        ${s.estado === 'Pendiente' ? `
+        <button class="btn-danger-sm" onclick="eliminarSolicitud('${s.consecutivo}')"
+          style="font-size:11px;padding:3px 9px;">
+          Eliminar
+        </button>` : ''}
       </td>
     </tr>
   `).join('');
@@ -6991,8 +7003,44 @@ function filtrarHistorial() {
   renderHistorial(filtradas);
 }
 
+async function eliminarSolicitud(consecutivo) {
+  const s = solicitudes.find(x => x.consecutivo === consecutivo);
+  if (!s) return;
+  if (s.estado !== 'Pendiente') {
+    showAlert('danger', 'Solo se pueden eliminar solicitudes en estado Pendiente.');
+    return;
+  }
+  if (!confirm(`¿Eliminar la solicitud ${consecutivo} de ${s.empresa}? Esta acción no se puede deshacer.`)) return;
+
+  try {
+    // Eliminar detalle primero (FK constraint) y luego cabecera
+    if (s._uuid) {
+      const { error: detErr } = await sb
+        .from('solicitudes_facturacion_detalle')
+        .delete()
+        .eq('solicitud_id', s._uuid);
+      if (detErr) throw detErr;
+
+      const { error: solErr } = await sb
+        .from('solicitudes_facturacion')
+        .delete()
+        .eq('id', s._uuid);
+      if (solErr) throw solErr;
+    }
+
+    // Remover de memoria local
+    solicitudes = solicitudes.filter(x => x.consecutivo !== consecutivo);
+    renderHistorial();
+    renderEstado();
+    showAlert('success', `Solicitud ${consecutivo} eliminada correctamente.`);
+
+  } catch(e) {
+    console.error('Error eliminando solicitud:', e);
+    showAlert('danger', `Error al eliminar: ${e.message}`);
+  }
+}
+
 function limpiarFiltros() {
-  document.getElementById('filtroTexto').value = '';
   document.getElementById('filtroEstado').value = '';
   document.getElementById('filtroLinea').value = '';
   renderHistorial();
@@ -7639,11 +7687,21 @@ function inicializarModuloFacturacion(){
           Guardar Solicitud
         </button>
         <button class="btn btn-success" id="btn-enviar" onclick="abrirModalEnvio()" disabled style="opacity:0.45;cursor:not-allowed;" title="Guarde primero">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           Enviar a Facturación
         </button>
-        <button class="btn btn-outline" id="btn-excel" onclick="exportarExcel()" disabled style="opacity:0.45;cursor:not-allowed;" title="Guarde primero">Excel</button>
-        <button class="btn btn-outline" id="btn-pdf"   onclick="exportarPDF()"   disabled style="opacity:0.45;cursor:not-allowed;" title="Guarde primero">PDF</button>
+        <button class="btn" id="btn-excel" onclick="exportarExcel()" disabled
+          style="opacity:0.45;cursor:not-allowed;background:#1D6F42;color:white;border:none;"
+          title="Guarde primero">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+          Excel
+        </button>
+        <button class="btn" id="btn-pdf" onclick="exportarPDF()" disabled
+          style="opacity:0.45;cursor:not-allowed;background:#C0392B;color:white;border:none;"
+          title="Guarde primero">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          PDF
+        </button>
         <button class="btn btn-orange" onclick="limpiarFormulario()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           Solicitud nueva
@@ -7736,11 +7794,11 @@ function pfac_diasConOrdenes(year, month) {
 }
 
 function pfac_renderCalendario() {
-  document.getElementById('pfac-cal-month-label').textContent = `${MESES[pfac_calMonth]} ${pfac_calYear}`;
+  document.getElementById('pfac-cal-month-label').textContent = `${pfac_MESES[pfac_calMonth]} ${pfac_calYear}`;
   const grid = document.getElementById('pfac-cal-grid');
   grid.innerHTML = '';
 
-  DIAS.forEach(d => {
+  pfac_DIAS.forEach(d => {
     const el = document.createElement('div');
     el.className = 'cal-dow';
     el.textContent = d;
@@ -8462,12 +8520,14 @@ async function pfac_inicializarPortal(){
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           Enviar a Facturación
         </button>
-        <button class="btn btn-outline" onclick="excelDesdeModal()" id="det-btn-excel">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <button class="btn" onclick="excelDesdeModal()" id="det-btn-excel"
+          style="background:#1D6F42;color:white;border:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
           Generar Excel
         </button>
-        <button class="btn btn-outline" onclick="pdfDesdeModal()" id="det-btn-pdf">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <button class="btn" onclick="pdfDesdeModal()" id="det-btn-pdf"
+          style="background:#C0392B;color:white;border:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
           Generar PDF
         </button>
       </div>
