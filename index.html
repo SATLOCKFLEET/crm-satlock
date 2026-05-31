@@ -7777,6 +7777,16 @@ function inicializarModuloFacturacion(){
    ══════════════════════════════════════════════════════════════ */
 
 /* Login del portal manejado por Supabase Auth del CRM */
+
+/* ── Variables globales del portal ── */
+const pfac_hoy  = new Date();
+const pfac_hoyISO = pfac_hoy.toISOString().slice(0, 10);
+let pfac_calYear  = pfac_hoy.getFullYear();
+let pfac_calMonth = pfac_hoy.getMonth();
+let pfac_fechaSeleccionada = pfac_hoyISO;
+let pfac_filtroModalidad   = 'Todos';
+let pfac_ordenes           = [];
+let pfac__ordenPendienteFactura = null;
 /* ═══════════════════════════════════════════════════════
    CALENDARIO
    ═══════════════════════════════════════════════════════ */
