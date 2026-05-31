@@ -616,6 +616,493 @@ tbody tr:hover{background:var(--surface2)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js"></script>
+
+<!-- PORTAL FACTURACIÓN CSS -->
+<style>
+
+/* ══ PORTAL FACTURACIÓN CSS — aislado bajo #pfac-root ══ */
+#pfac-root {
+  --pfac-blue:    var(--sat-blue, #19428C);
+  --pfac-orange:  var(--sat-orange, #E8460A);
+  --pfac-teal:    var(--teal, #1D9E75);
+  --pfac-teal-bg: var(--teal-light, #E1F5EE);
+  --pfac-warning: var(--amber, #7A5A0F);
+  --pfac-warning-bg: var(--amber-light, #FAEEDA);
+  --pfac-success: var(--teal, #1B7A4A);
+  --pfac-success-bg: var(--teal-light, #E1F5EE);
+  --pfac-danger:  var(--red, #A32D2D);
+  --pfac-danger-bg: var(--red-light, #FCEBEB);
+}
+
+  :root {
+    --sat-blue: #19428C;
+    --sat-orange: #FF5E34;
+    --sat-blue-light: #E8EEF8;
+    --bg: #F4F6FA;
+    --surface: #FFFFFF;
+    --border: #DDE3EE;
+    --text: #1A2540;
+    --text-muted: #6B7A99;
+    --text-hint: #9AAABF;
+    --success: #1B7A4A;
+    --success-bg: #E6F5EE;
+    --warning: #7A5A0F;
+    --warning-bg: #FDF6E3;
+    --danger: #A32D2D;
+    --danger-bg: #FCEBEB;
+    --info: #185FA5;
+    --info-bg: #E6F1FB;
+    --teal: #0F6E56;
+    --teal-bg: #E1F5EE;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --shadow: 0 1px 4px rgba(25,66,140,0.08);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── LOGIN ─────────────────────────────────────────── */
+  #login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--sat-blue);
+  }
+
+  .login-box {
+    background: var(--surface);
+    border-radius: 16px;
+    padding: 40px 44px;
+    width: 380px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  }
+
+  .login-logo {
+    text-align: center;
+    margin-bottom: 28px;
+  }
+
+  .login-logo img { height: 36px; }
+
+  .login-title {
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--sat-blue);
+    margin-bottom: 6px;
+  }
+
+  .login-sub {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 28px;
+  }
+
+  .login-field { margin-bottom: 16px; }
+  .login-field label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; display: block; margin-bottom: 5px; }
+
+  .login-field input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: var(--text);
+    transition: border-color .15s;
+  }
+
+  .login-field input:focus { outline: none; border-color: var(--sat-blue); box-shadow: 0 0 0 3px rgba(25,66,140,0.1); }
+
+  .btn-login {
+    width: 100%;
+    padding: 11px;
+    background: var(--sat-blue);
+    color: white;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background .15s;
+  }
+
+  .btn-login:hover { background: #142F6B; }
+  .login-error { color: var(--danger); font-size: 12px; margin-top: 10px; text-align: center; display: none; }
+
+  /* ── PORTAL ────────────────────────────────────────── */
+  #portal { display: none; }
+
+  .pfac-portal-header {
+    background: var(--sat-blue);
+    height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 16px;
+    box-shadow: 0 2px 8px rgba(25,66,140,0.2);
+  }
+
+  .pfac-portal-logo { background: white; border-radius: 7px; padding: 4px 10px; display: flex; align-items: center; }
+  .pfac-portal-logo img { height: 30px; width: auto; }
+
+  .pfac-portal-title { color: white; font-size: 14px; font-weight: 600; opacity: 0.85; }
+
+  .pfac-portal-user {
+    margin-left: auto;
+    color: rgba(255,255,255,0.75);
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .pfac-btn-logout-portal {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: white;
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .pfac-btn-logout-portal:hover { background: rgba(255,255,255,0.25); }
+
+  .pfac-portal-body {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 0;
+    height: calc(100vh - 56px);
+    overflow: hidden;
+  }
+
+  /* ── SIDEBAR CALENDARIO ────────────────────────────── */
+  .pfac-sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .pfac-sidebar-section { padding: 20px 20px 16px; border-bottom: 1px solid var(--border); }
+  .pfac-sidebar-section:last-child { border-bottom: none; }
+
+  .pfac-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+
+  /* Mini calendario */
+  .pfac-cal-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .pfac-cal-nav button {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pfac-cal-nav button:hover { background: var(--sat-blue-light); color: var(--sat-blue); }
+  .pfac-cal-month { font-size: 13px; font-weight: 700; color: var(--sat-blue); }
+
+  .pfac-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+  }
+
+  .pfac-cal-dow {
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-hint);
+    padding: 3px 0;
+  }
+
+  .pfac-cal-day {
+    text-align: center;
+    font-size: 12px;
+    padding: 5px 2px;
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--text-muted);
+    position: relative;
+    transition: all .12s;
+  }
+
+  .pfac-cal-day:hover { background: var(--sat-blue-light); color: var(--sat-blue); }
+  .pfac-cal-day.has-orders::after {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 4px;
+    background: var(--sat-orange);
+    border-radius: 50%;
+    margin: 1px auto 0;
+  }
+
+  .pfac-cal-day.today { background: var(--sat-blue); color: white; font-weight: 700; }
+  .pfac-cal-day.today:hover { background: #142F6B; }
+  .pfac-cal-day.today.has-orders::after { background: white; }
+  .pfac-cal-day.selected { background: var(--sat-blue-light); color: var(--sat-blue); font-weight: 700; border: 1px solid var(--sat-blue); }
+  .pfac-cal-day.other-month { color: var(--text-hint); opacity: 0.5; }
+  .pfac-cal-day.empty { cursor: default; }
+
+  /* Filtros */
+  .pfac-filter-group { display: flex; flex-direction: column; gap: 8px; }
+
+  .pfac-filter-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-muted);
+    transition: all .12s;
+  }
+
+  .pfac-filter-chip:hover { border-color: var(--sat-blue); color: var(--sat-blue); }
+  .pfac-filter-chip.active { border-color: var(--sat-blue); background: var(--sat-blue-light); color: var(--sat-blue); font-weight: 600; }
+  .pfac-filter-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  /* Resumen */
+  .pfac-metric-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  .pfac-metric-mini {
+    background: var(--bg);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+  }
+
+  .pfac-metric-mini .label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: var(--text-muted); margin-bottom: 3px; }
+  .pfac-metric-mini .value { font-size: 18px; font-weight: 700; color: var(--sat-blue); font-variant-numeric: tabular-nums; }
+  .pfac-metric-mini.orange .value { color: var(--sat-orange); }
+  .pfac-metric-mini.success .value { color: var(--success); }
+  .pfac-metric-mini.teal .value { color: var(--teal); }
+
+  /* IPC Panel */
+  .pfac-ipc-panel {
+    background: var(--warning-bg);
+    border: 1px solid #E8D080;
+    border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+
+  .pfac-ipc-panel .pfac-ipc-label { font-size: 11px; font-weight: 700; color: var(--warning); text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; }
+
+  .pfac-ipc-input-row { display: flex; gap: 8px; align-items: center; }
+
+  .pfac-ipc-input-row input {
+    flex: 1;
+    padding: 7px 10px;
+    border: 1px solid #C8A828;
+    border-radius: 6px;
+    font-size: 13px;
+    background: white;
+    color: var(--text);
+  }
+
+  .pfac-ipc-input-row input:focus { outline: none; border-color: var(--sat-blue); }
+
+  .btn-ipc {
+    background: var(--warning);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .btn-ipc:hover { background: #5A4010; }
+  .pfac-ipc-hint { font-size: 10px; color: var(--warning); margin-top: 6px; }
+
+  /* ── CONTENIDO PRINCIPAL ───────────────────────────── */
+  .pfac-main-content { overflow-y: auto; padding: 24px; }
+
+  .pfac-day-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .pfac-day-title { font-size: 20px; font-weight: 700; color: var(--sat-blue); }
+  .pfac-day-count { font-size: 13px; color: var(--text-muted); }
+
+  /* Órdenes del día */
+  .pfac-orden-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    align-items: start;
+    transition: border-color .15s;
+  }
+
+  .pfac-orden-card:hover { border-color: #B5D4F4; }
+  .pfac-orden-card.facturada { border-left: 4px solid var(--success); opacity: 0.75; }
+  .pfac-orden-card.omitida { border-left: 4px solid var(--text-hint); opacity: 0.6; }
+  .pfac-orden-card.pendiente { border-left: 4px solid var(--sat-orange); }
+
+  .pfac-orden-empresa { font-size: 15px; font-weight: 700; color: var(--sat-blue); margin-bottom: 2px; }
+  .pfac-orden-nit { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+
+  .pfac-orden-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+
+  .pfac-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .pfac-tag-recurrente { background: var(--teal-bg); color: var(--teal); }
+  .pfac-tag-comodato   { background: var(--warning-bg); color: var(--warning); }
+  .pfac-tag-ipc        { background: #FFF0EC; color: var(--sat-orange); }
+
+  .pfac-orden-detalle {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.7;
+  }
+
+  .pfac-orden-total {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--sat-blue);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  .pfac-orden-ejecutivo {
+    font-size: 11px;
+    color: var(--text-hint);
+    margin-top: 3px;
+    text-align: right;
+  }
+
+  .pfac-orden-actions { display: flex; gap: 6px; margin-top: 10px; justify-content: flex-end; }
+
+  .pfac-btn-sm {
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all .12s;
+  }
+
+  .pfac-btn-facturar { background: var(--success); color: white; }
+  .pfac-btn-facturar:hover { background: #155C38; }
+  .pfac-btn-omitir { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+  .pfac-btn-omitir:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+  .pfac-btn-deshacer { background: var(--sat-blue-light); color: var(--sat-blue); border: 1px solid #B5D4F4; }
+  .pfac-btn-deshacer:hover { background: #C8DAF0; }
+
+  .pfac-empty-day {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-hint);
+  }
+
+  .pfac-empty-day svg { margin-bottom: 12px; opacity: 0.4; }
+  .pfac-empty-day p { font-size: 14px; font-style: italic; }
+
+  /* Modal confirmación IPC */
+  .pfac-modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(10,20,50,0.55);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pfac-modal-backdrop.show { display: flex; }
+
+  .pfac-modal-box {
+    background: var(--surface);
+    border-radius: var(--radius-lg);
+    padding: 28px 32px;
+    max-width: 440px;
+    width: 90%;
+    box-shadow: 0 12px 48px rgba(25,66,140,0.18);
+  }
+
+  .pfac-modal-title { font-size: 16px; font-weight: 700; color: var(--sat-blue); margin-bottom: 10px; }
+  .pfac-modal-body { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 16px; }
+  .pfac-modal-summary { background: var(--bg); border-radius: var(--radius); padding: 12px 14px; font-size: 12px; margin-bottom: 16px; line-height: 1.8; }
+  .pfac-modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* Alert toast */
+  .pfac-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 18px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-weight: 600;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    z-index: 2000;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    max-width: 380px;
+  }
+
+  .pfac-toast.show { display: flex; }
+  .pfac-toast-success { background: var(--success); color: white; }
+  .pfac-toast-warning { background: var(--warning); color: white; }
+  .pfac-toast-danger  { background: var(--danger);  color: white; }
+
+</style>
 </head>
 <body>
 
@@ -914,6 +1401,10 @@ function construirTabs(){
   const ROLES_FAC=['ejecutivo_fleet','ejecutivo_carga','jefe_fleet','gerencia','alta_gerencia','analista_comercial','jefe_proyectos'];
   if(ROLES_FAC.includes(PERFIL.rol)){
     base.push({label:'Facturación',render:renderFacturacion});
+  }
+  // Portal de facturación — solo rol facturacion y gerencia
+  if(['facturacion','gerencia','alta_gerencia','jefe_fleet'].includes(PERFIL.rol)){
+    base.push({label:'🧾 Portal Facturación',render:renderPortalFacturacion});
   }
   return base;
 }
@@ -7046,6 +7537,526 @@ function inicializarModuloFacturacion(){
   renderEstado();
 }
 
+
+
+/* ══════════════════════════════════════════════════════════════
+   PORTAL FACTURACIÓN — integrado al CRM
+   Usa PERFIL del CRM. Todas las funciones con prefijo pfac_
+   ══════════════════════════════════════════════════════════════ */
+
+/* Login del portal manejado por Supabase Auth del CRM */
+/* ═══════════════════════════════════════════════════════
+   CALENDARIO
+   ═══════════════════════════════════════════════════════ */
+const pfac_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const pfac_DIAS  = ['D','L','M','X','J','V','S'];
+
+function pfac_diasConOrdenes(year, month) {
+  return new Set(
+    ordenes
+      .filter(o => o.estado !== 'Omitida')
+      .map(o => o.fecha_factura)
+      .filter(f => f.startsWith(`${year}-${String(month+1).padStart(2,'0')}`))
+      .map(f => parseInt(f.split('-')[2]))
+  );
+}
+
+function pfac_renderCalendario() {
+  document.getElementById('pfac-cal-month-label').textContent = `${MESES[pfac_calMonth]} ${pfac_calYear}`;
+  const grid = document.getElementById('pfac-cal-grid');
+  grid.innerHTML = '';
+
+  DIAS.forEach(d => {
+    const el = document.createElement('div');
+    el.className = 'cal-dow';
+    el.textContent = d;
+    grid.appendChild(el);
+  });
+
+  const primerDia = new Date(pfac_calYear, pfac_calMonth, 1).getDay();
+  const diasEnMes = new Date(pfac_calYear, pfac_calMonth + 1, 0).getDate();
+  const diasPrevios = new Date(pfac_calYear, pfac_calMonth, 0).getDate();
+  const conOrdenes = pfac_diasConOrdenes(pfac_calYear, pfac_calMonth);
+
+  for (let i = 0; i < primerDia; i++) {
+    const el = document.createElement('div');
+    el.className = 'cal-day other-month';
+    el.textContent = diasPrevios - primerDia + 1 + i;
+    grid.appendChild(el);
+  }
+
+  for (let d = 1; d <= diasEnMes; d++) {
+    const iso = `${pfac_calYear}-${String(pfac_calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const el = document.createElement('div');
+    el.textContent = d;
+    let cls = 'cal-day';
+    if (iso === pfac_hoyISO) cls += ' today';
+    if (iso === pfac_fechaSeleccionada && iso !== pfac_hoyISO) cls += ' selected';
+    if (conOrdenes.has(d)) cls += ' has-orders';
+    el.className = cls;
+    el.onclick = () => pfac_seleccionarFecha(iso);
+    grid.appendChild(el);
+  }
+}
+
+function pfac_navMes(delta) {
+  pfac_calMonth += delta;
+  if (pfac_calMonth < 0)  { pfac_calMonth = 11; pfac_calYear--; }
+  if (pfac_calMonth > 11) { pfac_calMonth = 0;  pfac_calYear++; }
+  pfac_renderCalendario();
+}
+
+function pfac_seleccionarFecha(iso) {
+  pfac_fechaSeleccionada = iso;
+  pfac_renderCalendario();
+  pfac_renderOrdenesDia(iso);
+}
+
+/* ═══════════════════════════════════════════════════════
+   ÓRDENES DEL DÍA
+   ═══════════════════════════════════════════════════════ */
+function formatCOP(v) {
+  return '$ ' + Math.round(v).toLocaleString('es-CO');
+}
+
+function pfac_renderOrdenesDia(iso) {
+  const [y, m, d] = iso.split('-');
+  const fecha = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+  const label = fecha.toLocaleDateString('es-CO', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  let filtradas = pfac_ordenes.filter(o => o.fecha_factura === iso);
+  if (pfac_filtroModalidad !== 'Todos') filtradas = filtradas.filter(o => o.modalidad === pfac_filtroModalidad);
+
+  const pending = filtradas.filter(o => o.estado === 'Pendiente').length;
+
+  document.getElementById('pfac-day-title').textContent = label.charAt(0).toUpperCase() + label.slice(1);
+  document.getElementById('pfac-day-count').textContent = filtradas.length === 0
+    ? 'Sin órdenes'
+    : `${filtradas.length} orden(es) · ${pending} pendiente(s)`;
+
+  const container = document.getElementById('pfac-ordenes-container');
+  if (filtradas.length === 0) {
+    container.innerHTML = `
+      <div class="pfac-empty-day">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <p>No hay órdenes programadas para este día.</p>
+      </div>`;
+    return;
+  }
+
+  container.innerHTML = filtradas.map(o => {
+    const tagMod = o.modalidad === 'Recurrente'
+      ? `<span class="tag tag-recurrente">Recurrente</span>`
+      : `<span class="tag tag-comodato">Comodato ${o.cuota_num}/${o.cuotas_total || '∞'}</span>`;
+
+    const tagIPC = o.ipc_aplicado > 0
+      ? `<span class="tag tag-ipc">IPC ${o.ipc_aplicado}%</span>`
+      : '';
+
+    const total = o.valor_unitario * o.cantidad;
+
+    let acciones = '';
+    if (o.estado === 'Pendiente') {
+      acciones = `
+        <button class="btn-sm btn-facturar" onclick="pfac_marcarFacturada('${o.id}')">✓ Marcar facturada</button>
+        <button class="btn-sm btn-omitir"   onclick="pfac_marcarOmitida('${o.id}')">Omitir</button>`;
+    } else if (o.estado === 'Facturada') {
+      acciones = `
+        <span style="font-size:11px;font-weight:700;color:var(--success);background:var(--success-bg);padding:3px 10px;border-radius:12px;border:1px solid #9FE1CB;">
+          ✓ Factura ${o.num_factura || '—'}
+        </span>
+        <button class="btn-sm btn-deshacer" onclick="pfac_deshacerEstado('${o.id}')">↩ Deshacer</button>`;
+    } else {
+      acciones = `<button class="btn-sm btn-deshacer" onclick="pfac_deshacerEstado('${o.id}')">↩ Reactivar</button>`;
+    }
+
+    return `
+      <div class="orden-card ${o.estado.toLowerCase()}" id="card-${o.id.replace(/[^a-z0-9]/gi,'-')}">
+        <div>
+          <div class="pfac-orden-empresa">${o.empresa}</div>
+          <div class="pfac-orden-nit">NIT ${o.nit}</div>
+          <div class="pfac-orden-meta">
+            ${tagMod}
+            ${tagIPC}
+            <span style="font-size:11px;color:var(--text-hint)">Sol. ${o.solicitud_id}</span>
+          </div>
+          <div class="pfac-orden-detalle">
+            <strong>${o.item}</strong> — ${o.descripcion}<br>
+            Cantidad: ${o.cantidad} · V. unit: ${formatCOP(o.valor_unitario)}
+          </div>
+          <div class="pfac-orden-actions">${acciones}</div>
+        </div>
+        <div>
+          <div class="pfac-orden-total">${formatCOP(total)}</div>
+          <div class="pfac-orden-ejecutivo">${o.ejecutivo}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════
+   ACCIONES
+   ═══════════════════════════════════════════════════════ */
+let pfac_pfac__ordenPendienteFactura = null;
+
+function pfac_marcarFacturada(id) {
+  const o = pfac_ordenes.find(x => x.id === id);
+  if (!o) return;
+  pfac__ordenPendienteFactura = id;
+  document.getElementById('input-num-factura').value = '';
+  document.getElementById('err-num-factura').style.display = 'none';
+  document.getElementById('modal-factura-orden-info').innerHTML = `
+    <strong>${o.empresa}</strong> — NIT ${o.nit}<br>
+    ${o.item}: ${o.descripcion}<br>
+    <span style="color:var(--text-hint)">Cuota ${o.cuota_num}${o.cuotas_total ? '/'+o.cuotas_total : ''} · ${formatCOP(o.valor_unitario * o.cantidad)}</span>
+  `;
+  document.getElementById('modal-num-factura').classList.add('show');
+  setTimeout(() => document.getElementById('input-num-factura').focus(), 80);
+}
+
+function pfac_cerrarModalNumFactura() {
+  document.getElementById('modal-num-factura').classList.remove('show');
+  pfac__ordenPendienteFactura = null;
+}
+
+function pfac_confirmarNumFactura() {
+  const num = document.getElementById('input-num-factura').value.trim();
+  if (!num) {
+    document.getElementById('err-num-factura').style.display = 'block';
+    return;
+  }
+  const o = pfac_ordenes.find(x => x.id === pfac__ordenPendienteFactura);
+  if (!o) return;
+  o.estado        = 'Facturada';
+  o.num_factura   = num;
+  o.facturada_at  = new Date().toISOString();
+  o.facturada_por = PERFIL?.nombre || '';
+  pfac_cerrarModalNumFactura();
+  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+  pfac_renderCalendario();
+  pfac_actualizarMetricas();
+  pfac_renderIndicadores();
+  toast('success', `Factura ${num} — ${o.empresa} registrada correctamente.`);
+}
+
+function pfac_marcarOmitida(id) {
+  const o = pfac_ordenes.find(x => x.id === id);
+  if (!o) return;
+  o.estado = 'Omitida';
+  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+  pfac_renderCalendario();
+  pfac_actualizarMetricas();
+  toast('warning', 'Orden omitida. Puede reactivarla desde la misma vista.');
+}
+
+function pfac_deshacerEstado(id) {
+  const o = pfac_ordenes.find(x => x.id === id);
+  if (!o) return;
+  o.estado       = 'Pendiente';
+  o.facturada_at = null;
+  o.num_factura  = null;
+  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+  pfac_renderCalendario();
+  pfac_actualizarMetricas();
+  pfac_renderIndicadores();
+  toast('success', 'Orden devuelta a pendiente.');
+}
+
+/* ═══════════════════════════════════════════════════════
+   TABS DEL PORTAL
+   ═══════════════════════════════════════════════════════ */
+function pfac_portalTab(tab) {
+  ['calendario','indicadores'].forEach(t => {
+    document.getElementById('pfac-ppanel-'+t).style.display = t===tab ? 'block' : 'none';
+    const btn = document.getElementById('pfac-ptab-'+t);
+    if (btn) {
+      btn.style.fontWeight     = t===tab ? '600' : '500';
+      btn.style.color          = t===tab ? 'var(--sat-blue)' : 'var(--text-muted)';
+      btn.style.borderBottom   = t===tab ? '2px solid var(--sat-orange)' : '2px solid transparent';
+    }
+  });
+  if (tab === 'indicadores') pfac_renderIndicadores();
+}
+
+/* ═══════════════════════════════════════════════════════
+   INDICADORES DE FACTURACIÓN
+   ═══════════════════════════════════════════════════════ */
+function pfac_renderIndicadores() {
+  const facturadas = pfac_ordenes.filter(o => o.estado === 'Facturada');
+  const pendientes = pfac_ordenes.filter(o => o.estado === 'Pendiente').length;
+  const totalVal   = facturadas.reduce((a, o) => a + o.valor_unitario * o.cantidad, 0);
+  const clientes   = new Set(facturadas.map(o => o.nit)).size;
+
+  document.getElementById('pfac-ind-total').textContent      = formatCOP(totalVal);
+  document.getElementById('pfac-ind-count').textContent      = facturadas.length;
+  document.getElementById('pfac-ind-clientes').textContent   = clientes;
+  document.getElementById('pfac-ind-pendientes').textContent = pendientes;
+
+  const tbody = document.getElementById('pfac-ind-tabla-body');
+  if (facturadas.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-hint);font-style:italic;">Sin facturas emitidas aún.</td></tr>`;
+    return;
+  }
+
+  // Ordenar por fecha descendente
+  const sorted = [...facturadas].sort((a,b) => (b.facturada_at||'').localeCompare(a.facturada_at||''));
+
+  tbody.innerHTML = sorted.map((o, i) => {
+    const bg = i % 2 === 0 ? 'white' : 'var(--bg)';
+    const fecha = o.facturada_at ? new Date(o.facturada_at).toLocaleDateString('es-CO') : o.fecha_factura;
+    const modalidadColor = o.modalidad === 'Recurrente' ? 'var(--teal)' : 'var(--warning)';
+    const modalidadBg    = o.modalidad === 'Recurrente' ? 'var(--teal-bg)' : 'var(--warning-bg)';
+    return `
+      <tr style="background:${bg}">
+        <td style="padding:9px 12px;font-weight:700;color:var(--sat-blue);white-space:nowrap;">${o.num_factura || '—'}</td>
+        <td style="padding:9px 12px;white-space:nowrap;">${fecha}</td>
+        <td style="padding:9px 12px;font-weight:500;">${o.empresa}</td>
+        <td style="padding:9px 12px;color:var(--text-muted);font-variant-numeric:tabular-nums;">${o.nit}</td>
+        <td style="padding:9px 12px;">${o.item} — <span style="color:var(--text-muted)">${o.descripcion.slice(0,30)}${o.descripcion.length>30?'…':''}</span></td>
+        <td style="padding:9px 12px;"><span style="background:${modalidadBg};color:${modalidadColor};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;">${o.modalidad}</span></td>
+        <td style="padding:9px 12px;color:var(--text-muted);">${o.ejecutivo}</td>
+        <td style="padding:9px 12px;text-align:right;font-weight:600;color:var(--sat-blue);font-variant-numeric:tabular-nums;">${formatCOP(o.valor_unitario * o.cantidad)}</td>
+      </tr>`;
+  }).join('');
+}
+
+/* ═══════════════════════════════════════════════════════
+   IPC
+   ═══════════════════════════════════════════════════════ */
+let pfac_pfac_ipcPendiente = 0;
+
+function pfac_abrirModalIPC() {
+  const val = parseFloat(document.getElementById('pfac-ipc-nuevo').value);
+  if (!val || val <= 0 || val > 50) {
+    toast('warning', 'Ingrese un porcentaje IPC válido (entre 0.1% y 50%).');
+    return;
+  }
+  pfac_ipcPendiente = val;
+  const afectadas = pfac_ordenes.filter(o => o.estado === 'Pendiente' && o.fecha_factura > pfac_hoyISO);
+  const totalAfectado = afectadas.reduce((a, o) => a + o.valor_unitario * o.cantidad, 0);
+
+  document.getElementById('modal-ipc-summary').innerHTML = `
+    <strong>IPC a aplicar:</strong> ${val}%<br>
+    <strong>Órdenes afectadas:</strong> ${afectadas.length}<br>
+    <strong>Valor total ajustado:</strong> ${formatCOP(totalAfectado * (1 + val/100))}<br>
+    <strong>Incremento total:</strong> ${formatCOP(totalAfectado * val / 100)}
+  `;
+  document.getElementById('modal-ipc').classList.add('show');
+}
+
+function pfac_cerrarModalIPC() {
+  document.getElementById('modal-ipc').classList.remove('show');
+}
+
+function pfac_confirmarIPC() {
+  pfac_cerrarModalIPC();
+  let count = 0;
+  pfac_ordenes.forEach(o => {
+    if (o.estado === 'Pendiente' && o.fecha_factura > pfac_hoyISO) {
+      o.valor_unitario = Math.round(o.valor_unitario * (1 + pfac_ipcPendiente / 100));
+      o.ipc_aplicado   = pfac_ipcPendiente;
+      count++;
+    }
+  });
+  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+  pfac_actualizarMetricas();
+  document.getElementById('pfac-ipc-nuevo').value = '';
+  toast('success', `IPC del ${pfac_ipcPendiente}% aplicado a ${count} orden(es).`);
+}
+
+/* ═══════════════════════════════════════════════════════
+   MÉTRICAS
+   ═══════════════════════════════════════════════════════ */
+function pfac_actualizarMetricas() {
+  const mesStr = `${pfac_calYear}-${String(pfac_calMonth+1).padStart(2,'0')}`;
+  const delMes = pfac_ordenes.filter(o => o.fecha_factura.startsWith(mesStr));
+  const facturadas = delMes.filter(o => o.estado === 'Facturada').length;
+  const pendientes = delMes.filter(o => o.estado === 'Pendiente').length;
+  const mrr = ordenes
+    .filter(o => o.estado === 'Pendiente' && o.fecha_factura.startsWith(mesStr))
+    .reduce((a, o) => a + o.valor_unitario * o.cantidad, 0);
+
+  document.getElementById('pfac-m-total-mes').textContent  = delMes.length;
+  document.getElementById('pfac-m-facturadas').textContent = facturadas;
+  document.getElementById('pfac-m-pendientes').textContent = pendientes;
+  document.getElementById('pfac-m-mrr').textContent        = formatCOP(mrr);
+}
+
+/* ═══════════════════════════════════════════════════════
+   FILTROS
+   ═══════════════════════════════════════════════════════ */
+function pfac_setFiltro(el) {
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  pfac_filtroModalidad = el.dataset.filter;
+  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+}
+
+/* ═══════════════════════════════════════════════════════
+   TOAST
+   ═══════════════════════════════════════════════════════ */
+function toast(type, msg) {
+  const el = document.getElementById('pfac-toast');
+  el.className = `toast toast-${type} show`;
+  el.textContent = msg;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+
+
+// ── PORTAL FACTURACIÓN (dentro del CRM) ────────────────────────────────────
+function renderPortalFacturacion(container){
+  container.innerHTML = `<div id="pfac-root">$<div class="pfac-portal-body">
+
+    <!-- SIDEBAR -->
+    <aside class="pfac-sidebar">
+
+      <!-- Mini calendario -->
+      <div class="pfac-sidebar-section">
+        <div class="pfac-section-label">Calendario</div>
+        <div class="pfac-cal-nav">
+          <button onclick="pfac_navMes(-1)">&#8249;</button>
+          <span class="pfac-cal-month" id="pfac-cal-month-label"></span>
+          <button onclick="pfac_navMes(1)">&#8250;</button>
+        </div>
+        <div class="pfac-cal-grid" id="pfac-cal-grid"></div>
+      </div>
+
+      <!-- Filtros -->
+      <div class="pfac-sidebar-section">
+        <div class="pfac-section-label">Filtrar por modalidad</div>
+        <div class="pfac-filter-group">
+          <div class="pfac-filter-chip active" data-filter="Todos" onclick="pfac_setFiltro(this)">
+            <span class="dot" style="background:var(--sat-blue)"></span>
+            Todas las modalidades
+          </div>
+          <div class="pfac-filter-chip" data-filter="Recurrente" onclick="pfac_setFiltro(this)">
+            <span class="dot" style="background:var(--teal)"></span>
+            Recurrente
+          </div>
+          <div class="pfac-filter-chip" data-filter="Comodato" onclick="pfac_setFiltro(this)">
+            <span class="dot" style="background:var(--warning)"></span>
+            Comodato
+          </div>
+        </div>
+      </div>
+
+      <!-- Métricas del mes -->
+      <div class="pfac-sidebar-section">
+        <div class="pfac-section-label">Resumen del mes</div>
+        <div class="pfac-metric-row">
+          <div class="pfac-metric-mini">
+            <div class="label">Total mes</div>
+            <div class="value" id="pfac-m-total-mes">0</div>
+          </div>
+          <div class="pfac-metric-mini success">
+            <div class="label">Facturadas</div>
+            <div class="value" id="pfac-m-facturadas">0</div>
+          </div>
+          <div class="pfac-metric-mini orange">
+            <div class="label">Pendientes</div>
+            <div class="value" id="pfac-m-pendientes">0</div>
+          </div>
+          <div class="pfac-metric-mini teal">
+            <div class="label">MRR activo</div>
+            <div class="value" id="pfac-m-mrr" style="font-size:13px">$0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel IPC -->
+      <div class="pfac-sidebar-section">
+        <div class="pfac-section-label">Ajuste IPC anual</div>
+        <div class="pfac-ipc-panel">
+          <div class="pfac-ipc-label">Aplicar IPC a órdenes futuras</div>
+          <div class="pfac-ipc-input-row">
+            <input type="number" id="pfac-ipc-nuevo" min="0" max="50" step="0.1" placeholder="Ej: 10.2">
+            <span style="font-size:13px;font-weight:700;color:var(--warning)">%</span>
+            <button class="btn-ipc" onclick="pfac_abrirModalIPC()">Aplicar</button>
+          </div>
+          <div class="pfac-ipc-hint">Se actualizarán todas las órdenes pendientes a partir de hoy.</div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <main class="pfac-main-content" id="pfac-main-content">
+
+      <!-- Tabs superiores -->
+      <div style="display:flex;border-bottom:2px solid var(--border);margin-bottom:20px;gap:0;">
+        <button id="pfac-ptab-calendario" onclick="pfac_portalTab('calendario')"
+          style="padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;border:none;font-family:inherit;background:transparent;border-bottom:2px solid var(--sat-orange);margin-bottom:-2px;color:var(--sat-blue);">
+          Agenda de facturación
+        </button>
+        <button id="pfac-ptab-indicadores" onclick="pfac_portalTab('indicadores')"
+          style="padding:9px 20px;font-size:13px;font-weight:500;cursor:pointer;border:none;font-family:inherit;background:transparent;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted);transition:all .15s;">
+          Indicadores
+        </button>
+      </div>
+
+      <!-- Panel: Agenda -->
+      <div id="pfac-ppanel-calendario">
+        <div class="pfac-day-header">
+          <div class="pfac-day-title" id="pfac-day-title">Cargando...</div>
+          <div class="pfac-day-count" id="pfac-day-count"></div>
+        </div>
+        <div id="pfac-ordenes-container"></div>
+      </div>
+
+      <!-- Panel: Indicadores -->
+      <div id="pfac-ppanel-indicadores" style="display:none;">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+          <div class="pfac-metric-mini"><div class="label">Total facturado</div><div class="value" id="pfac-ind-total" style="font-size:16px">$0</div></div>
+          <div class="pfac-metric-mini success"><div class="label">Órdenes facturadas</div><div class="value" id="pfac-ind-count">0</div></div>
+          <div class="pfac-metric-mini teal"><div class="label">Clientes activos</div><div class="value" id="pfac-ind-clientes">0</div></div>
+          <div class="pfac-metric-mini orange"><div class="label">Pendientes</div><div class="value" id="pfac-ind-pendientes">0</div></div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.08);">
+          <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);">Registro de facturas emitidas</span>
+            <span id="pfac-ind-filtro-mes-label" style="font-size:11px;color:var(--text-hint);margin-left:auto;"></span>
+          </div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px;" id="pfac-ind-tabla">
+              <thead>
+                <tr style="background:var(--bg);">
+                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">N° Factura</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Fecha</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Cliente</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">NIT</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Producto</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Modalidad</th>
+                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Ejecutivo</th>
+                  <th style="padding:9px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Valor</th>
+                </tr>
+              </thead>
+              <tbody id="pfac-ind-tabla-body">
+                <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-hint);font-style:italic;">Sin facturas emitidas aún.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div></div>`;
+  setTimeout(() => pfac_inicializarPortal(), 60);
+}
+
+function pfac_inicializarPortal(){
+  if(!document.getElementById('pfac-cal-grid')) return;
+  pfac_renderCalendario();
+  const hoyStr = new Date().toISOString().slice(0,10);
+  pfac_seleccionarFecha(hoyStr);
+  pfac_actualizarMetricas();
+}
+
+
 </script>
 
 <!-- FACTURACIÓN MODALES -->
@@ -7194,6 +8205,46 @@ function inicializarModuloFacturacion(){
     </div>
   </div>
 </div>
+
+
+<!-- PORTAL FACTURACIÓN MODALES -->
+<!-- Modal número de factura -->
+<div class="pfac-modal-backdrop" id="modal-num-factura">
+  <div class="pfac-modal-box">
+    <div class="pfac-modal-title">Registrar número de factura</div>
+    <div class="pfac-modal-body">Ingrese el número de factura antes de marcar esta orden como facturada. Este dato quedará registrado y no podrá editarse.</div>
+    <div id="modal-factura-orden-info" style="background:var(--bg);border-radius:8px;padding:10px 14px;font-size:12px;line-height:1.8;margin-bottom:16px;"></div>
+    <div style="margin-bottom:16px;">
+      <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);display:block;margin-bottom:6px;">N° de factura <span style="color:var(--danger)">*</span></label>
+      <input type="text" id="input-num-factura" placeholder="Ej: FE-2026-001234"
+        style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-weight:600;font-family:inherit;color:var(--text);"
+        oninput="document.getElementById('err-num-factura').style.display='none'">
+      <div id="err-num-factura" style="display:none;font-size:11px;color:var(--danger);margin-top:4px;">El número de factura es obligatorio.</div>
+    </div>
+    <div class="pfac-modal-actions">
+      <button class="pfac-btn-sm btn-omitir" onclick="cerrarModalNumFactura()">Cancelar</button>
+      <button class="pfac-btn-sm btn-facturar" onclick="confirmarNumFactura()">
+        ✓ Confirmar facturada
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal IPC -->
+<div class="pfac-modal-backdrop" id="modal-ipc">
+  <div class="pfac-modal-box">
+    <div class="pfac-modal-title">Confirmar ajuste IPC</div>
+    <div class="pfac-modal-body">Este ajuste actualizará el valor unitario de todas las órdenes pendientes programadas a partir de hoy.</div>
+    <div class="pfac-modal-summary" id="modal-ipc-summary"></div>
+    <div class="pfac-modal-actions">
+      <button class="pfac-btn-sm btn-omitir" onclick="cerrarModalIPC()">Cancelar</button>
+      <button class="pfac-btn-sm btn-facturar" onclick="confirmarIPC()">Confirmar ajuste</button>
+    </div>
+  </div>
+</div>
+
+<!-- PORTAL TOAST -->
+<div class="pfac-toast" id="pfac-toast"></div>
 
 </body>
 </html>
