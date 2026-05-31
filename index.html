@@ -8007,7 +8007,7 @@ function pfac_renderOrdenesDia(iso) {
     } catch(e) {}
 
     // Tags
-    const tagCuota = `<span style="font-size:11px;font-weight:700;background:#E8EEF8;color:#19428C;padding:3px 10px;border-radius:12px;">Cuota ${o.cuota_num}/${o.cuotas_total||'?'}</span>`;
+    const tagCuota = `<span style="font-size:11px;font-weight:700;background:#E8EEF8;color:#19428C;padding:3px 10px;border-radius:12px;">Cuota ${o.cuota_num}${o.modalidad!=='Recurrente'?'/'+(o.cuotas_total||'?'):''}</span>`;
     const tagMod = o.modalidad === 'Recurrente'
       ? `<span style="font-size:11px;font-weight:700;background:#E1F5EE;color:#0F6E56;padding:3px 10px;border-radius:12px;">Recurrente${o.frecuencia_recurrencia?' · '+o.frecuencia_recurrencia:''}</span>`
       : o.modalidad === 'Comodato'
@@ -8070,9 +8070,9 @@ function pfac_toggleDetalle(cardId) {
   if (!el) return;
   const visible = el.style.display !== 'none';
   el.style.display = visible ? 'none' : 'block';
-  // Actualizar texto del botón
-  const btn = el.previousElementSibling?.querySelector('button') || el.parentElement.querySelector('button[onclick*="toggleDetalle"]');
-  if (btn) btn.textContent = visible ? 'Ver detalle ▾' : 'Ocultar detalle ▴';
+  // Actualizar texto del botón buscándolo por su atributo onclick
+  const btn = document.querySelector(`button[onclick="pfac_toggleDetalle('${cardId}')"]`);
+  if (btn) btn.innerHTML = visible ? 'Ver detalle ▾' : 'Ocultar detalle ▴';
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -8709,8 +8709,8 @@ async function pfac_inicializarPortal(){
       <div id="err-num-factura" style="display:none;font-size:11px;color:var(--danger);margin-top:4px;">El número de factura es obligatorio.</div>
     </div>
     <div class="pfac-modal-actions">
-      <button class="pfac-btn-sm btn-omitir" onclick="cerrarModalNumFactura()">Cancelar</button>
-      <button class="pfac-btn-sm btn-facturar" onclick="confirmarNumFactura()">
+      <button class="pfac-btn-sm pfac-btn-omitir" onclick="pfac_cerrarModalNumFactura()">Cancelar</button>
+      <button class="pfac-btn-sm pfac-btn-facturar" onclick="pfac_confirmarNumFactura()">
         ✓ Confirmar facturada
       </button>
     </div>
