@@ -8291,8 +8291,9 @@ function pfac_estadoDias(year, month) {
   const mapa = {};
   delMes.forEach(o => {
     const d = parseInt(o.fecha_factura.split('-')[2]);
-    if (!mapa[d]) mapa[d] = o.estado;
-    else if (mapa[d] !== o.estado) mapa[d] = 'mixta';
+    const est = o.estado.toLowerCase();
+    if (!mapa[d]) mapa[d] = est;
+    else if (mapa[d] !== est) mapa[d] = 'mixta';
   });
   return mapa;
 }
@@ -8396,6 +8397,9 @@ function pfac_renderOrdenesDia(iso) {
   }
 
   container.innerHTML = filtradas.map(o => {
+    // safeId debe definirse primero — se usa tanto en tablaDetalle como en los botones
+    const safeId = o.id.replace(/[^a-z0-9]/gi,'-');
+
     // Detalle de ítems (acordeón)
     let tablaDetalle = '';
     try {
@@ -8452,7 +8456,6 @@ function pfac_renderOrdenesDia(iso) {
       : '';
 
     // Botón detalle y exportes
-    const safeId = o.id.replace(/[^a-z0-9]/gi,'-');
     const btnDetalle = `<button id="btn-det-${safeId}" onclick="pfac_toggleDetalle('${safeId}')"
       style="font-size:11px;font-weight:600;background:#F4F6FA;color:#19428C;border:1px solid #DDE3EE;border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;">
       Ver detalle ▾
