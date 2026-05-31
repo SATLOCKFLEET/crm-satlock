@@ -6573,56 +6573,59 @@ function setPlazo(id, plazo) {
    En producción: SELECT DISTINCT empresa, nit, link_docs
    FROM oportunidades WHERE nit = $1 LIMIT 1
    ═══════════════════════════════════════════════════════ */
-const ClientesCRM = (() => {
-  const clientes = [
-    { nit: '890205001', empresa: 'Paz del Río S.A.',               link_docs: 'https://drive.google.com/drive/folders/paz-del-rio' },
-    { nit: '900123456', empresa: 'Celeris / Schryver',             link_docs: 'https://drive.google.com/drive/folders/celeris' },
-    { nit: '900654321', empresa: 'Transprensa S.A.S.',             link_docs: '' },
-    { nit: '900789123', empresa: 'Interworld Land S.A.S.',         link_docs: 'https://drive.google.com/drive/folders/interworld' },
-    { nit: '860007538', empresa: 'Federación Nacional de Cafeteros', link_docs: '' },
-  ];
-  return {
-    buscarPorNIT: (nit) => clientes.find(c => c.nit === nit) || null,
-    /* Stub Supabase:
-    buscarPorNITRemoto: async (nit) => {
-      const { data } = await supabase
+const ClientesCRM = {
+  /* Consulta oportunidades en Supabase — devuelve el primer registro con ese NIT */
+  buscarPorNIT: async (nit) => {
+    try {
+      const { data, error } = await sb
         .from('oportunidades')
-        .select('empresa, nit, link_docs')
+        .select('empresa, nit, link_drive')
         .eq('nit', nit)
         .limit(1)
-        .single();
-      return data;
-    } */
-  };
-})();
+        .maybeSingle();
+      if (error || !data) return null;
+      return {
+        nit:       data.nit,
+        empresa:   data.empresa,
+        link_docs: data.link_drive || '',
+      };
+    } catch(e) {
+      console.warn('ClientesCRM.buscarPorNIT error:', e);
+      return null;
+    }
+  }
+};
 
-function validateNIT(input) {
+async function validateNIT(input) {
   input.value = input.value.replace(/\D/g, '').slice(0, 9);
   clearFieldError('nit');
   const badge = document.getElementById('nit-match-badge');
-  badge.style.display = 'none';
+  if (badge) badge.style.display = 'none';
 
   if (input.value.length === 9) {
-    const cliente = ClientesCRM.buscarPorNIT(input.value);
+    const cliente = await ClientesCRM.buscarPorNIT(input.value);
     if (cliente) {
-      const empresaEl = document.getElementById('empresa');
+      const empresaEl  = document.getElementById('empresa');
       const linkDocsEl = document.getElementById('linkDocs');
 
-      if (!empresaEl.value.trim()) {
+      if (empresaEl && !empresaEl.value.trim()) {
         empresaEl.value = cliente.empresa;
         empresaEl.classList.add('readonly');
         clearFieldError('empresa');
       }
-      if (!linkDocsEl.value.trim() && cliente.link_docs) {
+      if (linkDocsEl && !linkDocsEl.value.trim() && cliente.link_docs) {
         linkDocsEl.value = cliente.link_docs;
       }
 
-      badge.style.display = 'inline-block';
-      setTimeout(() => { badge.style.display = 'none'; }, 4000);
+      if (badge) {
+        badge.textContent   = '✓ Cliente encontrado en CRM';
+        badge.style.display = 'inline-block';
+        setTimeout(() => { badge.style.display = 'none'; }, 4000);
+      }
     }
   } else {
     const empresaEl = document.getElementById('empresa');
-    empresaEl.classList.remove('readonly');
+    if (empresaEl) empresaEl.classList.remove('readonly');
   }
 }
 
@@ -6698,23 +6701,68 @@ function bloquearBotonesPostGuardado() {
 /* ═══════════════════════════════════════════════════════
    GUARDAR SOLICITUD
    ═══════════════════════════════════════════════════════ */
-function guardarSolicitud() {
+async async function guardarSolicitud() {
   if (!validarFormulario()) return;
 
   const solicitud    = buildSolicitud('Pendiente');
   const detalleCopia = billingItems.map(i => ({ ...i }));
-  solicitudes.unshift({ ...solicitud, detalle: detalleCopia });
-  renderHistorial();
-  renderEstado();
 
-  // Guardar referencia global (para los botones sueltos del formulario si el modal se cierra)
-  habilitarBotonesPostGuardado({ ...solicitud, detalle: detalleCopia });
+  try {
+    // 1. Insertar cabecera en Supabase
+    const { data: solData, error: solErr } = await sb
+      .from('solicitudes_facturacion')
+      .insert({
+        consecutivo:    solicitud.consecutivo,
+        fecha:          solicitud.fecha_iso,
+        fecha_iso:      solicitud.fecha_iso,
+        empresa:        solicitud.empresa,
+        nit:            solicitud.nit,
+        link_propuesta: solicitud.link_propuesta || null,
+        link_docs:      solicitud.link_docs || null,
+        observaciones:  solicitud.observaciones || null,
+        ipc_anual:      solicitud.ipc_anual || 0,
+        total_general:  solicitud.total_general,
+        usuario_id:     USER.id,
+        estado:         'Pendiente',
+        linea:          solicitud.linea,
+      })
+      .select('id')
+      .single();
 
-  // Limpiar formulario
-  limpiarSoloFormulario();
+    if (solErr) throw solErr;
 
-  // Abrir modal de detalle con la solicitud recién guardada
-  verDetalle(solicitud.consecutivo);
+    // 2. Insertar detalle
+    if (detalleCopia.length > 0) {
+      const detalleRows = detalleCopia.map(d => ({
+        solicitud_id:    solData.id,
+        item:            d.item,
+        descripcion:     d.descripcion,
+        tipo_inventario: d.tipo_inventario,
+        tipo_item:       d.tipo_item,
+        modalidad:       d.modalidad,
+        plazo_comodato:  d.plazo_comodato || null,
+        cantidad:        d.cantidad,
+        valor_unitario:  d.valor_unitario,
+      }));
+      const { error: detErr } = await sb
+        .from('solicitudes_facturacion_detalle')
+        .insert(detalleRows);
+      if (detErr) throw detErr;
+    }
+
+    // 3. Actualizar memoria local
+    const solConDetalle = { ...solicitud, detalle: detalleCopia, _uuid: solData.id };
+    solicitudes.unshift(solConDetalle);
+    renderHistorial();
+    renderEstado();
+    habilitarBotonesPostGuardado(solConDetalle);
+    limpiarSoloFormulario();
+    verDetalle(solicitud.consecutivo);
+
+  } catch(e) {
+    console.error('Error guardando solicitud:', e);
+    showAlert('danger', `Error al guardar: ${e.message || 'revise la consola'}`);
+  }
 }
 
 /* Limpia campos y tabla SIN tocar los botones ni solicitudGuardada */
@@ -6793,32 +6841,72 @@ function cerrarModal() {
   const _mEr=document.getElementById('modalEnvio'); if(_mEr){_mEr.classList.remove('show');}
 }
 
-async function confirmarEnvio() {
+async async function confirmarEnvio() {
   cerrarModal();
   if (!solicitudGuardada) return;
   const solicitud = { ...solicitudGuardada, estado: 'Enviada', updated_at: new Date().toLocaleString('es-CO') };
-  const detalle = solicitud.detalle || [];
+  const detalle   = solicitud.detalle || [];
 
-  // Actualizar estado en el historial
-  const idx = solicitudes.findIndex(x => x.consecutivo === solicitud.consecutivo);
-  if (idx !== -1) {
-    solicitudes[idx].estado     = 'Enviada';
-    solicitudes[idx].updated_at = solicitud.updated_at;
-  }
+  try {
+    // 1. Actualizar estado en Supabase
+    const { error: updErr } = await sb
+      .from('solicitudes_facturacion')
+      .update({ estado: 'Enviada' })
+      .eq('consecutivo', solicitud.consecutivo);
+    if (updErr) throw updErr;
 
-  // Generar órdenes programadas (Recurrente + Comodato)
-  const nuevasOrdenes = OrdenesProgramadasService.generarOrdenes(solicitud);
-  ordenesProgramadas.push(...nuevasOrdenes);
-  const resumenOrdenes = nuevasOrdenes.length > 0
-    ? ` Se programaron ${nuevasOrdenes.length} orden(es) de facturación recurrente.`
-    : '';
+    // 2. Generar y persistir órdenes programadas (Recurrente + Comodato)
+    const nuevasOrdenes = OrdenesProgramadasService.generarOrdenes(solicitud);
 
-  const result = await FacturacionService.enviarSolicitud(solicitud, detalle);
-  if (result.ok) {
-    renderHistorial();
-    renderEstado();
-    showAlert('success', `Solicitud ${solicitud.consecutivo} enviada correctamente.${resumenOrdenes}`);
-    bloquearBotonesPostGuardado();
+    if (nuevasOrdenes.length > 0) {
+      const ordenesRows = nuevasOrdenes.map(o => ({
+        id:            o.id,
+        solicitud_id:  o.solicitud_id,
+        empresa:       o.empresa,
+        nit:           o.nit,
+        ejecutivo:     o.ejecutivo,
+        item:          o.item,
+        descripcion:   o.descripcion,
+        modalidad:     o.modalidad,
+        cuota_num:     o.cuota_num,
+        cuotas_total:  o.cuotas_total || null,
+        fecha_factura: o.fecha_factura,
+        cantidad:      o.cantidad,
+        valor_unitario: o.valor_unitario,
+        ipc_aplicado:  o.ipc_aplicado || 0,
+        estado:        'Pendiente',
+      }));
+
+      const { error: ordErr } = await sb
+        .from('ordenes_programadas')
+        .insert(ordenesRows);
+      if (ordErr) throw ordErr;
+
+      ordenesProgramadas.push(...nuevasOrdenes);
+    }
+
+    // 3. Actualizar memoria local
+    const idx = solicitudes.findIndex(x => x.consecutivo === solicitud.consecutivo);
+    if (idx !== -1) {
+      solicitudes[idx].estado     = 'Enviada';
+      solicitudes[idx].updated_at = solicitud.updated_at;
+    }
+
+    const resumenOrdenes = nuevasOrdenes.length > 0
+      ? ` Se programaron ${nuevasOrdenes.length} orden(es) de facturación recurrente.`
+      : '';
+
+    const result = await FacturacionService.enviarSolicitud(solicitud, detalle);
+    if (result.ok) {
+      renderHistorial();
+      renderEstado();
+      showAlert('success', `Solicitud ${solicitud.consecutivo} enviada correctamente.${resumenOrdenes}`);
+      bloquearBotonesPostGuardado();
+    }
+
+  } catch(e) {
+    console.error('Error enviando solicitud:', e);
+    showAlert('danger', `Error al enviar: ${e.message || 'revise la consola'}`);
   }
 }
 
@@ -7284,9 +7372,55 @@ function limpiarFormulario() {
 /* ═══════════════════════════════════════════════════════
    DATOS DEMO PARA HISTORIAL
    ═══════════════════════════════════════════════════════ */
-function cargarDatosDemoHistorial() {
-  // Datos demo eliminados — arranca limpio para producción junio 2026
-  solicitudes = [];
+async function cargarDatosDemoHistorial() {
+  try {
+    const { data, error } = await sb
+      .from('solicitudes_facturacion')
+      .select(`
+        consecutivo, fecha, empresa, nit, link_propuesta, link_docs,
+        observaciones, ipc_anual, total_general, estado, linea,
+        updated_at, usuario_id,
+        solicitudes_facturacion_detalle (
+          item, descripcion, tipo_inventario, tipo_item,
+          modalidad, plazo_comodato, cantidad, valor_unitario, total
+        )
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    solicitudes = (data || []).map(s => ({
+      consecutivo:    s.consecutivo,
+      fecha:          new Date(s.fecha).toLocaleDateString('es-CO'),
+      fecha_iso:      s.fecha,
+      ejecutivo:      PERFIL?.nombre || '',
+      linea:          s.linea,
+      empresa:        s.empresa,
+      nit:            s.nit,
+      link_propuesta: s.link_propuesta || '',
+      link_docs:      s.link_docs || '',
+      observaciones:  s.observaciones || '',
+      ipc_anual:      s.ipc_anual || 0,
+      total_general:  parseFloat(s.total_general) || 0,
+      estado:         s.estado,
+      updated_at:     s.updated_at ? new Date(s.updated_at).toLocaleString('es-CO') : '',
+      detalle: (s.solicitudes_facturacion_detalle || []).map(d => ({
+        item:            d.item,
+        descripcion:     d.descripcion,
+        tipo_inventario: d.tipo_inventario,
+        tipo_item:       d.tipo_item,
+        modalidad:       d.modalidad,
+        plazo_comodato:  d.plazo_comodato,
+        cantidad:        d.cantidad,
+        valor_unitario:  parseFloat(d.valor_unitario) || 0,
+        total:           parseFloat(d.total) || 0,
+      })),
+    }));
+
+  } catch(e) {
+    console.error('Error cargando historial de facturación:', e);
+    solicitudes = [];
+  }
 }
 
 /* Cerrar búsqueda al hacer click fuera */
@@ -7553,7 +7687,7 @@ const pfac_DIAS  = ['D','L','M','X','J','V','S'];
 
 function pfac_diasConOrdenes(year, month) {
   return new Set(
-    ordenes
+    pfac_ordenes
       .filter(o => o.estado !== 'Omitida')
       .map(o => o.fecha_factura)
       .filter(f => f.startsWith(`${year}-${String(month+1).padStart(2,'0')}`))
@@ -7722,7 +7856,7 @@ function pfac_cerrarModalNumFactura() {
   pfac__ordenPendienteFactura = null;
 }
 
-function pfac_confirmarNumFactura() {
+async function pfac_confirmarNumFactura() {
   const num = document.getElementById('input-num-factura').value.trim();
   if (!num) {
     document.getElementById('err-num-factura').style.display = 'block';
@@ -7730,39 +7864,84 @@ function pfac_confirmarNumFactura() {
   }
   const o = pfac_ordenes.find(x => x.id === pfac__ordenPendienteFactura);
   if (!o) return;
-  o.estado        = 'Facturada';
-  o.num_factura   = num;
-  o.facturada_at  = new Date().toISOString();
-  o.facturada_por = PERFIL?.nombre || '';
-  pfac_cerrarModalNumFactura();
-  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
-  pfac_renderCalendario();
-  pfac_actualizarMetricas();
-  pfac_renderIndicadores();
-  toast('success', `Factura ${num} — ${o.empresa} registrada correctamente.`);
+
+  try {
+    const { error } = await sb
+      .from('ordenes_programadas')
+      .update({
+        estado:       'Facturada',
+        num_factura:  num,
+        facturada_at: new Date().toISOString(),
+        facturada_por: PERFIL?.nombre || '',
+      })
+      .eq('id', o.id);
+    if (error) throw error;
+
+    o.estado        = 'Facturada';
+    o.num_factura   = num;
+    o.facturada_at  = new Date().toISOString();
+    o.facturada_por = PERFIL?.nombre || '';
+    pfac_cerrarModalNumFactura();
+    pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+    pfac_renderCalendario();
+    pfac_actualizarMetricas();
+    pfac_renderIndicadores();
+    pfac_toast('success', `Factura ${num} — ${o.empresa} registrada correctamente.`);
+  } catch(e) {
+    pfac_toast('danger', `Error al guardar: ${e.message}`);
+    console.error(e);
+  }
 }
 
-function pfac_marcarOmitida(id) {
+async function pfac_marcarOmitida(id) {
   const o = pfac_ordenes.find(x => x.id === id);
   if (!o) return;
-  o.estado = 'Omitida';
-  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
-  pfac_renderCalendario();
-  pfac_actualizarMetricas();
-  toast('warning', 'Orden omitida. Puede reactivarla desde la misma vista.');
+  try {
+    const { error } = await sb
+      .from('ordenes_programadas')
+      .update({ estado: 'Omitida' })
+      .eq('id', id);
+    if (error) throw error;
+    o.estado = 'Omitida';
+    pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+    pfac_renderCalendario();
+    pfac_actualizarMetricas();
+    pfac_toast('warning', 'Orden omitida. Puede reactivarla desde la misma vista.');
+  } catch(e) {
+    pfac_toast('danger', `Error: ${e.message}`);
+  }
 }
 
-function pfac_deshacerEstado(id) {
+async function pfac_deshacerEstado(id) {
   const o = pfac_ordenes.find(x => x.id === id);
   if (!o) return;
-  o.estado       = 'Pendiente';
-  o.facturada_at = null;
-  o.num_factura  = null;
-  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
-  pfac_renderCalendario();
-  pfac_actualizarMetricas();
-  pfac_renderIndicadores();
-  toast('success', 'Orden devuelta a pendiente.');
+  try {
+    const { error } = await sb
+      .from('ordenes_programadas')
+      .update({ estado: 'Pendiente', num_factura: null, facturada_at: null, facturada_por: null })
+      .eq('id', id);
+    if (error) throw error;
+    o.estado       = 'Pendiente';
+    o.facturada_at = null;
+    o.num_factura  = null;
+    pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+    pfac_renderCalendario();
+    pfac_actualizarMetricas();
+    pfac_renderIndicadores();
+    pfac_toast('success', 'Orden devuelta a pendiente.');
+  } catch(e) {
+    pfac_toast('danger', `Error: ${e.message}`);
+  }
+}
+
+function pfac_toast(type, msg) {
+  const el = document.getElementById('pfac-toast');
+  if (!el) return;
+  const colors = { success: 'var(--teal)', warning: 'var(--amber)', danger: 'var(--red)' };
+  el.style.cssText = `position:fixed;bottom:24px;right:24px;padding:12px 18px;border-radius:8px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px;z-index:2000;box-shadow:0 4px 16px rgba(0,0,0,.15);max-width:380px;background:${colors[type]||colors.success};color:white;`;
+  el.textContent = msg;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 4000);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -7826,12 +8005,12 @@ function pfac_renderIndicadores() {
 /* ═══════════════════════════════════════════════════════
    IPC
    ═══════════════════════════════════════════════════════ */
-let pfac_pfac_ipcPendiente = 0;
+let pfac_ipcPendiente = 0;
 
 function pfac_abrirModalIPC() {
   const val = parseFloat(document.getElementById('pfac-ipc-nuevo').value);
   if (!val || val <= 0 || val > 50) {
-    toast('warning', 'Ingrese un porcentaje IPC válido (entre 0.1% y 50%).');
+    pfac_toast('warning', 'Ingrese un porcentaje IPC válido (entre 0.1% y 50%).');
     return;
   }
   pfac_ipcPendiente = val;
@@ -7851,20 +8030,46 @@ function pfac_cerrarModalIPC() {
   document.getElementById('modal-ipc').classList.remove('show');
 }
 
-function pfac_confirmarIPC() {
+async function pfac_confirmarIPC() {
   pfac_cerrarModalIPC();
-  let count = 0;
-  pfac_ordenes.forEach(o => {
-    if (o.estado === 'Pendiente' && o.fecha_factura > pfac_hoyISO) {
-      o.valor_unitario = Math.round(o.valor_unitario * (1 + pfac_ipcPendiente / 100));
-      o.ipc_aplicado   = pfac_ipcPendiente;
-      count++;
-    }
-  });
-  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
-  pfac_actualizarMetricas();
-  document.getElementById('pfac-ipc-nuevo').value = '';
-  toast('success', `IPC del ${pfac_ipcPendiente}% aplicado a ${count} orden(es).`);
+  const ipc = pfac_ipcPendiente;
+  const hoyISO = new Date().toISOString().slice(0, 10);
+  const afectadas = pfac_ordenes.filter(o => o.estado === 'Pendiente' && o.fecha_factura > hoyISO);
+
+  if (afectadas.length === 0) {
+    pfac_toast('warning', 'No hay órdenes futuras pendientes para ajustar.');
+    return;
+  }
+
+  try {
+    // Actualizar en Supabase una a una con los nuevos valores
+    const updates = afectadas.map(o => {
+      const nuevoValor = Math.round(o.valor_unitario * (1 + ipc / 100));
+      return sb
+        .from('ordenes_programadas')
+        .update({ valor_unitario: nuevoValor, ipc_aplicado: ipc })
+        .eq('id', o.id);
+    });
+
+    const resultados = await Promise.all(updates);
+    const errores = resultados.filter(r => r.error);
+    if (errores.length > 0) throw errores[0].error;
+
+    // Actualizar memoria local
+    afectadas.forEach(o => {
+      o.valor_unitario = Math.round(o.valor_unitario * (1 + ipc / 100));
+      o.ipc_aplicado   = ipc;
+    });
+
+    pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+    pfac_actualizarMetricas();
+    document.getElementById('pfac-ipc-nuevo').value = '';
+    pfac_toast('success', `IPC del ${ipc}% aplicado a ${afectadas.length} orden(es) y guardado en Supabase.`);
+
+  } catch(e) {
+    pfac_toast('danger', `Error al aplicar IPC: ${e.message}`);
+    console.error(e);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -7875,7 +8080,7 @@ function pfac_actualizarMetricas() {
   const delMes = pfac_ordenes.filter(o => o.fecha_factura.startsWith(mesStr));
   const facturadas = delMes.filter(o => o.estado === 'Facturada').length;
   const pendientes = delMes.filter(o => o.estado === 'Pendiente').length;
-  const mrr = ordenes
+  const mrr = pfac_ordenes
     .filter(o => o.estado === 'Pendiente' && o.fecha_factura.startsWith(mesStr))
     .reduce((a, o) => a + o.valor_unitario * o.cantidad, 0);
 
@@ -8048,8 +8253,44 @@ function renderPortalFacturacion(container){
   setTimeout(() => pfac_inicializarPortal(), 60);
 }
 
-function pfac_inicializarPortal(){
+async function pfac_inicializarPortal(){
   if(!document.getElementById('pfac-cal-grid')) return;
+
+  // Cargar órdenes programadas desde Supabase
+  try {
+    const { data, error } = await sb
+      .from('ordenes_programadas')
+      .select('*')
+      .order('fecha_factura', { ascending: true });
+
+    if (error) throw error;
+
+    pfac_ordenes = (data || []).map(o => ({
+      id:            o.id,
+      solicitud_id:  o.solicitud_id,
+      empresa:       o.empresa,
+      nit:           o.nit,
+      ejecutivo:     o.ejecutivo,
+      item:          o.item,
+      descripcion:   o.descripcion,
+      modalidad:     o.modalidad,
+      cuota_num:     o.cuota_num,
+      cuotas_total:  o.cuotas_total,
+      fecha_factura: o.fecha_factura,
+      cantidad:      o.cantidad,
+      valor_unitario: parseFloat(o.valor_unitario) || 0,
+      ipc_aplicado:  parseFloat(o.ipc_aplicado) || 0,
+      estado:        o.estado,
+      num_factura:   o.num_factura || null,
+      facturada_at:  o.facturada_at || null,
+      facturada_por: o.facturada_por || null,
+    }));
+
+  } catch(e) {
+    console.error('Error cargando órdenes programadas:', e);
+    pfac_ordenes = [];
+  }
+
   pfac_renderCalendario();
   const hoyStr = new Date().toISOString().slice(0,10);
   pfac_seleccionarFecha(hoyStr);
