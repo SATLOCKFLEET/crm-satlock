@@ -5872,7 +5872,7 @@ document.addEventListener('DOMContentLoaded', () => {
 /* ═══════════════════════════════════════════════════════
    NAVEGACIÓN TABS
    ═══════════════════════════════════════════════════════ */
-function switchTab(tab) {
+function _facSwitchTabLegacy(tab) {
   document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.module-tab').forEach(t => t.classList.remove('active'));
   document.getElementById('panel-' + tab).classList.add('active');
