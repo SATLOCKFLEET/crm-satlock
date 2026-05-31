@@ -6248,15 +6248,18 @@ const FacturacionService = {
    ═══════════════════════════════════════════════════════ */
 const OrdenesProgramadasService = {
 
-  /* Añade N meses a una fecha ISO.
-     Regla: si el día original es > 28, se ancla a 28 para garantizar
-     que la fecha exista en todos los meses, incluyendo febrero en años
-     no bisiestos. Esto evita que facturas del 29, 30 o 31 se pierdan. */
+  /* Añade N meses a una fecha ISO (YYYY-MM-DD).
+     Usa componentes explícitos para evitar desfase por timezone.
+     Regla: días > 28 se anclan al 28 para garantizar existencia
+     en todos los meses incluyendo febrero en años no bisiestos. */
   _addMeses(fechaISO, meses) {
-    const orig = new Date(fechaISO);
-    const diaSeguro = Math.min(orig.getDate(), 28);
-    const resultado = new Date(orig.getFullYear(), orig.getMonth() + meses, diaSeguro);
-    return resultado.toISOString().slice(0, 10);
+    const [anio, mes, dia] = fechaISO.split('-').map(Number);
+    const diaSeguro = Math.min(dia, 28);
+    const fecha = new Date(anio, mes - 1 + meses, diaSeguro);
+    const y = fecha.getFullYear();
+    const m = String(fecha.getMonth() + 1).padStart(2, '0');
+    const d = String(fecha.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   },
 
   /* Aplica ajuste IPC anual al valor unitario.
@@ -6833,7 +6836,7 @@ function buildSolicitud(estado) {
   return {
     consecutivo:   document.getElementById('consecutivo').value,
     fecha:         hoy.toLocaleDateString('es-CO'),
-    fecha_iso:     hoy.toISOString().slice(0, 10),
+    fecha_iso:     `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-${String(hoy.getDate()).padStart(2,'0')}`,
     ejecutivo:     currentUser.nombre,
     linea:         currentUser.linea,
     empresa:       document.getElementById('empresa').value.trim(),
