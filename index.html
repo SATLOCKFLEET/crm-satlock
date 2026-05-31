@@ -7466,6 +7466,68 @@ async function confirmarEnvio() {
       renderEstado();
       showAlert('success', `Solicitud ${solicitud.consecutivo} enviada correctamente.${resumenOrdenes}`);
       bloquearBotonesPostGuardado();
+
+      // Notificación por Gmail a Tatiana y Jackeline
+      if (typeof enviarCorreoGmail === 'function' && gcalToken) {
+        const destinatarios = 'Tatiana.mora@satlock.com, jackeline.varela@satlock.com';
+        const asunto = `Nueva solicitud de facturación — ${solicitud.consecutivo} | ${solicitud.empresa}`;
+        const itemsHtml = detalle.map(d => `
+          <tr>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;">${d.item}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;">${d.descripcion}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;">${d.modalidad}${d.frecuencia_recurrencia?' · '+d.frecuencia_recurrencia:''}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">${d.cantidad}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">$ ${Math.round(d.valor_unitario).toLocaleString('es-CO')}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600;">$ ${Math.round(d.total).toLocaleString('es-CO')}</td>
+          </tr>`).join('');
+
+        const cuerpo = `
+          <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;">
+            <div style="background:#19428C;padding:20px 28px;border-radius:8px 8px 0 0;">
+              <h2 style="color:white;margin:0;font-size:18px;">Nueva solicitud de facturación</h2>
+              <p style="color:rgba(255,255,255,.75);margin:4px 0 0;font-size:13px;">Satlock Fleet — Sistema CRM</p>
+            </div>
+            <div style="background:#f8f9fc;padding:20px 28px;border:1px solid #e0e4ef;border-top:none;">
+              <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+                <tr><td style="padding:4px 0;color:#666;width:160px;">Consecutivo</td><td style="padding:4px 0;font-weight:700;color:#19428C;">${solicitud.consecutivo}</td></tr>
+                <tr><td style="padding:4px 0;color:#666;">Empresa</td><td style="padding:4px 0;font-weight:600;">${solicitud.empresa}</td></tr>
+                <tr><td style="padding:4px 0;color:#666;">NIT</td><td style="padding:4px 0;">${solicitud.nit}</td></tr>
+                <tr><td style="padding:4px 0;color:#666;">Ejecutivo comercial</td><td style="padding:4px 0;">${solicitud.ejecutivo_comercial || solicitud.ejecutivo}</td></tr>
+                <tr><td style="padding:4px 0;color:#666;">Primera factura</td><td style="padding:4px 0;">${solicitud.fecha_primera_factura || '—'}</td></tr>
+                <tr><td style="padding:4px 0;color:#666;">Día de corte</td><td style="padding:4px 0;">${solicitud.dia_corte ? 'Día '+solicitud.dia_corte+' de cada mes' : '—'}</td></tr>
+                <tr><td style="padding:4px 0;color:#666;">Total general</td><td style="padding:4px 0;font-weight:700;font-size:15px;color:#19428C;">$ ${Math.round(solicitud.total_general).toLocaleString('es-CO')}</td></tr>
+                ${solicitud.observaciones ? `<tr><td style="padding:4px 0;color:#666;">Observaciones</td><td style="padding:4px 0;font-style:italic;">${solicitud.observaciones}</td></tr>` : ''}
+              </table>
+
+              <h3 style="font-size:13px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;">Detalle de ítems</h3>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;background:white;border:1px solid #e0e4ef;border-radius:6px;overflow:hidden;">
+                <thead>
+                  <tr style="background:#19428C;color:white;">
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;">Ítem</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;">Descripción</th>
+                    <th style="padding:8px 10px;text-align:left;font-weight:600;">Modalidad</th>
+                    <th style="padding:8px 10px;text-align:right;font-weight:600;">Cant.</th>
+                    <th style="padding:8px 10px;text-align:right;font-weight:600;">V. Unit.</th>
+                    <th style="padding:8px 10px;text-align:right;font-weight:600;">Total</th>
+                  </tr>
+                </thead>
+                <tbody>${itemsHtml}</tbody>
+              </table>
+
+              ${solicitud.link_propuesta ? `<p style="margin-top:16px;font-size:12px;">📎 <a href="${solicitud.link_propuesta}" style="color:#19428C;">Ver propuesta comercial</a></p>` : ''}
+              ${solicitud.link_docs ? `<p style="margin-top:4px;font-size:12px;">📁 <a href="${solicitud.link_docs}" style="color:#19428C;">Carpeta de documentos</a></p>` : ''}
+            </div>
+            <div style="background:#e8eef8;padding:12px 28px;border-radius:0 0 8px 8px;font-size:11px;color:#666;text-align:center;">
+              Este correo fue generado automáticamente por el CRM Satlock Fleet.
+            </div>
+          </div>`;
+
+        await enviarCorreoGmail({
+          para:   destinatarios,
+          asunto: asunto,
+          cuerpo: cuerpo,
+        });
+      }
     }
 
   } catch(e) {
