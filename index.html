@@ -8210,16 +8210,16 @@ function inicializarModuloFacturacion(){
           <select id="ejecutivo_comercial" oninput="clearFieldError('ejecutivo_comercial')"
             style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;width:100%;background:white;color:var(--text);">
             <option value="">— Seleccione —</option>
-            <option>Jefe Comercial</option>
-            <option>Coordinador Fleet</option>
-            <option>Comercial 1 Fleet</option>
-            <option>Comercial 2 Fleet</option>
-            <option>Comercial Centro 1</option>
-            <option>Comercial Centro 2</option>
-            <option>Comercial Eje Cafetero</option>
-            <option>Comercial Antioquia</option>
-            <option>Comercial Sur</option>
-            <option>Comercial Costa Norte</option>
+            <option value="Jefe Comercial — Yezid Bautista">Jefe Comercial — Yezid Bautista</option>
+            <option value="Coordinador Fleet — Blanca Mesa">Coordinador Fleet — Blanca Mesa</option>
+            <option value="Comercial 1 Fleet — Daniel Macías">Comercial 1 Fleet — Daniel Macías</option>
+            <option value="Comercial 2 Fleet — Sin asignar">Comercial 2 Fleet — Sin asignar</option>
+            <option value="Comercial Centro 1 — Adriana Rada">Comercial Centro 1 — Adriana Rada</option>
+            <option value="Comercial Centro 2 — Enid Torres">Comercial Centro 2 — Enid Torres</option>
+            <option value="Comercial Eje Cafetero — Soraya Castaño">Comercial Eje Cafetero — Soraya Castaño</option>
+            <option value="Comercial Antioquia — Dayana Álvarez">Comercial Antioquia — Dayana Álvarez</option>
+            <option value="Comercial Sur — Lorena Guerrero">Comercial Sur — Lorena Guerrero</option>
+            <option value="Comercial Costa Norte — Sin asignar">Comercial Costa Norte — Sin asignar</option>
           </select>
           <span class="error-msg" id="err-ejecutivo_comercial">Seleccione el ejecutivo dueño del negocio.</span>
         </div>
@@ -9229,6 +9229,26 @@ async function pfac_inicializarPortal(){
   }
 }
 
+
+
+
+/* ═══════════════════════════════════════════════════════════════
+   CATÁLOGO DE ÍTEMS COMERCIALES CON MAPEO SIESA
+   Fuente: listado SIESA + nomenclatura comercial Satlock Fleet
+   ═══════════════════════════════════════════════════════════════ */
+const CATALOGO_FLEET  = [{"codigo_comercial": "VL103", "siesa": "564", "descripcion": "GPS TRACKER VL103M", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "JC181", "siesa": "540", "descripcion": "DASH CAM JC181", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "JC261", "siesa": "541", "descripcion": "DASH CAM JC261", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "JC371", "siesa": "584", "descripcion": "DASHCAM JC371", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "JC450", "siesa": "543", "descripcion": "DASH CAM JC450", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "SmartoneC", "siesa": "230", "descripcion": "SMARTONE C", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "LL309", "siesa": "509", "descripcion": "GPS TRACKER LL309", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "LL301", "siesa": "649", "descripcion": "GPS ASSET TRACKER LL301", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "PL601", "siesa": "611", "descripcion": "GPS PL601", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "SC1000", "siesa": "625", "descripcion": "EQUIPO SC1000ORBC", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "TAG704", "siesa": "627", "descripcion": "RASTREADOR TARJETA PB704", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "TAG705", "siesa": "629", "descripcion": "RASTREADOR TARJETA PB705", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "TAG706", "siesa": "630", "descripcion": "RASTREADOR TARJETA PB706", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "TAG708", "siesa": "628", "descripcion": "RASTREADOR TARJETA PB708", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "TAG713", "siesa": null, "descripcion": "RASTREADOR TAG713 (código SIESA pendiente)", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "VL802", "siesa": "473", "descripcion": "GPS TRACKER VL802", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "CMI", "siesa": "642", "descripcion": "AVL CMI — CENTRAL DE MONITOREO", "tipo_inventario": "VTS556524", "tipo_item": "Servicio"}];
+const CATALOGO_CARGA  = [{"codigo_comercial": "MAC", "siesa": "14", "descripcion": "MAC — MONITOREO ACTIVO DE CARGA", "tipo_inventario": "VTS556501", "tipo_item": "Servicio"}, {"codigo_comercial": "GCT", "siesa": "6", "descripcion": "GCT — GLOBAL CONTAINER TRACKING", "tipo_inventario": "VTS556511", "tipo_item": "Servicio"}, {"codigo_comercial": "INT", "siesa": "9", "descripcion": "INT — SERVICIO INTEGRACIÓN GPS", "tipo_inventario": "VTS556518", "tipo_item": "Servicio"}, {"codigo_comercial": "AMT", "siesa": "3", "descripcion": "AMT — ALQ MEDIO TECNOLÓGICO Y PLATAFORMA", "tipo_inventario": "VTS600101", "tipo_item": "Servicio"}, {"codigo_comercial": "LCT", "siesa": "12", "descripcion": "LCT — LOGISTIC CHECK POINTS TOOLS", "tipo_inventario": "VTS556513", "tipo_item": "Servicio"}, {"codigo_comercial": "SGT", "siesa": "24", "descripcion": "SGT — SISTEMA PARA GESTIÓN DE TRANSPORTE", "tipo_inventario": "VTS556512", "tipo_item": "Servicio"}, {"codigo_comercial": "CMI", "siesa": "642", "descripcion": "AVL CMI — CENTRAL DE MONITOREO", "tipo_inventario": "VTS556524", "tipo_item": "Servicio"}, {"codigo_comercial": "TAG704", "siesa": "627", "descripcion": "RASTREADOR TARJETA PB704", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "TAG705", "siesa": "629", "descripcion": "RASTREADOR TARJETA PB705", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "TAG706", "siesa": "630", "descripcion": "RASTREADOR TARJETA PB706", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "TAG708", "siesa": "628", "descripcion": "RASTREADOR TARJETA PB708", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}, {"codigo_comercial": "TAG713", "siesa": null, "descripcion": "RASTREADOR TAG713 (código SIESA pendiente)", "tipo_inventario": "INV143501", "tipo_item": "Inventario"}];
+
+/* Helper: dado un código comercial y línea, devuelve el ítem SIESA */
+function getItemComercial(codigoComercial, linea) {
+  const cat = (linea || '').toLowerCase() === 'carga' ? CATALOGO_CARGA : CATALOGO_FLEET;
+  return cat.find(i => i.codigo_comercial === codigoComercial) || null;
+}
+
+/* Helper: devuelve el catálogo filtrado por línea */
+function getCatalogoLinea(linea) {
+  return (linea || '').toLowerCase() === 'carga' ? CATALOGO_CARGA : CATALOGO_FLEET;
+}
 
 </script>
 
