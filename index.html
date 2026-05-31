@@ -6276,16 +6276,32 @@ const OrdenesProgramadasService = {
   },
 
   /* Genera las órdenes para una solicitud enviada.
-     Cuota 1 = fecha de la solicitud (cobro inmediato).
-     Cuota 2 = fechaBase + 1 intervalo, y así sucesivamente. */
+     Cuota 1 = fecha_primera_factura (definida por el ejecutivo).
+     Cuota 2 en adelante = día de corte de cada mes siguiente.
+     Todos los ítems recurrentes y comodato se agrupan en la misma fecha. */
   generarOrdenes(solicitud) {
-    const ordenes = [];
-    const fechaBase = solicitud.fecha_iso;     // 'YYYY-MM-DD'
-    const ipc       = solicitud.ipc_anual || 0;
-    const detalle   = solicitud.detalle || [];
+    const ordenes           = [];
+    const fechaPrimera      = solicitud.fecha_primera_factura;  // 'YYYY-MM-DD'
+    const diaCorte          = Math.min(solicitud.dia_corte || 1, 28);
+    const ipc               = solicitud.ipc_anual || 0;
+    const detalle           = solicitud.detalle || [];
+    const INTERVALO         = { Mensual: 1, Trimestral: 3, Semestral: 6, Anual: 12 };
 
-    // Meses entre cobros según frecuencia
-    const INTERVALO = { Mensual: 1, Trimestral: 3, Semestral: 6, Anual: 12 };
+    if (!fechaPrimera) return ordenes;  // sin fecha no hay órdenes
+
+    // Calcular las fechas de las cuotas 2 en adelante usando día de corte
+    const _fechaCuota = (cuotaNum, intervaloMeses) => {
+      if (cuotaNum === 1) return fechaPrimera;
+      // cuota 2 = mes siguiente al de fechaPrimera, en el día de corte
+      const base  = new Date(fechaPrimera.split('-')[0],
+                             parseInt(fechaPrimera.split('-')[1]) - 1,
+                             1);
+      base.setMonth(base.getMonth() + (cuotaNum - 1) * intervaloMeses);
+      const y = base.getFullYear();
+      const m = String(base.getMonth() + 1).padStart(2, '0');
+      const d = String(diaCorte).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
 
     detalle.forEach(item => {
       const modalidad = item.modalidad;
@@ -6294,7 +6310,6 @@ const OrdenesProgramadasService = {
       if (modalidad === 'Recurrente') {
         const freq      = item.frecuencia_recurrencia || 'Mensual';
         const intervalo = INTERVALO[freq] || 1;
-        // Proyectar 3 años / intervalo cobros (máx 36 cobros)
         const maxCobros = Math.ceil(36 / intervalo);
         for (let i = 0; i < maxCobros; i++) {
           const cuotaNum = i + 1;
@@ -6311,7 +6326,7 @@ const OrdenesProgramadasService = {
             frecuencia_recurrencia: freq,
             cuota_num:              cuotaNum,
             cuotas_total:           null,
-            fecha_factura:          this._addMeses(fechaBase, i * intervalo),
+            fecha_factura:          _fechaCuota(cuotaNum, intervalo),
             cantidad:               item.cantidad,
             valor_unitario:         valorU,
             total:                  valorU * item.cantidad,
@@ -6337,7 +6352,7 @@ const OrdenesProgramadasService = {
             modalidad:      'Comodato',
             cuota_num:      cuotaNum,
             cuotas_total:   plazo,
-            fecha_factura:  this._addMeses(fechaBase, i),
+            fecha_factura:  _fechaCuota(cuotaNum, 1),
             cantidad:       item.cantidad,
             valor_unitario: valorU,
             total:          valorU * item.cantidad,
@@ -6350,6 +6365,7 @@ const OrdenesProgramadasService = {
 
     return ordenes;
   }
+
 };
 
 /* Almacén en memoria de órdenes programadas (reemplazable por Supabase) */
@@ -6702,10 +6718,17 @@ function validarFormulario() {
     ok = false;
   }
 
+  const tieneRecurrencia = billingItems.some(i => i.modalidad === 'Recurrente' || i.modalidad === 'Comodato');
+  if (tieneRecurrencia) {
+    const fechaPrimera = document.getElementById('fechaPrimeraFactura')?.value;
+    if (!fechaPrimera) {
+      setFieldError('fechaPrimeraFactura', 'Requerida cuando hay ítems recurrentes o comodato.');
+      ok = false;
+    }
+  }
+
   return ok;
 }
-
-/* Variable de control: la solicitud activa guardada (para Excel/PDF/Envío) */
 let solicitudGuardada = null;
 
 function habilitarBotonesPostGuardado(sol) {
@@ -6760,6 +6783,8 @@ async function guardarSolicitud() {
         link_docs:      solicitud.link_docs || null,
         observaciones:  solicitud.observaciones || null,
         ipc_anual:      solicitud.ipc_anual || 0,
+        fecha_primera_factura: solicitud.fecha_primera_factura || null,
+        dia_corte:      solicitud.dia_corte || null,
         total_general:  solicitud.total_general,
         usuario_id:     USER.id,
         estado:         'Pendiente',
@@ -6814,6 +6839,10 @@ function limpiarSoloFormulario() {
   document.getElementById('linkDocs').value = '';
   document.getElementById('nit-match-badge').style.display = 'none';
   document.getElementById('ipcAnual').value = '';
+  const elFPF = document.getElementById('fechaPrimeraFactura');
+  const elDC  = document.getElementById('diaCorte');
+  if (elFPF) elFPF.value = '';
+  if (elDC)  elDC.value  = '';
   document.getElementById('observaciones').value = '';
   document.getElementById('searchProd').value = '';
   document.getElementById('searchResults').classList.remove('show');
@@ -6836,7 +6865,9 @@ function buildSolicitud(estado) {
     link_propuesta: document.getElementById('linkPropuesta').value.trim(),
     link_docs:     document.getElementById('linkDocs').value.trim(),
     observaciones: document.getElementById('observaciones').value.trim(),
-    ipc_anual:     parseFloat(document.getElementById('ipcAnual').value) || 0,
+    ipc_anual:              parseFloat(document.getElementById('ipcAnual').value) || 0,
+    fecha_primera_factura:  document.getElementById('fechaPrimeraFactura')?.value || null,
+    dia_corte:              parseInt(document.getElementById('diaCorte')?.value) || null,
     total_general: billingItems.reduce((a, i) => a + i.total, 0),
     estado:        estado,
     updated_at:    hoy.toLocaleString('es-CO'),
@@ -7643,6 +7674,21 @@ function inicializarModuloFacturacion(){
             <input type="number" id="ipcAnual" min="0" max="50" step="0.1" placeholder="Ej: 9.5" style="padding-right:32px;">
             <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px;font-weight:600;pointer-events:none">%</span>
           </div>
+        </div>
+        <div class="form-group">
+          <label>Fecha primera factura <span class="req">*</span></label>
+          <input type="date" id="fechaPrimeraFactura" oninput="clearFieldError('fechaPrimeraFactura')">
+          <span class="error-msg" id="err-fechaPrimeraFactura">Requerida cuando hay ítems recurrentes o comodato.</span>
+          <span style="font-size:11px;color:var(--text3);margin-top:3px;">Fecha en que se emite la primera factura de este negocio.</span>
+        </div>
+        <div class="form-group">
+          <label>Día de corte mensual <span style="font-weight:400;color:var(--text3)">(recurrencias)</span></label>
+          <div style="position:relative;">
+            <input type="number" id="diaCorte" min="1" max="28" step="1" placeholder="Ej: 15"
+              style="padding-right:40px;">
+            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:11px;pointer-events:none">/ mes</span>
+          </div>
+          <span style="font-size:11px;color:var(--text3);margin-top:3px;">Día del mes para las facturas 2 en adelante. Máx. 28.</span>
         </div>
       </div>
     </div>
