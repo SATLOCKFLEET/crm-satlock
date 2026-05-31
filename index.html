@@ -869,12 +869,20 @@ tbody tr:hover{background:var(--surface2)}
     margin: 1px auto 0;
   }
 
-  .pfac-cal-day.pfac-cal-day--pendiente { background:#FDF6E3; color:#7A5A0F; font-weight:700; }
-  .pfac-cal-day.pfac-cal-day--pendiente::after { content:''; display:block; width:6px; height:6px; background:#E8A020; border-radius:50%; margin:1px auto 0; }
-  .pfac-cal-day.pfac-cal-day--facturada { background:#E1F5EE; color:#1B7A4A; font-weight:700; }
-  .pfac-cal-day.pfac-cal-day--facturada::after { content:''; display:block; width:6px; height:6px; background:#1B7A4A; border-radius:50%; margin:1px auto 0; }
-  .pfac-cal-day.pfac-cal-day--mixta { background:#FFF0EC; color:#CC4A20; font-weight:700; }
-  .pfac-cal-day.pfac-cal-day--mixta::after { content:''; display:block; width:6px; height:6px; background:#FF5E34; border-radius:50%; margin:1px auto 0; }
+  #pfac-root .pfac-cal-day.pfac-cal-day--pendiente,
+  #pfac-cal-grid .pfac-cal-day--pendiente { background:#FDF6E3 !important; color:#7A5A0F !important; font-weight:700; }
+  #pfac-root .pfac-cal-day.pfac-cal-day--pendiente::after,
+  #pfac-cal-grid .pfac-cal-day--pendiente::after { content:''; display:block; width:6px; height:6px; background:#E8A020; border-radius:50%; margin:1px auto 0; }
+
+  #pfac-root .pfac-cal-day.pfac-cal-day--facturada,
+  #pfac-cal-grid .pfac-cal-day--facturada { background:#E1F5EE !important; color:#1B7A4A !important; font-weight:700; }
+  #pfac-root .pfac-cal-day.pfac-cal-day--facturada::after,
+  #pfac-cal-grid .pfac-cal-day--facturada::after { content:''; display:block; width:6px; height:6px; background:#1B7A4A; border-radius:50%; margin:1px auto 0; }
+
+  #pfac-root .pfac-cal-day.pfac-cal-day--mixta,
+  #pfac-cal-grid .pfac-cal-day--mixta { background:#FFF0EC !important; color:#CC4A20 !important; font-weight:700; }
+  #pfac-root .pfac-cal-day.pfac-cal-day--mixta::after,
+  #pfac-cal-grid .pfac-cal-day--mixta::after { content:''; display:block; width:6px; height:6px; background:#FF5E34; border-radius:50%; margin:1px auto 0; }
 
 
   .pfac-cal-day--today { background: var(--sat-blue, #19428C) !important; color: white !important; font-weight: 700; }
@@ -7369,7 +7377,7 @@ async function confirmarEnvio() {
         frecuencia_recurrencia: o.frecuencia_recurrencia || null,
         cuota_num:              o.cuota_num,
         cuotas_total:           o.cuotas_total || null,
-        fecha_factura:          o.fecha_factura,
+        fecha_factura:          o.fecha_factura ? String(o.fecha_factura).slice(0,10) : null,
         cantidad:               o.cantidad,
         valor_unitario:         o.valor_unitario,
         ipc_aplicado:           o.ipc_aplicado || 0,
@@ -8391,7 +8399,7 @@ function pfac_renderOrdenesDia(iso) {
     // Detalle de ítems (acordeón)
     let tablaDetalle = '';
     try {
-      const items = o.items_detalle ? JSON.parse(o.items_detalle) : [];
+      const items = o.items_detalle ? (typeof o.items_detalle === 'string' ? JSON.parse(o.items_detalle) : o.items_detalle) : [];
       if (items.length > 0) {
         const filas = items.map(i => {
           const colMod = i.modalidad === 'Recurrente' ? '#0F6E56'
@@ -8517,7 +8525,7 @@ function pfac_exportarExcel(id) {
   const o = pfac_getOrden(id);
   if (!o) return;
   let items = [];
-  try { items = o.items_detalle ? JSON.parse(o.items_detalle) : []; } catch(e) {}
+  try { items = o.items_detalle ? (typeof o.items_detalle === 'string' ? JSON.parse(o.items_detalle) : o.items_detalle) : []; } catch(e) {}
 
   const header = [['Satlock SAS — Detalle de Facturación'], [],
     ['Orden:', o.id], ['Solicitud:', o.solicitud_id], ['Empresa:', o.empresa],
@@ -8545,7 +8553,7 @@ async function pfac_exportarPDF(id) {
   const o = pfac_getOrden(id);
   if (!o) return;
   let items = [];
-  try { items = o.items_detalle ? JSON.parse(o.items_detalle) : []; } catch(e) {}
+  try { items = o.items_detalle ? (typeof o.items_detalle === 'string' ? JSON.parse(o.items_detalle) : o.items_detalle) : []; } catch(e) {}
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', format: 'letter' });
@@ -9031,7 +9039,7 @@ async function pfac_inicializarPortal(){
       frecuencia_recurrencia: o.frecuencia_recurrencia || null,
       cuota_num:              o.cuota_num,
       cuotas_total:           o.cuotas_total,
-      fecha_factura:          o.fecha_factura,
+      fecha_factura:          o.fecha_factura ? String(o.fecha_factura).slice(0,10) : null,
       cantidad:               o.cantidad,
       valor_unitario:         parseFloat(o.valor_unitario) || 0,
       ipc_aplicado:           parseFloat(o.ipc_aplicado) || 0,
