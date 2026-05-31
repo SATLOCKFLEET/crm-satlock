@@ -876,6 +876,11 @@ tbody tr:hover{background:var(--surface2)}
   .pfac-cal-day.pfac-cal-day--mixta { background:#FFF0EC; color:#CC4A20; font-weight:700; }
   .pfac-cal-day.pfac-cal-day--mixta::after { content:''; display:block; width:6px; height:6px; background:#FF5E34; border-radius:50%; margin:1px auto 0; }
 
+
+  .pfac-cal-day--today { background: var(--sat-blue, #19428C) !important; color: white !important; font-weight: 700; }
+  .pfac-cal-day--today:hover { background: #142F6B !important; }
+  .pfac-cal-day--selected { background: #E8EEF8; color: #19428C; font-weight: 700; border: 1px solid #19428C; }
+  .pfac-cal-day--other { color: #C0CAD8; opacity: 0.6; cursor: default; }
   .pfac-cal-day.pfac-cal-day--today { background: var(--sat-blue); color: white; font-weight: 700; }
   .pfac-cal-day.today:hover { background: #142F6B; }
   .pfac-cal-day.today.has-orders::after { background: white; }
@@ -8313,7 +8318,7 @@ function pfac_renderCalendario() {
 
   for (let i = 0; i < primerDia; i++) {
     const el = document.createElement('div');
-    el.className = 'cal-day other-month';
+    el.className = 'pfac-cal-day pfac-cal-day--other';
     el.textContent = diasPrevios - primerDia + 1 + i;
     grid.appendChild(el);
   }
@@ -8322,9 +8327,9 @@ function pfac_renderCalendario() {
     const iso = `${pfac_calYear}-${String(pfac_calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const el = document.createElement('div');
     el.textContent = d;
-    let cls = 'cal-day';
-    if (iso === pfac_hoyISO) cls += ' today';
-    if (iso === pfac_fechaSeleccionada && iso !== pfac_hoyISO) cls += ' selected';
+    let cls = 'pfac-cal-day';
+    if (iso === pfac_hoyISO) cls += ' pfac-cal-day--today';
+    if (iso === pfac_fechaSeleccionada && iso !== pfac_hoyISO) cls += ' pfac-cal-day--selected';
     const estadoDia = estadoDias[d];
     if (estadoDia === 'pendiente') cls += ' pfac-cal-day--pendiente';
     else if (estadoDia === 'facturada') cls += ' pfac-cal-day--facturada';
@@ -8438,11 +8443,19 @@ function pfac_renderOrdenesDia(iso) {
       ? `<span style="font-size:11px;font-weight:700;background:#FFF0EC;color:#FF5E34;padding:3px 10px;border-radius:12px;">IPC ${o.ipc_aplicado}%</span>`
       : '';
 
-    // Botón detalle
+    // Botón detalle y exportes
     const safeId = o.id.replace(/[^a-z0-9]/gi,'-');
     const btnDetalle = `<button id="btn-det-${safeId}" onclick="pfac_toggleDetalle('${safeId}')"
-      style="font-size:11px;font-weight:600;background:#F4F6FA;color:#19428C;border:1px solid #DDE3EE;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit;">
+      style="font-size:11px;font-weight:600;background:#F4F6FA;color:#19428C;border:1px solid #DDE3EE;border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;">
       Ver detalle ▾
+    </button>
+    <button onclick="pfac_exportarExcel('${o.id}')"
+      style="font-size:11px;font-weight:600;background:#1D6F42;color:white;border:none;border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;">
+      Excel
+    </button>
+    <button onclick="pfac_exportarPDF('${o.id}')"
+      style="font-size:11px;font-weight:600;background:#C0392B;color:white;border:none;border-radius:6px;padding:5px 11px;cursor:pointer;font-family:inherit;">
+      PDF
     </button>`;
 
     // Estado y acciones
@@ -8494,6 +8507,82 @@ function pfac_toggleDetalle(cardId) {
   el.style.display = visible ? 'none' : 'block';
   const btn = document.getElementById('btn-det-' + cardId);
   if (btn) btn.innerHTML = visible ? 'Ver detalle ▾' : 'Ocultar detalle ▴';
+}
+
+function pfac_getOrden(id) {
+  return pfac_ordenes.find(o => o.id === id);
+}
+
+function pfac_exportarExcel(id) {
+  const o = pfac_getOrden(id);
+  if (!o) return;
+  let items = [];
+  try { items = o.items_detalle ? JSON.parse(o.items_detalle) : []; } catch(e) {}
+
+  const header = [['Satlock SAS — Detalle de Facturación'], [],
+    ['Orden:', o.id], ['Solicitud:', o.solicitud_id], ['Empresa:', o.empresa],
+    ['NIT:', o.nit], ['Fecha factura:', o.fecha_factura],
+    ['Cuota:', `${o.cuota_num}${o.cuotas_total&&o.modalidad!=='Recurrente'?'/'+o.cuotas_total:''}`],
+    ['Modalidad:', o.modalidad + (o.frecuencia_recurrencia?' · '+o.frecuencia_recurrencia:'')],
+    ['Ejecutivo:', o.ejecutivo], [],
+    ['Ítem', 'Descripción', 'Modalidad', 'Frecuencia', 'Cantidad', 'Valor Unitario', 'Subtotal']
+  ];
+
+  const filas = items.map(i => [
+    i.item, i.descripcion, i.modalidad, i.frecuencia || '—',
+    i.cantidad, i.valor_unitario, i.subtotal
+  ]);
+  const total = [['', '', '', '', '', 'TOTAL', items.reduce((a,i) => a + i.subtotal, 0)]];
+
+  const ws = XLSX.utils.aoa_to_sheet([...header, ...filas, [], ...total]);
+  ws['!cols'] = [{wch:10},{wch:45},{wch:12},{wch:12},{wch:8},{wch:16},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Facturación');
+  XLSX.writeFile(wb, `Factura_${o.solicitud_id}_Cuota${o.cuota_num}_${o.empresa.replace(/\s+/g,'_')}.xlsx`);
+}
+
+async function pfac_exportarPDF(id) {
+  const o = pfac_getOrden(id);
+  if (!o) return;
+  let items = [];
+  try { items = o.items_detalle ? JSON.parse(o.items_detalle) : []; } catch(e) {}
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', format: 'letter' });
+
+  // Encabezado
+  doc.setFontSize(16); doc.setTextColor(25, 66, 140);
+  doc.text('Satlock SAS — Detalle de Facturación', 14, 18);
+  doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+
+  const info = [
+    [`Orden: ${o.id}`, `Solicitud: ${o.solicitud_id}`],
+    [`Empresa: ${o.empresa}`, `NIT: ${o.nit}`],
+    [`Fecha factura: ${o.fecha_factura}`, `Cuota: ${o.cuota_num}${o.cuotas_total&&o.modalidad!=='Recurrente'?'/'+o.cuotas_total:''}`],
+    [`Modalidad: ${o.modalidad}${o.frecuencia_recurrencia?' · '+o.frecuencia_recurrencia:''}`, `Ejecutivo: ${o.ejecutivo}`],
+  ];
+  let y = 28;
+  info.forEach(([a, b]) => {
+    doc.text(a, 14, y); doc.text(b, 110, y); y += 6;
+  });
+
+  y += 4;
+  doc.autoTable({
+    startY: y,
+    head: [['Ítem', 'Descripción', 'Modalidad', 'Cant.', 'V. Unit.', 'Subtotal']],
+    body: items.map(i => [
+      i.item, i.descripcion,
+      i.modalidad + (i.frecuencia?' · '+i.frecuencia:''),
+      i.cantidad, formatCOP(i.valor_unitario), formatCOP(i.subtotal)
+    ]),
+    foot: [['', '', '', '', 'TOTAL', formatCOP(items.reduce((a,i) => a + i.subtotal, 0))]],
+    headStyles: { fillColor: [25, 66, 140], fontSize: 9 },
+    footStyles: { fillColor: [232, 238, 248], textColor: [25, 66, 140], fontStyle: 'bold' },
+    bodyStyles: { fontSize: 9 },
+    columnStyles: { 0:{cellWidth:14}, 1:{cellWidth:68}, 2:{cellWidth:28}, 3:{cellWidth:12, halign:'right'}, 4:{cellWidth:24, halign:'right'}, 5:{cellWidth:24, halign:'right'} },
+  });
+
+  doc.save(`Factura_${o.solicitud_id}_Cuota${o.cuota_num}_${o.empresa.replace(/\s+/g,'_')}.pdf`);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -8925,7 +9014,7 @@ async function pfac_inicializarPortal(){
   try {
     const { data, error } = await sb
       .from('ordenes_programadas')
-      .select('*')
+      .select('*, items_detalle')
       .order('fecha_factura', { ascending: true });
 
     if (error) throw error;
