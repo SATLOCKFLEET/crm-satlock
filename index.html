@@ -6248,14 +6248,15 @@ const FacturacionService = {
    ═══════════════════════════════════════════════════════ */
 const OrdenesProgramadasService = {
 
-  /* Añade N meses a una fecha ISO preservando el día exacto */
+  /* Añade N meses a una fecha ISO.
+     Regla: si el día original es > 28, se ancla a 28 para garantizar
+     que la fecha exista en todos los meses, incluyendo febrero en años
+     no bisiestos. Esto evita que facturas del 29, 30 o 31 se pierdan. */
   _addMeses(fechaISO, meses) {
-    const d = new Date(fechaISO);
-    const dia = d.getDate();
-    d.setMonth(d.getMonth() + meses);
-    // Corregir desbordamiento de mes (ej. 31 ene + 1 mes → 28/29 feb)
-    if (d.getDate() !== dia) d.setDate(0);
-    return d.toISOString().slice(0, 10);
+    const orig = new Date(fechaISO);
+    const diaSeguro = Math.min(orig.getDate(), 28);
+    const resultado = new Date(orig.getFullYear(), orig.getMonth() + meses, diaSeguro);
+    return resultado.toISOString().slice(0, 10);
   },
 
   /* Aplica ajuste IPC anual al valor unitario.
@@ -6271,7 +6272,9 @@ const OrdenesProgramadasService = {
     return Math.round(valor);
   },
 
-  /* Genera las órdenes para una solicitud enviada */
+  /* Genera las órdenes para una solicitud enviada.
+     Cuota 1 = fecha de la solicitud (cobro inmediato).
+     Cuota 2 = fechaBase + 1 intervalo, y así sucesivamente. */
   generarOrdenes(solicitud) {
     const ordenes = [];
     const fechaBase = solicitud.fecha_iso;     // 'YYYY-MM-DD'
@@ -6286,14 +6289,15 @@ const OrdenesProgramadasService = {
       if (modalidad === 'Venta Única') return;
 
       if (modalidad === 'Recurrente') {
-        const freq     = item.frecuencia_recurrencia || 'Mensual';
+        const freq      = item.frecuencia_recurrencia || 'Mensual';
         const intervalo = INTERVALO[freq] || 1;
         // Proyectar 3 años / intervalo cobros (máx 36 cobros)
         const maxCobros = Math.ceil(36 / intervalo);
-        for (let i = 1; i <= maxCobros; i++) {
-          const valorU = this._valorConIPC(item.valor_unitario, i, ipc);
+        for (let i = 0; i < maxCobros; i++) {
+          const cuotaNum = i + 1;
+          const valorU   = this._valorConIPC(item.valor_unitario, cuotaNum, ipc);
           ordenes.push({
-            id:                     `${solicitud.consecutivo}-${item.item}-R${String(i).padStart(3,'0')}`,
+            id:                     `${solicitud.consecutivo}-${item.item}-R${String(cuotaNum).padStart(3,'0')}`,
             solicitud_id:           solicitud.consecutivo,
             empresa:                solicitud.empresa,
             nit:                    solicitud.nit,
@@ -6302,13 +6306,13 @@ const OrdenesProgramadasService = {
             descripcion:            item.descripcion,
             modalidad:              'Recurrente',
             frecuencia_recurrencia: freq,
-            cuota_num:              i,
+            cuota_num:              cuotaNum,
             cuotas_total:           null,
             fecha_factura:          this._addMeses(fechaBase, i * intervalo),
             cantidad:               item.cantidad,
             valor_unitario:         valorU,
             total:                  valorU * item.cantidad,
-            ipc_aplicado:           Math.floor((i - 1) / (12 / intervalo)) > 0 ? ipc : 0,
+            ipc_aplicado:           Math.floor((cuotaNum - 1) / (12 / intervalo)) > 0 ? ipc : 0,
             estado:                 'Pendiente',
           });
         }
@@ -6316,10 +6320,11 @@ const OrdenesProgramadasService = {
 
       if (modalidad === 'Comodato') {
         const plazo = item.plazo_comodato || 12;
-        for (let i = 1; i <= plazo; i++) {
-          const valorU = this._valorConIPC(item.valor_unitario, i, ipc);
+        for (let i = 0; i < plazo; i++) {
+          const cuotaNum = i + 1;
+          const valorU   = this._valorConIPC(item.valor_unitario, cuotaNum, ipc);
           ordenes.push({
-            id:             `${solicitud.consecutivo}-${item.item}-C${String(i).padStart(3,'0')}`,
+            id:             `${solicitud.consecutivo}-${item.item}-C${String(cuotaNum).padStart(3,'0')}`,
             solicitud_id:   solicitud.consecutivo,
             empresa:        solicitud.empresa,
             nit:            solicitud.nit,
@@ -6327,13 +6332,13 @@ const OrdenesProgramadasService = {
             item:           item.item,
             descripcion:    item.descripcion,
             modalidad:      'Comodato',
-            cuota_num:      i,
+            cuota_num:      cuotaNum,
             cuotas_total:   plazo,
             fecha_factura:  this._addMeses(fechaBase, i),
             cantidad:       item.cantidad,
             valor_unitario: valorU,
             total:          valorU * item.cantidad,
-            ipc_aplicado:   Math.floor((i - 1) / 12) > 0 ? ipc : 0,
+            ipc_aplicado:   Math.floor((cuotaNum - 1) / 12) > 0 ? ipc : 0,
             estado:         'Pendiente',
           });
         }
@@ -6361,11 +6366,16 @@ const currentUser = {
    INICIALIZACIÓN
    ═══════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
+  // Estos elementos solo existen cuando la pestaña Facturación está abierta
+  // No ejecutar nada si no están en el DOM
   const elConsec = document.getElementById('consecutivo');
   if (elConsec) elConsec.value = ConsecutivoService.getNext();
-  cargarDatosDemoHistorial();
-  renderHistorial();
-  renderEstado();
+  if (document.getElementById('historialBody')) {
+    cargarDatosDemoHistorial().then(() => {
+      renderHistorial();
+      renderEstado();
+    });
+  }
 });
 
 /* ═══════════════════════════════════════════════════════
