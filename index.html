@@ -6715,11 +6715,15 @@ const OrdenesProgramadasService = {
 
     if (!fechaPrimera) return [];
 
-    // Fecha de la cuota N (cuota 1 = fechaPrimera, cuota 2+ = diaCorte en mes siguiente)
+    // Fecha de la cuota N relativa a cuotaInicial
+    // cuotaInicial → fechaPrimera
+    // cuotaInicial+1 → fechaPrimera + 1 intervalo en día de corte
+    // cuotaInicial+N → fechaPrimera + N intervalos en día de corte
     const _fechaCuota = (cuotaNum, intervaloMeses) => {
-      if (cuotaNum === 1) return fechaPrimera;
+      const offset = cuotaNum - cuotaInicial;  // 0 para la primera, 1 para la segunda, etc.
+      if (offset === 0) return fechaPrimera;
       const [anio, mes] = fechaPrimera.split('-').map(Number);
-      const base = new Date(anio, mes - 1 + (cuotaNum - 1) * intervaloMeses, 1);
+      const base = new Date(anio, mes - 1 + offset * intervaloMeses, 1);
       return `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-${String(diaCorte).padStart(2,'0')}`;
     };
 
@@ -6783,7 +6787,7 @@ const OrdenesProgramadasService = {
         frecuencia_recurrencia: primerRec?.frecuencia_recurrencia || null,
         cuota_num:              cuotaNum,
         cuotas_total:           maxCuotas,
-        fecha_factura:          _fechaCuota(cuotaNum === cuotaInicial ? 1 : cuotaNum, intervaloBase),
+        fecha_factura:          _fechaCuota(cuotaNum, intervaloBase),
         cantidad:               1,
         valor_unitario:         totalCuota,
         total:                  totalCuota,
