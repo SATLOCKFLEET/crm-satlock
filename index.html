@@ -6732,7 +6732,9 @@ const OrdenesProgramadasService = {
         maxCuotas = Math.max(maxCuotas, Math.ceil(36 / intervalo));
       }
       if (item.modalidad === 'Comodato') {
-        maxCuotas = Math.max(maxCuotas, item.plazo_comodato || 12);
+        // Cuotas restantes = plazo total - cuotas ya transcurridas
+        const restantes = (item.plazo_comodato || 12) - (cuotaInicial - 1);
+        maxCuotas = Math.max(maxCuotas, cuotaInicial + restantes - 1);
       }
     });
 
@@ -7151,13 +7153,28 @@ function validarFormulario() {
     ok = false;
   }
 
-  const tieneRecurrencia = billingItems.some(i => i.modalidad === 'Recurrente' || i.modalidad === 'Comodato');
-  if (tieneRecurrencia) {
-    const fechaPrimera = document.getElementById('fechaPrimeraFactura')?.value;
-    if (!fechaPrimera) {
-      setFieldError('fechaPrimeraFactura', 'Requerida cuando hay ítems recurrentes o comodato.');
-      ok = false;
-    }
+  const linkProp = document.getElementById('linkPropuesta')?.value.trim();
+  if (!linkProp) {
+    setFieldError('linkPropuesta', 'El link de la propuesta es obligatorio.');
+    ok = false;
+  }
+
+  const linkDoc = document.getElementById('linkDocs')?.value.trim();
+  if (!linkDoc) {
+    setFieldError('linkDocs', 'La carpeta de documentos es obligatoria.');
+    ok = false;
+  }
+
+  const fechaPrimera = document.getElementById('fechaPrimeraFactura')?.value;
+  if (!fechaPrimera) {
+    setFieldError('fechaPrimeraFactura', 'La fecha de primera factura es obligatoria.');
+    ok = false;
+  }
+
+  const diaC = document.getElementById('diaCorte')?.value;
+  if (!diaC || parseInt(diaC) < 1 || parseInt(diaC) > 28) {
+    setFieldError('diaCorte', 'El día de corte es obligatorio (1-28).');
+    ok = false;
   }
 
   return ok;
@@ -7398,6 +7415,7 @@ async function confirmarEnvio() {
         ipc_aplicado:           o.ipc_aplicado || 0,
         estado:                 'Pendiente',
         items_detalle:          o.items_detalle || null,
+        // 'total' es GENERATED ALWAYS AS en Supabase — no incluir
       }));
 
       const { error: ordErr } = await sb
@@ -8114,43 +8132,50 @@ function inicializarModuloFacturacion(){
           <span class="error-msg" id="err-ejecutivo_comercial">Seleccione el ejecutivo dueño del negocio.</span>
         </div>
         <div class="form-group">
-          <label>Empresa <span class="req">*</span></label>
-          <input type="text" id="empresa" placeholder="Razón social del cliente" oninput="clearFieldError('empresa')">
-          <span class="error-msg" id="err-empresa">Este campo es obligatorio.</span>
-        </div>
-        <div class="form-group">
           <label>NIT <span class="req">*</span></label>
           <input type="text" id="nit" placeholder="9 dígitos sin guión" maxlength="9" oninput="validateNIT(this)">
           <span class="error-msg" id="err-nit">El NIT debe tener exactamente 9 dígitos numéricos.</span>
           <span id="nit-match-badge" style="display:none;background:var(--teal-light);color:var(--teal-dark);border:1px solid #9FE1CB;border-radius:20px;font-size:11px;font-weight:600;padding:2px 10px;margin-top:4px;"></span>
         </div>
-        <div class="form-group span2"><label>Link propuesta comercial</label><input type="url" id="linkPropuesta" placeholder="https://drive.google.com/..."></div>
-        <div class="form-group span2"><label>Carpeta de documentos</label><input type="url" id="linkDocs" placeholder="https://drive.google.com/..."></div>
-        <div class="form-group span2"><label>Observaciones</label><textarea id="observaciones" placeholder="Condiciones especiales, notas..."></textarea></div>
         <div class="form-group">
-          <label>IPC anual aplicable <span style="font-weight:400;color:var(--text3)">(%)</span></label>
-          <div style="position:relative;">
-            <input type="number" id="ipcAnual" min="0" max="50" step="0.1" placeholder="Ej: 9.5" style="padding-right:32px;">
-            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px;font-weight:600;pointer-events:none">%</span>
-          </div>
+          <label>Empresa <span class="req">*</span></label>
+          <input type="text" id="empresa" placeholder="Razón social del cliente" oninput="clearFieldError('empresa')">
+          <span class="error-msg" id="err-empresa">Este campo es obligatorio.</span>
         </div>
         <div class="form-group">
           <label>Cuota inicial <span style="font-weight:400;color:var(--text3)">(comodatos históricos)</span></label>
           <input type="number" id="cuotaInicial" min="1" step="1" placeholder="Ej: 3">
           <span style="font-size:11px;color:var(--text3);margin-top:3px;">Para comodatos que ya iniciaron. Dejar vacío si es negocio nuevo.</span>
         </div>
+        <div class="form-group span2"><label>Link propuesta comercial <span class="req">*</span></label>
+          <input type="url" id="linkPropuesta" placeholder="https://drive.google.com/..." oninput="clearFieldError('linkPropuesta')">
+          <span class="error-msg" id="err-linkPropuesta">El link de la propuesta es obligatorio.</span>
+        </div>
+        <div class="form-group span2"><label>Carpeta de documentos <span class="req">*</span></label>
+          <input type="url" id="linkDocs" placeholder="https://drive.google.com/..." oninput="clearFieldError('linkDocs')">
+          <span class="error-msg" id="err-linkDocs">La carpeta de documentos es obligatoria.</span>
+        </div>
+        <div class="form-group span2"><label>Observaciones</label><textarea id="observaciones" placeholder="Condiciones especiales, notas..."></textarea></div>
+        <div class="form-group">
+          <label>IPC anual aplicable <span style="font-weight:400;color:var(--text3)">(%) — opcional</span></label>
+          <div style="position:relative;">
+            <input type="number" id="ipcAnual" min="0" max="50" step="0.1" placeholder="Ej: 9.5" style="padding-right:32px;">
+            <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:13px;font-weight:600;pointer-events:none">%</span>
+          </div>
+        </div>
         <div class="form-group">
           <label>Fecha primera factura <span class="req">*</span></label>
           <input type="date" id="fechaPrimeraFactura" oninput="clearFieldError('fechaPrimeraFactura')">
-          <span class="error-msg" id="err-fechaPrimeraFactura">Requerida cuando hay ítems recurrentes o comodato.</span>
-          <span style="font-size:11px;color:var(--text3);margin-top:3px;">Fecha en que se emite la primera factura de este negocio.</span>
+          <span class="error-msg" id="err-fechaPrimeraFactura">La fecha de primera factura es obligatoria.</span>
         </div>
         <div class="form-group">
-          <label>Día de corte mensual <span style="font-weight:400;color:var(--text3)">(recurrencias)</span></label>
+          <label>Día de corte mensual <span class="req">*</span></label>
           <div style="position:relative;">
-            <input type="number" id="diaCorte" min="1" max="28" step="1" placeholder="Ej: 15" style="padding-right:40px;">
+            <input type="number" id="diaCorte" min="1" max="28" step="1" placeholder="Ej: 15" style="padding-right:40px;"
+              oninput="clearFieldError('diaCorte')">
             <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:11px;pointer-events:none">/ mes</span>
           </div>
+          <span class="error-msg" id="err-diaCorte">El día de corte es obligatorio.</span>
           <span style="font-size:11px;color:var(--text3);margin-top:3px;">Día del mes para las facturas 2 en adelante. Máx. 28.</span>
         </div>
       </div>
