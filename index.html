@@ -6361,7 +6361,8 @@ const currentUser = {
    INICIALIZACIÓN
    ═══════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('consecutivo').value = ConsecutivoService.getNext();
+  const elConsec = document.getElementById('consecutivo');
+  if (elConsec) elConsec.value = ConsecutivoService.getNext();
   cargarDatosDemoHistorial();
   renderHistorial();
   renderEstado();
