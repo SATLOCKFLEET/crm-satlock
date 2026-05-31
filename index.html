@@ -1028,20 +1028,24 @@ tbody tr:hover{background:var(--surface2)}
   .pfac-orden-actions { display: flex; gap: 6px; margin-top: 10px; justify-content: flex-end; }
 
   .pfac-btn-sm {
-    padding: 5px 12px;
+    padding: 6px 14px;
     border-radius: 6px;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     border: none;
     transition: all .12s;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
-  .pfac-btn-facturar { background: var(--success); color: white; }
+  .pfac-btn-facturar { background: #1B7A4A; color: white; }
   .pfac-btn-facturar:hover { background: #155C38; }
-  .pfac-btn-omitir { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
-  .pfac-btn-omitir:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
-  .pfac-btn-deshacer { background: var(--sat-blue-light); color: var(--sat-blue); border: 1px solid #B5D4F4; }
+  .pfac-btn-omitir { background: #F4F6FA; color: #6B7A99; border: 1px solid #DDE3EE; }
+  .pfac-btn-omitir:hover { background: #FCEBEB; color: #A32D2D; border-color: #A32D2D; }
+  .pfac-btn-deshacer { background: #E8EEF8; color: #19428C; border: 1px solid #B5D4F4; }
   .pfac-btn-deshacer:hover { background: #C8DAF0; }
 
   .pfac-empty-day {
@@ -6275,94 +6279,96 @@ const OrdenesProgramadasService = {
     return Math.round(valor);
   },
 
-  /* Genera las órdenes para una solicitud enviada.
-     Cuota 1 = fecha_primera_factura (definida por el ejecutivo).
-     Cuota 2 en adelante = día de corte de cada mes siguiente.
-     Todos los ítems recurrentes y comodato se agrupan en la misma fecha. */
+  /* Genera una orden por cuota por solicitud.
+     Cada orden = una factura completa (empresa + todos sus ítems de esa cuota).
+     Cuota 1: todos los ítems (venta única + recurrentes + comodatos).
+     Cuotas 2+: solo recurrentes y comodatos activos en esa fecha. */
   generarOrdenes(solicitud) {
-    const ordenes           = [];
-    const fechaPrimera      = solicitud.fecha_primera_factura;  // 'YYYY-MM-DD'
-    const diaCorte          = Math.min(solicitud.dia_corte || 1, 28);
-    const ipc               = solicitud.ipc_anual || 0;
-    const detalle           = solicitud.detalle || [];
-    const INTERVALO         = { Mensual: 1, Trimestral: 3, Semestral: 6, Anual: 12 };
+    const fechaPrimera = solicitud.fecha_primera_factura;
+    const diaCorte     = Math.min(solicitud.dia_corte || 1, 28);
+    const ipc          = solicitud.ipc_anual || 0;
+    const detalle      = solicitud.detalle || [];
+    const INTERVALO    = { Mensual: 1, Trimestral: 3, Semestral: 6, Anual: 12 };
 
-    if (!fechaPrimera) return ordenes;  // sin fecha no hay órdenes
+    if (!fechaPrimera) return [];
 
-    // Calcular las fechas de las cuotas 2 en adelante usando día de corte
+    // Fecha de la cuota N (cuota 1 = fechaPrimera, cuota 2+ = diaCorte en mes siguiente)
     const _fechaCuota = (cuotaNum, intervaloMeses) => {
       if (cuotaNum === 1) return fechaPrimera;
-      // cuota 2 = mes siguiente al de fechaPrimera, en el día de corte
-      const base  = new Date(fechaPrimera.split('-')[0],
-                             parseInt(fechaPrimera.split('-')[1]) - 1,
-                             1);
-      base.setMonth(base.getMonth() + (cuotaNum - 1) * intervaloMeses);
-      const y = base.getFullYear();
-      const m = String(base.getMonth() + 1).padStart(2, '0');
-      const d = String(diaCorte).padStart(2, '0');
-      return `${y}-${m}-${d}`;
+      const [anio, mes] = fechaPrimera.split('-').map(Number);
+      const base = new Date(anio, mes - 1 + (cuotaNum - 1) * intervaloMeses, 1);
+      return `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-${String(diaCorte).padStart(2,'0')}`;
     };
 
+    // Determinar máximo de cuotas necesarias en la solicitud
+    let maxCuotas = 1;
     detalle.forEach(item => {
-      const modalidad = item.modalidad;
-      if (modalidad === 'Venta Única') return;
-
-      if (modalidad === 'Recurrente') {
-        const freq      = item.frecuencia_recurrencia || 'Mensual';
-        const intervalo = INTERVALO[freq] || 1;
-        const maxCobros = Math.ceil(36 / intervalo);
-        for (let i = 0; i < maxCobros; i++) {
-          const cuotaNum = i + 1;
-          const valorU   = this._valorConIPC(item.valor_unitario, cuotaNum, ipc);
-          ordenes.push({
-            id:                     `${solicitud.consecutivo}-${item.item}-R${String(cuotaNum).padStart(3,'0')}`,
-            solicitud_id:           solicitud.consecutivo,
-            empresa:                solicitud.empresa,
-            nit:                    solicitud.nit,
-            ejecutivo:              solicitud.ejecutivo,
-            item:                   item.item,
-            descripcion:            item.descripcion,
-            modalidad:              'Recurrente',
-            frecuencia_recurrencia: freq,
-            cuota_num:              cuotaNum,
-            cuotas_total:           null,
-            fecha_factura:          _fechaCuota(cuotaNum, intervalo),
-            cantidad:               item.cantidad,
-            valor_unitario:         valorU,
-            total:                  valorU * item.cantidad,
-            ipc_aplicado:           Math.floor((cuotaNum - 1) / (12 / intervalo)) > 0 ? ipc : 0,
-            estado:                 'Pendiente',
-          });
-        }
+      if (item.modalidad === 'Recurrente') {
+        const intervalo = INTERVALO[item.frecuencia_recurrencia || 'Mensual'] || 1;
+        maxCuotas = Math.max(maxCuotas, Math.ceil(36 / intervalo));
       }
-
-      if (modalidad === 'Comodato') {
-        const plazo = item.plazo_comodato || 12;
-        for (let i = 0; i < plazo; i++) {
-          const cuotaNum = i + 1;
-          const valorU   = this._valorConIPC(item.valor_unitario, cuotaNum, ipc);
-          ordenes.push({
-            id:             `${solicitud.consecutivo}-${item.item}-C${String(cuotaNum).padStart(3,'0')}`,
-            solicitud_id:   solicitud.consecutivo,
-            empresa:        solicitud.empresa,
-            nit:            solicitud.nit,
-            ejecutivo:      solicitud.ejecutivo,
-            item:           item.item,
-            descripcion:    item.descripcion,
-            modalidad:      'Comodato',
-            cuota_num:      cuotaNum,
-            cuotas_total:   plazo,
-            fecha_factura:  _fechaCuota(cuotaNum, 1),
-            cantidad:       item.cantidad,
-            valor_unitario: valorU,
-            total:          valorU * item.cantidad,
-            ipc_aplicado:   Math.floor((cuotaNum - 1) / 12) > 0 ? ipc : 0,
-            estado:         'Pendiente',
-          });
-        }
+      if (item.modalidad === 'Comodato') {
+        maxCuotas = Math.max(maxCuotas, item.plazo_comodato || 12);
       }
     });
 
+    const ordenes = [];
+    // Frecuencia base para calcular fechas (del primer ítem recurrente)
+    const primerRec    = detalle.find(i => i.modalidad === 'Recurrente');
+    const intervaloBase = primerRec ? (INTERVALO[primerRec.frecuencia_recurrencia || 'Mensual'] || 1) : 1;
+
+    for (let cuotaNum = 1; cuotaNum <= maxCuotas; cuotaNum++) {
+      // Ítems que aplican en esta cuota
+      const itemsEnCuota = detalle.filter(item => {
+        if (item.modalidad === 'Venta Única') return cuotaNum === 1;
+        if (item.modalidad === 'Recurrente')  return true;
+        if (item.modalidad === 'Comodato')    return cuotaNum <= (item.plazo_comodato || 12);
+        return false;
+      });
+      if (itemsEnCuota.length === 0) continue;
+
+      // Calcular detalle con valores ajustados por IPC
+      const itemsDetalle = itemsEnCuota.map(item => {
+        const valorU = item.modalidad === 'Venta Única'
+          ? item.valor_unitario
+          : this._valorConIPC(item.valor_unitario, cuotaNum, ipc);
+        return {
+          item:        item.item,
+          descripcion: item.descripcion,
+          modalidad:   item.modalidad,
+          frecuencia:  item.frecuencia_recurrencia || null,
+          cantidad:    item.cantidad,
+          valor_unitario: valorU,
+          subtotal:    valorU * item.cantidad,
+        };
+      });
+
+      const totalCuota  = itemsDetalle.reduce((a, i) => a + i.subtotal, 0);
+      const tieneRec    = itemsEnCuota.some(i => i.modalidad === 'Recurrente');
+      const tieneCom    = itemsEnCuota.some(i => i.modalidad === 'Comodato');
+      const modalidadOrden = tieneRec ? 'Recurrente' : tieneCom ? 'Comodato' : 'Venta Única';
+
+      ordenes.push({
+        id:                     `${solicitud.consecutivo}-FAC${String(cuotaNum).padStart(3,'0')}`,
+        solicitud_id:           solicitud.consecutivo,
+        empresa:                solicitud.empresa,
+        nit:                    solicitud.nit,
+        ejecutivo:              solicitud.ejecutivo,
+        item:                   `FAC-${String(cuotaNum).padStart(3,'0')}`,
+        descripcion:            `Cuota ${cuotaNum} de ${solicitud.consecutivo} — ${itemsDetalle.length} ítem(s)`,
+        modalidad:              modalidadOrden,
+        frecuencia_recurrencia: primerRec?.frecuencia_recurrencia || null,
+        cuota_num:              cuotaNum,
+        cuotas_total:           maxCuotas,
+        fecha_factura:          _fechaCuota(cuotaNum, intervaloBase),
+        cantidad:               1,
+        valor_unitario:         totalCuota,
+        total:                  totalCuota,
+        ipc_aplicado:           cuotaNum > 1 ? ipc : 0,
+        estado:                 'Pendiente',
+        items_detalle:          JSON.stringify(itemsDetalle),
+      });
+    }
     return ordenes;
   }
 
@@ -6942,21 +6948,23 @@ async function confirmarEnvio() {
 
     if (nuevasOrdenes.length > 0) {
       const ordenesRows = nuevasOrdenes.map(o => ({
-        id:            o.id,
-        solicitud_id:  o.solicitud_id,
-        empresa:       o.empresa,
-        nit:           o.nit,
-        ejecutivo:     o.ejecutivo,
-        item:          o.item,
-        descripcion:   o.descripcion,
-        modalidad:     o.modalidad,
-        cuota_num:     o.cuota_num,
-        cuotas_total:  o.cuotas_total || null,
-        fecha_factura: o.fecha_factura,
-        cantidad:      o.cantidad,
-        valor_unitario: o.valor_unitario,
-        ipc_aplicado:  o.ipc_aplicado || 0,
-        estado:        'Pendiente',
+        id:                     o.id,
+        solicitud_id:           o.solicitud_id,
+        empresa:                o.empresa,
+        nit:                    o.nit,
+        ejecutivo:              o.ejecutivo,
+        item:                   o.item,
+        descripcion:            o.descripcion,
+        modalidad:              o.modalidad,
+        frecuencia_recurrencia: o.frecuencia_recurrencia || null,
+        cuota_num:              o.cuota_num,
+        cuotas_total:           o.cuotas_total || null,
+        fecha_factura:          o.fecha_factura,
+        cantidad:               o.cantidad,
+        valor_unitario:         o.valor_unitario,
+        ipc_aplicado:           o.ipc_aplicado || 0,
+        estado:                 'Pendiente',
+        items_detalle:          o.items_detalle || null,
       }));
 
       const { error: ordErr } = await sb
@@ -7935,11 +7943,10 @@ function pfac_renderOrdenesDia(iso) {
   if (pfac_filtroModalidad !== 'Todos') filtradas = filtradas.filter(o => o.modalidad === pfac_filtroModalidad);
 
   const pending = filtradas.filter(o => o.estado === 'Pendiente').length;
-
   document.getElementById('pfac-day-title').textContent = label.charAt(0).toUpperCase() + label.slice(1);
   document.getElementById('pfac-day-count').textContent = filtradas.length === 0
     ? 'Sin órdenes'
-    : `${filtradas.length} orden(es) · ${pending} pendiente(s)`;
+    : `${filtradas.length} orden(es) de facturación · ${pending} pendiente(s)`;
 
   const container = document.getElementById('pfac-ordenes-container');
   if (filtradas.length === 0) {
@@ -7955,53 +7962,117 @@ function pfac_renderOrdenesDia(iso) {
   }
 
   container.innerHTML = filtradas.map(o => {
-    const tagMod = o.modalidad === 'Recurrente'
-      ? `<span class="tag tag-recurrente">Recurrente</span>`
-      : `<span class="tag tag-comodato">Comodato ${o.cuota_num}/${o.cuotas_total || '∞'}</span>`;
+    // Detalle de ítems (acordeón)
+    let tablaDetalle = '';
+    try {
+      const items = o.items_detalle ? JSON.parse(o.items_detalle) : [];
+      if (items.length > 0) {
+        const filas = items.map(i => {
+          const colMod = i.modalidad === 'Recurrente' ? '#0F6E56'
+                       : i.modalidad === 'Comodato'   ? '#7A5A0F'
+                       : '#19428C';
+          const bgMod  = i.modalidad === 'Recurrente' ? '#E1F5EE'
+                       : i.modalidad === 'Comodato'   ? '#FDF6E3'
+                       : '#E8EEF8';
+          return `<tr style="border-bottom:1px solid #EEF1F8;">
+            <td style="padding:5px 8px;font-weight:600;font-size:12px;">${i.item}</td>
+            <td style="padding:5px 8px;font-size:12px;color:#3d5080;">${i.descripcion}</td>
+            <td style="padding:5px 8px;">
+              <span style="font-size:10px;padding:2px 7px;border-radius:10px;background:${bgMod};color:${colMod};font-weight:700;">
+                ${i.modalidad}${i.frecuencia ? ' · '+i.frecuencia : ''}
+              </span>
+            </td>
+            <td style="padding:5px 8px;text-align:right;font-size:12px;">${i.cantidad}</td>
+            <td style="padding:5px 8px;text-align:right;font-size:12px;">${formatCOP(i.valor_unitario)}</td>
+            <td style="padding:5px 8px;text-align:right;font-size:12px;font-weight:700;color:#19428C;">${formatCOP(i.subtotal)}</td>
+          </tr>`;
+        }).join('');
+        tablaDetalle = `
+          <div id="det-${o.id.replace(/[^a-z0-9]/gi,'-')}" style="display:none;margin-top:10px;border:1px solid #DDE3EE;border-radius:8px;overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead>
+                <tr style="background:#E8EEF8;">
+                  <th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Ítem</th>
+                  <th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Descripción</th>
+                  <th style="padding:6px 8px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Modalidad</th>
+                  <th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Cant.</th>
+                  <th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">V. Unit.</th>
+                  <th style="padding:6px 8px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>${filas}</tbody>
+            </table>
+          </div>`;
+      }
+    } catch(e) {}
 
+    // Tags
+    const tagCuota = `<span style="font-size:11px;font-weight:700;background:#E8EEF8;color:#19428C;padding:3px 10px;border-radius:12px;">Cuota ${o.cuota_num}/${o.cuotas_total||'?'}</span>`;
+    const tagMod = o.modalidad === 'Recurrente'
+      ? `<span style="font-size:11px;font-weight:700;background:#E1F5EE;color:#0F6E56;padding:3px 10px;border-radius:12px;">Recurrente${o.frecuencia_recurrencia?' · '+o.frecuencia_recurrencia:''}</span>`
+      : o.modalidad === 'Comodato'
+      ? `<span style="font-size:11px;font-weight:700;background:#FDF6E3;color:#7A5A0F;padding:3px 10px;border-radius:12px;">Comodato</span>`
+      : `<span style="font-size:11px;font-weight:700;background:#E8EEF8;color:#19428C;padding:3px 10px;border-radius:12px;">Venta Única</span>`;
     const tagIPC = o.ipc_aplicado > 0
-      ? `<span class="tag tag-ipc">IPC ${o.ipc_aplicado}%</span>`
+      ? `<span style="font-size:11px;font-weight:700;background:#FFF0EC;color:#FF5E34;padding:3px 10px;border-radius:12px;">IPC ${o.ipc_aplicado}%</span>`
       : '';
 
-    const total = o.valor_unitario * o.cantidad;
+    // Botón detalle
+    const btnDetalle = `<button onclick="pfac_toggleDetalle('${o.id.replace(/[^a-z0-9]/gi,'-')}')"
+      style="font-size:11px;font-weight:600;background:#F4F6FA;color:#19428C;border:1px solid #DDE3EE;border-radius:6px;padding:4px 10px;cursor:pointer;font-family:inherit;">
+      Ver detalle ▾
+    </button>`;
 
+    // Estado y acciones
+    let estadoBadge = '';
     let acciones = '';
     if (o.estado === 'Pendiente') {
+      estadoBadge = `<span style="font-size:11px;font-weight:700;background:#FDF6E3;color:#7A5A0F;padding:3px 10px;border-radius:12px;border:1px solid #E8D080;">Pendiente</span>`;
       acciones = `
-        <button class="btn-sm btn-facturar" onclick="pfac_marcarFacturada('${o.id}')">✓ Marcar facturada</button>
-        <button class="btn-sm btn-omitir"   onclick="pfac_marcarOmitida('${o.id}')">Omitir</button>`;
+        <button class="pfac-btn-sm pfac-btn-facturar" onclick="pfac_marcarFacturada('${o.id}')">✓ Marcar facturada</button>
+        <button class="pfac-btn-sm pfac-btn-omitir"   onclick="pfac_marcarOmitida('${o.id}')">Omitir</button>`;
     } else if (o.estado === 'Facturada') {
-      acciones = `
-        <span style="font-size:11px;font-weight:700;color:var(--success);background:var(--success-bg);padding:3px 10px;border-radius:12px;border:1px solid #9FE1CB;">
-          ✓ Factura ${o.num_factura || '—'}
-        </span>
-        <button class="btn-sm btn-deshacer" onclick="pfac_deshacerEstado('${o.id}')">↩ Deshacer</button>`;
+      estadoBadge = `<span style="font-size:11px;font-weight:700;background:#E1F5EE;color:#1B7A4A;padding:3px 10px;border-radius:12px;border:1px solid #9FE1CB;">✓ Factura ${o.num_factura || '—'}</span>`;
+      acciones = `<button class="pfac-btn-sm pfac-btn-deshacer" onclick="pfac_deshacerEstado('${o.id}')">↩ Deshacer</button>`;
     } else {
-      acciones = `<button class="btn-sm btn-deshacer" onclick="pfac_deshacerEstado('${o.id}')">↩ Reactivar</button>`;
+      estadoBadge = `<span style="font-size:11px;font-weight:700;background:#F4F6FA;color:#6B7A99;padding:3px 10px;border-radius:12px;border:1px solid #DDE3EE;">Omitida</span>`;
+      acciones = `<button class="pfac-btn-sm pfac-btn-deshacer" onclick="pfac_deshacerEstado('${o.id}')">↩ Reactivar</button>`;
     }
 
+    const borderColor = o.estado === 'Facturada' ? '#1B7A4A' : o.estado === 'Omitida' ? '#DDE3EE' : '#FF5E34';
+
     return `
-      <div class="orden-card ${o.estado.toLowerCase()}" id="card-${o.id.replace(/[^a-z0-9]/gi,'-')}">
-        <div>
-          <div class="pfac-orden-empresa">${o.empresa}</div>
-          <div class="pfac-orden-nit">NIT ${o.nit}</div>
-          <div class="pfac-orden-meta">
-            ${tagMod}
-            ${tagIPC}
-            <span style="font-size:11px;color:var(--text-hint)">Sol. ${o.solicitud_id}</span>
+      <div style="background:white;border:1px solid #DDE3EE;border-left:4px solid ${borderColor};border-radius:10px;padding:16px 20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(25,66,140,.08);${o.estado==='Omitida'?'opacity:.65':''}">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;">
+          <div>
+            <div style="font-size:15px;font-weight:700;color:#19428C;margin-bottom:2px;">${o.empresa}</div>
+            <div style="font-size:11px;color:#6B7A99;margin-bottom:8px;">NIT ${o.nit} · Orden ${o.solicitud_id} · ${o.ejecutivo}</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+              ${tagCuota}${tagMod}${tagIPC}${estadoBadge}
+            </div>
+            ${tablaDetalle}
+            <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+              ${btnDetalle}
+              ${acciones}
+            </div>
           </div>
-          <div class="pfac-orden-detalle">
-            <strong>${o.item}</strong> — ${o.descripcion}<br>
-            Cantidad: ${o.cantidad} · V. unit: ${formatCOP(o.valor_unitario)}
+          <div style="text-align:right;">
+            <div style="font-size:20px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatCOP(o.valor_unitario)}</div>
+            <div style="font-size:11px;color:#9AAABF;margin-top:2px;">Total orden</div>
           </div>
-          <div class="pfac-orden-actions">${acciones}</div>
-        </div>
-        <div>
-          <div class="pfac-orden-total">${formatCOP(total)}</div>
-          <div class="pfac-orden-ejecutivo">${o.ejecutivo}</div>
         </div>
       </div>`;
   }).join('');
+}
+
+function pfac_toggleDetalle(cardId) {
+  const el = document.getElementById('det-' + cardId);
+  if (!el) return;
+  const visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'block';
+  // Actualizar texto del botón
+  const btn = el.previousElementSibling?.querySelector('button') || el.parentElement.querySelector('button[onclick*="toggleDetalle"]');
+  if (btn) btn.textContent = visible ? 'Ver detalle ▾' : 'Ocultar detalle ▴';
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -8017,8 +8088,8 @@ function pfac_marcarFacturada(id) {
   document.getElementById('err-num-factura').style.display = 'none';
   document.getElementById('modal-factura-orden-info').innerHTML = `
     <strong>${o.empresa}</strong> — NIT ${o.nit}<br>
-    ${o.item}: ${o.descripcion}<br>
-    <span style="color:var(--text-hint)">Cuota ${o.cuota_num}${o.cuotas_total ? '/'+o.cuotas_total : ''} · ${formatCOP(o.valor_unitario * o.cantidad)}</span>
+    Cuota ${o.cuota_num}${o.cuotas_total ? '/'+o.cuotas_total : ''} · ${o.descripcion}<br>
+    <span style="color:var(--text-hint)">Total: <strong>${formatCOP(o.valor_unitario)}</strong></span>
   `;
   document.getElementById('modal-num-factura').classList.add('show');
   setTimeout(() => document.getElementById('input-num-factura').focus(), 80);
