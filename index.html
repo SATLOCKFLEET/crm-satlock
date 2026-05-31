@@ -1402,6 +1402,14 @@ function iniciarApp(){
 }
 
 function construirTabs(){
+  // Rol facturacion: acceso exclusivo a Facturación y Portal Facturación
+  if(PERFIL.rol === 'facturacion'){
+    return [
+      {label:'Facturación',render:renderFacturacion},
+      {label:'🧾 Portal Facturación',render:renderPortalFacturacion},
+    ];
+  }
+
   const base = [
     {label:'Seguimiento',render:renderSeguimiento},
     {label:'+ Nueva oportunidad',render:renderNueva},
@@ -1409,7 +1417,6 @@ function construirTabs(){
     {label:'Agenda',render:renderAgenda},
     {label:'15 · 5 · 1',render:renderQCO},
   ];
-  // Roles gerenciales — acceso completo a todas las pestañas de gestión
   const ROLES_GERENCIA=['alta_gerencia','gerencia','jefe_fleet','analista_comercial','jefe_proyectos'];
   if(ROLES_GERENCIA.includes(PERFIL.rol)){
     base.push({label:'Consolidado equipo',render:renderConsolidado});
@@ -1421,12 +1428,10 @@ function construirTabs(){
   if(ROLES_GERENCIA.includes(PERFIL.rol)){
     base.push({label:'Alta Gerencia',render:renderAltaGerencia});
   }
-  // Facturación — visible para todos los roles comerciales
   const ROLES_FAC=['ejecutivo_fleet','ejecutivo_carga','jefe_fleet','gerencia','alta_gerencia','analista_comercial','jefe_proyectos'];
   if(ROLES_FAC.includes(PERFIL.rol)){
     base.push({label:'Facturación',render:renderFacturacion});
   }
-  // Portal de facturación — solo rol facturacion y gerencia
   if(['facturacion','gerencia','alta_gerencia','jefe_fleet'].includes(PERFIL.rol)){
     base.push({label:'🧾 Portal Facturación',render:renderPortalFacturacion});
   }
@@ -6719,7 +6724,8 @@ const OrdenesProgramadasService = {
     };
 
     // Determinar máximo de cuotas necesarias en la solicitud
-    let maxCuotas = 1;
+    const cuotaInicial = solicitud.cuota_inicial || 1;
+    let maxCuotas = cuotaInicial;
     detalle.forEach(item => {
       if (item.modalidad === 'Recurrente') {
         const intervalo = INTERVALO[item.frecuencia_recurrencia || 'Mensual'] || 1;
@@ -6731,21 +6737,18 @@ const OrdenesProgramadasService = {
     });
 
     const ordenes = [];
-    // Frecuencia base para calcular fechas (del primer ítem recurrente)
     const primerRec    = detalle.find(i => i.modalidad === 'Recurrente');
     const intervaloBase = primerRec ? (INTERVALO[primerRec.frecuencia_recurrencia || 'Mensual'] || 1) : 1;
 
-    for (let cuotaNum = 1; cuotaNum <= maxCuotas; cuotaNum++) {
-      // Ítems que aplican en esta cuota
+    for (let cuotaNum = cuotaInicial; cuotaNum <= maxCuotas; cuotaNum++) {
       const itemsEnCuota = detalle.filter(item => {
-        if (item.modalidad === 'Venta Única') return cuotaNum === 1;
+        if (item.modalidad === 'Venta Única') return cuotaNum === cuotaInicial;
         if (item.modalidad === 'Recurrente')  return true;
         if (item.modalidad === 'Comodato')    return cuotaNum <= (item.plazo_comodato || 12);
         return false;
       });
       if (itemsEnCuota.length === 0) continue;
 
-      // Calcular detalle con valores ajustados por IPC
       const itemsDetalle = itemsEnCuota.map(item => {
         const valorU = item.modalidad === 'Venta Única'
           ? item.valor_unitario
@@ -6771,18 +6774,18 @@ const OrdenesProgramadasService = {
         solicitud_id:           solicitud.consecutivo,
         empresa:                solicitud.empresa,
         nit:                    solicitud.nit,
-        ejecutivo:              solicitud.ejecutivo,
+        ejecutivo:              solicitud.ejecutivo_comercial || solicitud.ejecutivo,
         item:                   `FAC-${String(cuotaNum).padStart(3,'0')}`,
         descripcion:            `Cuota ${cuotaNum} de ${solicitud.consecutivo} — ${itemsDetalle.length} ítem(s)`,
         modalidad:              modalidadOrden,
         frecuencia_recurrencia: primerRec?.frecuencia_recurrencia || null,
         cuota_num:              cuotaNum,
         cuotas_total:           maxCuotas,
-        fecha_factura:          _fechaCuota(cuotaNum, intervaloBase),
+        fecha_factura:          _fechaCuota(cuotaNum === cuotaInicial ? 1 : cuotaNum, intervaloBase),
         cantidad:               1,
         valor_unitario:         totalCuota,
         total:                  totalCuota,
-        ipc_aplicado:           cuotaNum > 1 ? ipc : 0,
+        ipc_aplicado:           cuotaNum > cuotaInicial ? ipc : 0,
         estado:                 'Pendiente',
         items_detalle:          JSON.stringify(itemsDetalle),
       });
@@ -7142,6 +7145,12 @@ function validarFormulario() {
     ok = false;
   }
 
+  const ejComercial = document.getElementById('ejecutivo_comercial')?.value;
+  if (!ejComercial) {
+    setFieldError('ejecutivo_comercial', 'Seleccione el ejecutivo dueño del negocio.');
+    ok = false;
+  }
+
   const tieneRecurrencia = billingItems.some(i => i.modalidad === 'Recurrente' || i.modalidad === 'Comodato');
   if (tieneRecurrencia) {
     const fechaPrimera = document.getElementById('fechaPrimeraFactura')?.value;
@@ -7262,6 +7271,10 @@ function limpiarSoloFormulario() {
   document.getElementById('linkPropuesta').value = '';
   document.getElementById('linkDocs').value = '';
   document.getElementById('nit-match-badge').style.display = 'none';
+  const elEjCom = document.getElementById('ejecutivo_comercial');
+  const elCuotaI = document.getElementById('cuotaInicial');
+  if (elEjCom)  elEjCom.value  = '';
+  if (elCuotaI) elCuotaI.value = '';
   document.getElementById('ipcAnual').value = '';
   const elFPF = document.getElementById('fechaPrimeraFactura');
   const elDC  = document.getElementById('diaCorte');
@@ -7292,6 +7305,8 @@ function buildSolicitud(estado) {
     ipc_anual:              parseFloat(document.getElementById('ipcAnual').value) || 0,
     fecha_primera_factura:  document.getElementById('fechaPrimeraFactura')?.value || null,
     dia_corte:              parseInt(document.getElementById('diaCorte')?.value) || null,
+    ejecutivo_comercial:    document.getElementById('ejecutivo_comercial')?.value || '',
+    cuota_inicial:          parseInt(document.getElementById('cuotaInicial')?.value) || 1,
     total_general: billingItems.reduce((a, i) => a + i.total, 0),
     estado:        estado,
     updated_at:    hoy.toLocaleString('es-CO'),
@@ -8081,6 +8096,24 @@ function inicializarModuloFacturacion(){
 
       <div class="form-grid">
         <div class="form-group">
+          <label>Ejecutivo comercial dueño del negocio <span class="req">*</span></label>
+          <select id="ejecutivo_comercial" oninput="clearFieldError('ejecutivo_comercial')"
+            style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;width:100%;background:white;color:var(--text);">
+            <option value="">— Seleccione —</option>
+            <option>Jefe Comercial</option>
+            <option>Coordinador Fleet</option>
+            <option>Comercial 1 Fleet</option>
+            <option>Comercial 2 Fleet</option>
+            <option>Comercial Centro 1</option>
+            <option>Comercial Centro 2</option>
+            <option>Comercial Eje Cafetero</option>
+            <option>Comercial Antioquia</option>
+            <option>Comercial Sur</option>
+            <option>Comercial Costa Norte</option>
+          </select>
+          <span class="error-msg" id="err-ejecutivo_comercial">Seleccione el ejecutivo dueño del negocio.</span>
+        </div>
+        <div class="form-group">
           <label>Empresa <span class="req">*</span></label>
           <input type="text" id="empresa" placeholder="Razón social del cliente" oninput="clearFieldError('empresa')">
           <span class="error-msg" id="err-empresa">Este campo es obligatorio.</span>
@@ -8102,6 +8135,11 @@ function inicializarModuloFacturacion(){
           </div>
         </div>
         <div class="form-group">
+          <label>Cuota inicial <span style="font-weight:400;color:var(--text3)">(comodatos históricos)</span></label>
+          <input type="number" id="cuotaInicial" min="1" step="1" placeholder="Ej: 3">
+          <span style="font-size:11px;color:var(--text3);margin-top:3px;">Para comodatos que ya iniciaron. Dejar vacío si es negocio nuevo.</span>
+        </div>
+        <div class="form-group">
           <label>Fecha primera factura <span class="req">*</span></label>
           <input type="date" id="fechaPrimeraFactura" oninput="clearFieldError('fechaPrimeraFactura')">
           <span class="error-msg" id="err-fechaPrimeraFactura">Requerida cuando hay ítems recurrentes o comodato.</span>
@@ -8110,8 +8148,7 @@ function inicializarModuloFacturacion(){
         <div class="form-group">
           <label>Día de corte mensual <span style="font-weight:400;color:var(--text3)">(recurrencias)</span></label>
           <div style="position:relative;">
-            <input type="number" id="diaCorte" min="1" max="28" step="1" placeholder="Ej: 15"
-              style="padding-right:40px;">
+            <input type="number" id="diaCorte" min="1" max="28" step="1" placeholder="Ej: 15" style="padding-right:40px;">
             <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:11px;pointer-events:none">/ mes</span>
           </div>
           <span style="font-size:11px;color:var(--text3);margin-top:3px;">Día del mes para las facturas 2 en adelante. Máx. 28.</span>
@@ -8646,6 +8683,14 @@ async function pfac_confirmarNumFactura() {
     o.num_factura   = num;
     o.facturada_at  = new Date().toISOString();
     o.facturada_por = PERFIL?.nombre || '';
+
+    // Actualizar estado de la solicitud si todas sus órdenes están facturadas u omitidas
+    const ordensDeSolicitud = pfac_ordenes.filter(x => x.solicitud_id === o.solicitud_id);
+    const todasCerradas = ordensDeSolicitud.every(x => x.estado === 'Facturada' || x.estado === 'Omitida' || x.id === o.id);
+    if (todasCerradas) {
+      await sb.from('solicitudes_facturacion').update({ estado: 'Facturada' }).eq('consecutivo', o.solicitud_id);
+    }
+
     pfac_cerrarModalNumFactura();
     pfac_renderOrdenesDia(pfac_fechaSeleccionada);
     pfac_renderCalendario();
