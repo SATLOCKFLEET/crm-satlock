@@ -4012,7 +4012,7 @@ async function _cargarQCO(container){
 
   const contactos=allOps.filter(o=>enPeriodo(o.created_at)).length;
   const cotizaciones=allOps.filter(o=>['propuesta_enviada','cerrado'].includes(o.estado)&&enPeriodo(o.created_at)).length;
-  const cierres=allOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.updated_at)).length;
+  const cierres=allOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.created_at)).length;
 
   const pctC=sinCuota?100:Math.min(100,metas.c>0?Math.round(contactos/metas.c*100):0);
   const pctQ=sinCuota?100:Math.min(100,metas.q>0?Math.round(cotizaciones/metas.q*100):0);
@@ -4076,7 +4076,7 @@ async function _cargarQCO(container){
 
   // Renderizar lista de clientes
   const ESTADOS_QCO={en_proceso:{label:'En proceso',color:'var(--sat-blue)'},propuesta_enviada:{label:'Prop. enviada',color:'var(--sat-orange)'},cerrado:{label:'Cerrado',color:'var(--green)'},perdido:{label:'Perdido',color:'var(--red)'}};
-  const opsPeriodo=allOps.filter(o=>enPeriodo(o.created_at)||enPeriodo(o.updated_at));
+  const opsPeriodo=allOps.filter(o=>enPeriodo(o.created_at));
   const listaEl=document.getElementById('qco-lista-clientes');
   if(listaEl){
     if(!opsPeriodo.length){
@@ -6212,15 +6212,16 @@ const FacturacionService = {
       observaciones:  solicitud.observaciones,
       ipc_anual:      solicitud.ipc_anual || 0,
       productos: detalle.map(d => ({
-        item:          d.item,
-        descripcion:   d.descripcion,
-        tipoInventario: d.tipo_inventario,
-        tipoItem:      d.tipo_item,
-        modalidad:     d.modalidad,
-        plazoComodato: d.plazo_comodato,
-        cantidad:      d.cantidad,
-        valorUnitario: d.valor_unitario,
-        total:         d.total,
+        item:                 d.item,
+        descripcion:          d.descripcion,
+        tipoInventario:       d.tipo_inventario,
+        tipoItem:             d.tipo_item,
+        modalidad:            d.modalidad,
+        frecuenciaRecurrencia: d.modalidad === 'Recurrente' ? (d.frecuencia_recurrencia || 'Mensual') : null,
+        plazoComodato:        d.plazo_comodato,
+        cantidad:             d.cantidad,
+        valorUnitario:        d.valor_unitario,
+        total:                d.total,
       })),
       totalGeneral:   solicitud.total_general,
       destinatarios:  this.destinatarios,
@@ -6277,32 +6278,38 @@ const OrdenesProgramadasService = {
     const ipc       = solicitud.ipc_anual || 0;
     const detalle   = solicitud.detalle || [];
 
+    // Meses entre cobros según frecuencia
+    const INTERVALO = { Mensual: 1, Trimestral: 3, Semestral: 6, Anual: 12 };
+
     detalle.forEach(item => {
       const modalidad = item.modalidad;
-      if (modalidad === 'Venta Única') return; // sin órdenes futuras
+      if (modalidad === 'Venta Única') return;
 
       if (modalidad === 'Recurrente') {
-        // Genera 36 meses hacia adelante (la vista de facturación las irá mostrando)
-        // En producción el cron genera mes a mes indefinidamente
-        for (let i = 1; i <= 36; i++) {
+        const freq     = item.frecuencia_recurrencia || 'Mensual';
+        const intervalo = INTERVALO[freq] || 1;
+        // Proyectar 3 años / intervalo cobros (máx 36 cobros)
+        const maxCobros = Math.ceil(36 / intervalo);
+        for (let i = 1; i <= maxCobros; i++) {
           const valorU = this._valorConIPC(item.valor_unitario, i, ipc);
           ordenes.push({
-            id:             `${solicitud.consecutivo}-${item.item}-R${String(i).padStart(3,'0')}`,
-            solicitud_id:   solicitud.consecutivo,
-            empresa:        solicitud.empresa,
-            nit:            solicitud.nit,
-            ejecutivo:      solicitud.ejecutivo,
-            item:           item.item,
-            descripcion:    item.descripcion,
-            modalidad:      'Recurrente',
-            cuota_num:      i,
-            cuotas_total:   null,       // indefinido
-            fecha_factura:  this._addMeses(fechaBase, i),
-            cantidad:       item.cantidad,
-            valor_unitario: valorU,
-            total:          valorU * item.cantidad,
-            ipc_aplicado:   Math.floor((i - 1) / 12) > 0 ? ipc : 0,
-            estado:         'Pendiente',
+            id:                     `${solicitud.consecutivo}-${item.item}-R${String(i).padStart(3,'0')}`,
+            solicitud_id:           solicitud.consecutivo,
+            empresa:                solicitud.empresa,
+            nit:                    solicitud.nit,
+            ejecutivo:              solicitud.ejecutivo,
+            item:                   item.item,
+            descripcion:            item.descripcion,
+            modalidad:              'Recurrente',
+            frecuencia_recurrencia: freq,
+            cuota_num:              i,
+            cuotas_total:           null,
+            fecha_factura:          this._addMeses(fechaBase, i * intervalo),
+            cantidad:               item.cantidad,
+            valor_unitario:         valorU,
+            total:                  valorU * item.cantidad,
+            ipc_aplicado:           Math.floor((i - 1) / (12 / intervalo)) > 0 ? ipc : 0,
+            estado:                 'Pendiente',
           });
         }
       }
@@ -6455,8 +6462,12 @@ function renderBilling() {
     const m             = item.modalidad;
     const sinModalidad  = !m;
     const esComodato    = m === 'Comodato';
+    const esRecurrente  = m === 'Recurrente';
     const plazoOpts     = [12, 24, 36].map(p =>
       `<option value="${p}" ${item.plazo_comodato === p ? 'selected' : ''}>${p} meses</option>`
+    ).join('');
+    const frecOpts = ['Mensual','Trimestral','Semestral','Anual'].map(f =>
+      `<option value="${f}" ${(item.frecuencia_recurrencia || 'Mensual') === f ? 'selected' : ''}>${f}</option>`
     ).join('');
 
     // Colores por opción activa
@@ -6489,6 +6500,11 @@ function renderBilling() {
             Comodato
           </button>
         </div>
+        ${esRecurrente ? `
+        <select onchange="setFrecuencia(${item.id}, this.value)"
+          style="font-size:11px;padding:4px 6px;border:1px solid #0F6E56;border-radius:5px;color:#0F6E56;font-weight:600;width:100%;background:white;">
+          ${frecOpts}
+        </select>` : ''}
         ${esComodato ? `
         <select onchange="setPlazo(${item.id}, parseInt(this.value))"
           style="font-size:11px;padding:4px 6px;border:1px solid var(--sat-orange);border-radius:5px;color:var(--sat-blue);font-weight:600;width:100%;">
@@ -6556,7 +6572,17 @@ function setModalidad(id, modalidad) {
   if (!item) return;
   item.modalidad = modalidad;
   item.plazo_comodato = modalidad === 'Comodato' ? 12 : null;
+  if (modalidad === 'Recurrente' && !item.frecuencia_recurrencia) {
+    item.frecuencia_recurrencia = 'Mensual';
+  }
+  if (modalidad !== 'Recurrente') item.frecuencia_recurrencia = null;
   renderBilling();
+}
+
+function setFrecuencia(id, frecuencia) {
+  const item = billingItems.find(i => i.id === id);
+  if (!item) return;
+  item.frecuencia_recurrencia = frecuencia;
 }
 
 function setPlazo(id, plazo) {
@@ -6734,15 +6760,16 @@ async function guardarSolicitud() {
     // 2. Insertar detalle
     if (detalleCopia.length > 0) {
       const detalleRows = detalleCopia.map(d => ({
-        solicitud_id:    solData.id,
-        item:            d.item,
-        descripcion:     d.descripcion,
-        tipo_inventario: d.tipo_inventario,
-        tipo_item:       d.tipo_item,
-        modalidad:       d.modalidad,
-        plazo_comodato:  d.plazo_comodato || null,
-        cantidad:        d.cantidad,
-        valor_unitario:  d.valor_unitario,
+        solicitud_id:           solData.id,
+        item:                   d.item,
+        descripcion:            d.descripcion,
+        tipo_inventario:        d.tipo_inventario,
+        tipo_item:              d.tipo_item,
+        modalidad:              d.modalidad,
+        frecuencia_recurrencia: d.modalidad === 'Recurrente' ? (d.frecuencia_recurrencia || 'Mensual') : null,
+        plazo_comodato:         d.plazo_comodato || null,
+        cantidad:               d.cantidad,
+        valor_unitario:         d.valor_unitario,
       }));
       const { error: detErr } = await sb
         .from('solicitudes_facturacion_detalle')
@@ -6813,9 +6840,20 @@ function abrirModalEnvio() {
   const ventas      = detalle.filter(i => i.modalidad === 'Venta Única');
   const recurrentes = detalle.filter(i => i.modalidad === 'Recurrente');
   const comodatos   = detalle.filter(i => i.modalidad === 'Comodato');
+
+  // Agrupar recurrentes por frecuencia para el resumen
+  const frecGrupos = {};
+  recurrentes.forEach(r => {
+    const f = r.frecuencia_recurrencia || 'Mensual';
+    frecGrupos[f] = (frecGrupos[f] || 0) + 1;
+  });
+  const frecResumen = Object.entries(frecGrupos)
+    .map(([f, n]) => `${n} ${f.toLowerCase()}(es)`)
+    .join(', ');
+
   const resumenModalidad = [
     ventas.length      ? `${ventas.length} venta única` : '',
-    recurrentes.length ? `${recurrentes.length} recurrente(s)` : '',
+    recurrentes.length ? `${recurrentes.length} recurrente(s)${frecResumen ? ': '+frecResumen : ''}` : '',
     comodatos.length   ? `${comodatos.length} comodato(s)` : '',
   ].filter(Boolean).join(' · ');
 
@@ -7187,19 +7225,20 @@ function exportarExcel() {
     [],
   ];
 
-  const headerDetalle = ['Ítem', 'Descripción', 'Tipo Inventario', 'Tipo Ítem', 'Modalidad', 'Plazo (meses)', 'Cantidad', 'Valor Unitario', 'Total'];
+  const headerDetalle = ['Ítem', 'Descripción', 'Tipo Inventario', 'Tipo Ítem', 'Modalidad', 'Frecuencia', 'Plazo (meses)', 'Cantidad', 'Valor Unitario', 'Total'];
   const detalleData   = items.map(i => [
     i.item, i.descripcion, i.tipo_inventario, i.tipo_item,
     i.modalidad,
-    i.modalidad === 'Comodato' ? i.plazo_comodato : '—',
+    i.modalidad === 'Recurrente' ? (i.frecuencia_recurrencia || 'Mensual') : '—',
+    i.modalidad === 'Comodato'   ? i.plazo_comodato : '—',
     i.cantidad, i.valor_unitario, i.total,
   ]);
   const totalGeneral  = items.reduce((a, i) => a + i.total, 0);
 
-  const wsData = [...infoData, headerDetalle, ...detalleData, [], ['', '', '', '', '', '', '', 'TOTAL GENERAL', totalGeneral]];
+  const wsData = [...infoData, headerDetalle, ...detalleData, [], ['', '', '', '', '', '', '', '', 'TOTAL GENERAL', totalGeneral]];
   const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-  ws['!cols'] = [{ wch: 14 }, { wch: 42 }, { wch: 14 }, { wch: 12 }, { wch: 10 }, { wch: 13 }, { wch: 10 }, { wch: 16 }, { wch: 16 }];
+  ws['!cols'] = [{ wch: 14 }, { wch: 42 }, { wch: 14 }, { wch: 12 }, { wch: 11 }, { wch: 12 }, { wch: 13 }, { wch: 9 }, { wch: 16 }, { wch: 16 }];
   XLSX.utils.book_append_sheet(wb, ws, 'Solicitud');
 
   const fname = `SolicitudFacturacion_${empresa.replace(/\s+/g,'_')}_${fecha}_${consec}.xlsx`;
@@ -7308,12 +7347,13 @@ function exportarPDF() {
 
   doc.autoTable({
     startY: y,
-    head: [['Ítem', 'Descripción', 'Tipo Inv.', 'Modalidad', 'Plazo', 'Cant.', 'V. Unit.', 'Total']],
+    head: [['Ítem', 'Descripción', 'Tipo Inv.', 'Modalidad', 'Frecuencia', 'Plazo', 'Cant.', 'V. Unit.', 'Total']],
     body: items.map(i => [
       i.item,
       i.descripcion,
       i.tipo_inventario,
       i.modalidad,
+      i.modalidad === 'Recurrente' ? (i.frecuencia_recurrencia || 'Mensual') : '—',
       i.modalidad === 'Comodato' ? `${i.plazo_comodato} m.` : '—',
       i.cantidad,
       formatCOP(i.valor_unitario),
