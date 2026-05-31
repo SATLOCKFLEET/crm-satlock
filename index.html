@@ -5850,7 +5850,7 @@ async function _cargarConsolidado(container){
   function buildExec(u,idx){
     const metas=getMetasQCO(u.linea, u.rol);
     const uops2=ops?.filter(o=>o.usuario_id===u.id)||[];
-    const esQ=u.linea==='fleet'&&u.rol!=='jefe_fleet'&&_periodoFiltro.tipo==='mes';
+    const esQ = false; // Consolidado gerencial: siempre muestra el mes completo de cada ejecutivo
     const enPeriodoU=(fecha)=>{
       if(!fecha) return false;
       const d=new Date(fecha);
