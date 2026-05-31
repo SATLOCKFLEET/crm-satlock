@@ -6701,7 +6701,7 @@ function bloquearBotonesPostGuardado() {
 /* ═══════════════════════════════════════════════════════
    GUARDAR SOLICITUD
    ═══════════════════════════════════════════════════════ */
-async async function guardarSolicitud() {
+async function guardarSolicitud() {
   if (!validarFormulario()) return;
 
   const solicitud    = buildSolicitud('Pendiente');
@@ -6841,7 +6841,7 @@ function cerrarModal() {
   const _mEr=document.getElementById('modalEnvio'); if(_mEr){_mEr.classList.remove('show');}
 }
 
-async async function confirmarEnvio() {
+async function confirmarEnvio() {
   cerrarModal();
   if (!solicitudGuardada) return;
   const solicitud = { ...solicitudGuardada, estado: 'Enviada', updated_at: new Date().toLocaleString('es-CO') };
