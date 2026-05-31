@@ -6178,19 +6178,19 @@ const ProductosService = (() => {
 /* ═══════════════════════════════════════════════════════
    CONSECUTIVE SERVICE — centralized, DB-ready
    ═══════════════════════════════════════════════════════ */
-const ConsecutivoService = (() => {
-  let seq = 1;
-  /* Stub Supabase:
-  const getNext = async () => {
-    const { data } = await supabase.rpc('get_next_consecutivo_facturacion');
-    return String(data).padStart(6, '0');
-  }; */
-  const getNext = () => {
-    const n = seq++;
-    return String(n).padStart(6, '0');
-  };
-  return { getNext };
-})();
+const ConsecutivoService = {
+  async getNext() {
+    try {
+      const { data, error } = await sb.rpc('get_next_consecutivo_facturacion');
+      if (error) throw error;
+      return String(data).padStart(6, '0');
+    } catch(e) {
+      // Fallback: timestamp para evitar duplicados si la RPC falla
+      console.error('ConsecutivoService error:', e);
+      return 'TMP-' + Date.now();
+    }
+  }
+};
 
 /* ═══════════════════════════════════════════════════════
    FACTURACIÓN SERVICE — desacoplado, listo para Gmail API
@@ -6369,16 +6369,8 @@ const currentUser = {
    INICIALIZACIÓN
    ═══════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
-  // Estos elementos solo existen cuando la pestaña Facturación está abierta
-  // No ejecutar nada si no están en el DOM
-  const elConsec = document.getElementById('consecutivo');
-  if (elConsec) elConsec.value = ConsecutivoService.getNext();
-  if (document.getElementById('historialBody')) {
-    cargarDatosDemoHistorial().then(() => {
-      renderHistorial();
-      renderEstado();
-    });
-  }
+  // Módulo de facturación se inicializa cuando se abre la pestaña
+  // No hay nada que hacer aquí con elementos que aún no están en el DOM
 });
 
 /* ═══════════════════════════════════════════════════════
@@ -7189,7 +7181,7 @@ function nuevaSolicitudDesdeModal() {
   switchTabDirect('nueva');
 }
 
-function editarDesdeModal() {
+async function editarDesdeModal() {
   const consecutivo = document.getElementById('modalDetalle').dataset.consecutivo;
   const s = solicitudes.find(x => x.consecutivo === consecutivo);
   if (!s) return;
@@ -7208,11 +7200,14 @@ function editarDesdeModal() {
   billingItems = (s.detalle || []).map(d => ({ ...d, id: Date.now() + Math.random() }));
 
   // Nuevo consecutivo — esta edición genera un registro nuevo
-  document.getElementById('consecutivo').value = ConsecutivoService.getNext();
+  const nuevoConsec = await ConsecutivoService.getNext();
+  document.getElementById('consecutivo').value = nuevoConsec;
+  const badge = document.getElementById('consecutivo-badge');
+  if (badge) badge.textContent = nuevoConsec;
 
   renderBilling();
   switchTabDirect('nueva');
-  showAlert('info', `Editando copia de la solicitud ${consecutivo}. Al guardar o enviar se generará el consecutivo ${document.getElementById('consecutivo').value}.`);
+  showAlert('info', `Editando copia de la solicitud ${consecutivo}. Al guardar se creará con el consecutivo ${nuevoConsec}.`);
 }
 
 function switchTabDirect(tab) {
@@ -7465,9 +7460,13 @@ function showAlert(type, msg) {
 }
 
 /* "Solicitud nueva" — limpia todo y bloquea los 3 botones */
-function limpiarFormulario() {
+async function limpiarFormulario() {
   limpiarSoloFormulario();
-  document.getElementById('consecutivo').value = ConsecutivoService.getNext();
+  const c = await ConsecutivoService.getNext();
+  const el = document.getElementById('consecutivo');
+  if (el) el.value = c;
+  const badge = document.getElementById('consecutivo-badge');
+  if (badge) badge.textContent = c;
   bloquearBotonesPostGuardado();
 }
 
@@ -7557,10 +7556,10 @@ function renderFacturacion(container){
   <div id="fac-panel-estado"    style="display:none;"></div>
 </div>`;
 
-  setTimeout(() => {
+  setTimeout(async () => {
     const nombre = (typeof PERFIL !== 'undefined' && PERFIL) ? PERFIL.nombre : '';
     const linea  = (typeof PERFIL !== 'undefined' && PERFIL) ? ((PERFIL.linea||'fleet').charAt(0).toUpperCase()+(PERFIL.linea||'fleet').slice(1)) : 'Fleet';
-    const consec = ConsecutivoService.getNext();
+    const consec = await ConsecutivoService.getNext();
 
     // Inputs ocultos para buildSolicitud
     const elEjec = document.getElementById('ejecutivo');
@@ -7776,11 +7775,17 @@ function inicializarModuloFacturacion(){
     </div>`;
 
   // Inicializar estado de botones y datos
-  document.getElementById('consecutivo').value = ConsecutivoService.getNext();
   bloquearBotonesPostGuardado();
-  cargarDatosDemoHistorial();
-  renderHistorial();
-  renderEstado();
+  ConsecutivoService.getNext().then(c => {
+    const el = document.getElementById('consecutivo');
+    if (el) el.value = c;
+    const badge = document.getElementById('consecutivo-badge');
+    if (badge) badge.textContent = c;
+  });
+  cargarDatosDemoHistorial().then(() => {
+    renderHistorial();
+    renderEstado();
+  });
 }
 
 
