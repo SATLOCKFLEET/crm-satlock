@@ -6702,60 +6702,73 @@ const OrdenesProgramadasService = {
     return Math.round(valor);
   },
 
-  /* Genera una orden por cuota por solicitud.
-     Cada orden = una factura completa (empresa + todos sus ítems de esa cuota).
-     Cuota 1: todos los ítems (venta única + recurrentes + comodatos).
-     Cuotas 2+: solo recurrentes y comodatos activos en esa fecha. */
   generarOrdenes(solicitud) {
     const fechaPrimera = solicitud.fecha_primera_factura;
     const diaCorte     = Math.min(solicitud.dia_corte || 1, 28);
     const ipc          = solicitud.ipc_anual || 0;
     const detalle      = solicitud.detalle || [];
+    const cuotaInicial = solicitud.cuota_inicial || 1;
     const INTERVALO    = { Mensual: 1, Trimestral: 3, Semestral: 6, Anual: 12 };
 
     if (!fechaPrimera) return [];
 
-    // Fecha de la cuota N relativa a cuotaInicial
-    // cuotaInicial → fechaPrimera
-    // cuotaInicial+1 → fechaPrimera + 1 intervalo en día de corte
-    // cuotaInicial+N → fechaPrimera + N intervalos en día de corte
-    const _fechaCuota = (cuotaNum, intervaloMeses) => {
-      const offset = cuotaNum - cuotaInicial;  // 0 para la primera, 1 para la segunda, etc.
-      if (offset === 0) return fechaPrimera;
-      const [anio, mes] = fechaPrimera.split('-').map(Number);
-      const base = new Date(anio, mes - 1 + offset * intervaloMeses, 1);
+    const [fpAnio, fpMes] = fechaPrimera.split('-').map(Number);
+
+    // Helper: fecha ISO a partir de la fecha base + N meses en día de corte
+    const _addMesesCorte = (offsetMeses) => {
+      if (offsetMeses === 0) return fechaPrimera;
+      const base = new Date(fpAnio, fpMes - 1 + offsetMeses, 1);
       return `${base.getFullYear()}-${String(base.getMonth()+1).padStart(2,'0')}-${String(diaCorte).padStart(2,'0')}`;
     };
 
-    // Determinar máximo de cuotas necesarias en la solicitud
-    const cuotaInicial = solicitud.cuota_inicial || 1;
-    let maxCuotas = cuotaInicial;
+    // ── Construir mapa de fechas → ítems que aplican ─────────────────────────
+    // Cada ítem genera su propio calendario de fechas independientemente
+    // clave: fecha ISO, valor: array de ítems con su número de cuota
+
+    const mapaFechas = new Map(); // fecha → [{item, cuotaNum}]
+
+    const _agregarFecha = (fecha, item, cuotaNum) => {
+      if (!mapaFechas.has(fecha)) mapaFechas.set(fecha, []);
+      mapaFechas.get(fecha).push({ item, cuotaNum });
+    };
+
     detalle.forEach(item => {
+      if (item.modalidad === 'Venta Única') {
+        // Solo en la primera factura
+        _agregarFecha(fechaPrimera, item, cuotaInicial);
+      }
+
       if (item.modalidad === 'Recurrente') {
         const intervalo = INTERVALO[item.frecuencia_recurrencia || 'Mensual'] || 1;
-        maxCuotas = Math.max(maxCuotas, Math.ceil(36 / intervalo));
+        const maxCobros = Math.ceil(36 / intervalo);
+        for (let i = 0; i < maxCobros; i++) {
+          const cuotaNum = cuotaInicial + i;
+          const fecha    = _addMesesCorte(i * intervalo);
+          _agregarFecha(fecha, item, cuotaNum);
+        }
       }
+
       if (item.modalidad === 'Comodato') {
-        // Cuotas restantes = plazo total - cuotas ya transcurridas
-        const restantes = (item.plazo_comodato || 12) - (cuotaInicial - 1);
-        maxCuotas = Math.max(maxCuotas, cuotaInicial + restantes - 1);
+        const plazo     = item.plazo_comodato || 12;
+        const restantes = plazo - (cuotaInicial - 1);
+        for (let i = 0; i < restantes; i++) {
+          const cuotaNum = cuotaInicial + i;
+          const fecha    = _addMesesCorte(i);
+          _agregarFecha(fecha, item, cuotaNum);
+        }
       }
     });
 
+    // ── Construir órdenes agrupadas por fecha ─────────────────────────────────
+    const fechasOrdenadas = [...mapaFechas.keys()].sort();
     const ordenes = [];
-    const primerRec    = detalle.find(i => i.modalidad === 'Recurrente');
-    const intervaloBase = primerRec ? (INTERVALO[primerRec.frecuencia_recurrencia || 'Mensual'] || 1) : 1;
 
-    for (let cuotaNum = cuotaInicial; cuotaNum <= maxCuotas; cuotaNum++) {
-      const itemsEnCuota = detalle.filter(item => {
-        if (item.modalidad === 'Venta Única') return cuotaNum === cuotaInicial;
-        if (item.modalidad === 'Recurrente')  return true;
-        if (item.modalidad === 'Comodato')    return cuotaNum <= (item.plazo_comodato || 12);
-        return false;
-      });
-      if (itemsEnCuota.length === 0) continue;
+    fechasOrdenadas.forEach((fecha, idx) => {
+      const itemsEnFecha = mapaFechas.get(fecha);
+      // cuotaNum de referencia = el menor cuotaNum de los ítems en esta fecha
+      const cuotaRef = Math.min(...itemsEnFecha.map(x => x.cuotaNum));
 
-      const itemsDetalle = itemsEnCuota.map(item => {
+      const itemsDetalle = itemsEnFecha.map(({ item, cuotaNum }) => {
         const valorU = item.modalidad === 'Venta Única'
           ? item.valor_unitario
           : this._valorConIPC(item.valor_unitario, cuotaNum, ipc);
@@ -6770,32 +6783,36 @@ const OrdenesProgramadasService = {
         };
       });
 
-      const totalCuota  = itemsDetalle.reduce((a, i) => a + i.subtotal, 0);
-      const tieneRec    = itemsEnCuota.some(i => i.modalidad === 'Recurrente');
-      const tieneCom    = itemsEnCuota.some(i => i.modalidad === 'Comodato');
-      const modalidadOrden = tieneRec ? 'Recurrente' : tieneCom ? 'Comodato' : 'Venta Única';
+      const totalFecha     = itemsDetalle.reduce((a, i) => a + i.subtotal, 0);
+      const tieneRec       = itemsEnFecha.some(x => x.item.modalidad === 'Recurrente');
+      const tieneCom       = itemsEnFecha.some(x => x.item.modalidad === 'Comodato');
+      // Determinar modalidad dominante para la tarjeta
+      const modalidades    = [...new Set(itemsEnFecha.map(x => x.item.modalidad).filter(m => m !== 'Venta Única'))];
+      const modalidadOrden = modalidades.length > 1 ? 'Recurrente'
+                           : modalidades[0] || 'Venta Única';
 
       ordenes.push({
-        id:                     `${solicitud.consecutivo}-FAC${String(cuotaNum).padStart(3,'0')}`,
+        id:                     `${solicitud.consecutivo}-FAC${String(idx + 1).padStart(3,'0')}`,
         solicitud_id:           solicitud.consecutivo,
         empresa:                solicitud.empresa,
         nit:                    solicitud.nit,
         ejecutivo:              solicitud.ejecutivo_comercial || solicitud.ejecutivo,
-        item:                   `FAC-${String(cuotaNum).padStart(3,'0')}`,
-        descripcion:            `Cuota ${cuotaNum} de ${solicitud.consecutivo} — ${itemsDetalle.length} ítem(s)`,
+        item:                   `FAC-${String(idx + 1).padStart(3,'0')}`,
+        descripcion:            `Factura ${idx + 1} de ${solicitud.consecutivo} — ${itemsDetalle.length} ítem(s)`,
         modalidad:              modalidadOrden,
-        frecuencia_recurrencia: primerRec?.frecuencia_recurrencia || null,
-        cuota_num:              cuotaNum,
-        cuotas_total:           maxCuotas,
-        fecha_factura:          _fechaCuota(cuotaNum, intervaloBase),
+        frecuencia_recurrencia: null,
+        cuota_num:              idx + 1,
+        cuotas_total:           fechasOrdenadas.length,
+        fecha_factura:          fecha,
         cantidad:               1,
-        valor_unitario:         totalCuota,
-        total:                  totalCuota,
-        ipc_aplicado:           cuotaNum > cuotaInicial ? ipc : 0,
+        valor_unitario:         totalFecha,
+        total:                  totalFecha,
+        ipc_aplicado:           idx > 0 ? ipc : 0,
         estado:                 'Pendiente',
         items_detalle:          JSON.stringify(itemsDetalle),
       });
-    }
+    });
+
     return ordenes;
   }
 
