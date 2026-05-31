@@ -6794,43 +6794,8 @@ function limpiarFormulario() {
    DATOS DEMO PARA HISTORIAL
    ═══════════════════════════════════════════════════════ */
 function cargarDatosDemoHistorial() {
-  solicitudes = [
-    {
-      consecutivo: '000001', fecha: '15/04/2026', ejecutivo: 'Yezid Bautista Sánchez', linea: 'Fleet',
-      empresa: 'Paz del Río S.A.', nit: '890205001', link_propuesta: '', observaciones: 'Propuesta COT 203A',
-      total_general: 18750000, estado: 'Facturada', updated_at: '20/04/2026 10:32',
-      detalle: [{ item: 'JC261', descripcion: 'Cámara AI ADAS/DMS', tipo_inventario: 'Hardware', tipo_item: 'Cámara', cantidad: 5, valor_unitario: 3750000, total: 18750000 }]
-    },
-    {
-      consecutivo: '000002', fecha: '22/04/2026', ejecutivo: 'Daniel Macías', linea: 'Fleet',
-      empresa: 'Celeris / Schryver', nit: '900123456', link_propuesta: '', observaciones: 'Piloto DMS 5 dispositivos',
-      total_general: 3750000, estado: 'Enviada', updated_at: '23/04/2026 08:15',
-      detalle: [{ item: 'RENT-DMS', descripcion: 'Arriendo mensual DMS Portátil', tipo_inventario: 'Servicio', tipo_item: 'Arriendo', cantidad: 5, valor_unitario: 750000, total: 3750000 }]
-    },
-    {
-      consecutivo: '000003', fecha: '28/04/2026', ejecutivo: 'Blanca Mesa', linea: 'Carga',
-      empresa: 'Transprensa S.A.S.', nit: '900654321', link_propuesta: '', observaciones: '',
-      total_general: 6050000, estado: 'Pendiente', updated_at: '28/04/2026 16:44',
-      detalle: [
-        { item: 'VL103', descripcion: 'GPS ControlTrack básico', tipo_inventario: 'Hardware', tipo_item: 'Dispositivo', cantidad: 11, valor_unitario: 550000, total: 6050000 }
-      ]
-    },
-    {
-      consecutivo: '000004', fecha: '05/05/2026', ejecutivo: 'Yezid Bautista Sánchez', linea: 'Fleet',
-      empresa: 'Interworld Land S.A.S.', nit: '900789123', link_propuesta: '', observaciones: 'ADAS + plataforma 12 meses',
-      total_general: 22400000, estado: 'Enviada', updated_at: '06/05/2026 09:00',
-      detalle: [
-        { item: 'JC261', descripcion: 'Cámara AI ADAS/DMS', tipo_inventario: 'Hardware', tipo_item: 'Cámara', cantidad: 4, valor_unitario: 3500000, total: 14000000 },
-        { item: 'PLT-AVL', descripcion: 'Plataforma Satlock AVL — Licencia mensual', tipo_inventario: 'Software', tipo_item: 'Servicio', cantidad: 48, valor_unitario: 175000, total: 8400000 },
-      ]
-    },
-    {
-      consecutivo: '000005', fecha: '12/05/2026', ejecutivo: 'Daniel Macías', linea: 'Fleet',
-      empresa: 'Federación Nacional de Cafeteros', nit: '860007538', link_propuesta: '', observaciones: 'Rechazo por presupuesto',
-      total_general: 9800000, estado: 'Rechazada', updated_at: '14/05/2026 11:20',
-      detalle: [{ item: 'JC181', descripcion: 'Cámara Dashcam HD', tipo_inventario: 'Hardware', tipo_item: 'Cámara', cantidad: 14, valor_unitario: 700000, total: 9800000 }]
-    },
-  ];
+  // Datos demo eliminados — arranca limpio para producción junio 2026
+  solicitudes = [];
 }
 
 /* Cerrar búsqueda al hacer click fuera */
@@ -6866,11 +6831,26 @@ function renderFacturacion(container){
 </div>`;
 
   setTimeout(() => {
-    // Rellenar campos ejecutivo/linea con PERFIL del CRM
+    const nombre = (typeof PERFIL !== 'undefined' && PERFIL) ? PERFIL.nombre : '';
+    const linea  = (typeof PERFIL !== 'undefined' && PERFIL) ? ((PERFIL.linea||'fleet').charAt(0).toUpperCase()+(PERFIL.linea||'fleet').slice(1)) : 'Fleet';
+    const consec = ConsecutivoService.getNext();
+
+    // Inputs ocultos para buildSolicitud
     const elEjec = document.getElementById('ejecutivo');
     const elLinea = document.getElementById('linea');
-    if(elEjec && PERFIL) elEjec.value = PERFIL.nombre||'';
-    if(elLinea && PERFIL) elLinea.value = (PERFIL.linea||'fleet').charAt(0).toUpperCase()+(PERFIL.linea||'fleet').slice(1);
+    const elConsec = document.getElementById('consecutivo');
+    if(elEjec)  elEjec.value  = nombre;
+    if(elLinea) elLinea.value = linea;
+    if(elConsec) elConsec.value = consec;
+
+    // Badges visibles
+    const bConsec = document.getElementById('consecutivo-badge');
+    const bEjec   = document.getElementById('ejecutivo-badge');
+    const bLinea  = document.getElementById('linea-badge');
+    if(bConsec) bConsec.textContent = consec;
+    if(bEjec)   bEjec.textContent   = nombre;
+    if(bLinea)  bLinea.textContent  = linea;
+
     inicializarModuloFacturacion();
   }, 60);
 }
@@ -6900,16 +6880,22 @@ function inicializarModuloFacturacion(){
 
   panelNueva.innerHTML = `
     <div class="card">
-      <div class="card-title">Datos del ejecutivo</div>
-      <div class="form-grid three">
-        <div class="form-group"><label>Ejecutivo Comercial</label><input type="text" id="ejecutivo" class="readonly" value="" readonly></div>
-        <div class="form-group"><label>Línea</label><input type="text" id="linea" class="readonly" value="" readonly></div>
-        <div class="form-group"><label>Consecutivo</label><input type="text" id="consecutivo" class="readonly" value="Generando..." readonly></div>
-      </div>
-    </div>
-
-    <div class="card">
       <div class="card-title">Datos del cliente</div>
+
+      <!-- Cabecera ejecutivo — solo lectura, compacta -->
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;padding:8px 14px;background:var(--sat-blue-light,#E8EEF8);border-radius:8px;border-left:3px solid var(--sat-blue,#19428C);">
+        <span style="font-size:11px;font-weight:700;color:var(--sat-blue,#19428C);text-transform:uppercase;letter-spacing:.06em;">Solicitud</span>
+        <span style="font-size:13px;font-weight:700;color:var(--sat-blue,#19428C);font-variant-numeric:tabular-nums;" id="consecutivo-badge">—</span>
+        <span style="width:1px;height:16px;background:var(--border,#DDE3EE);"></span>
+        <span id="ejecutivo-badge" style="font-size:12px;color:var(--text2,#3d5080);"></span>
+        <span style="width:1px;height:16px;background:var(--border,#DDE3EE);"></span>
+        <span id="linea-badge" style="font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px;background:var(--sat-orange-light,#FFF0EC);color:var(--sat-orange,#FF5E34);"></span>
+      </div>
+      <!-- Inputs ocultos para que buildSolicitud los lea -->
+      <input type="hidden" id="ejecutivo">
+      <input type="hidden" id="linea">
+      <input type="hidden" id="consecutivo">
+
       <div class="form-grid">
         <div class="form-group">
           <label>Empresa <span class="req">*</span></label>
