@@ -6958,16 +6958,8 @@ function agregarProducto(itemCode) {
   const prod = ProductosService.getAll().find(p => p.item === itemCode);
   if (!prod) return;
 
-  const yaExiste = billingItems.find(i => i.item === itemCode);
-  if (yaExiste) {
-    yaExiste.cantidad += 1;
-    yaExiste.total = yaExiste.cantidad * yaExiste.valor_unitario;
-    renderBilling();
-    document.getElementById('searchProd').value = '';
-    document.getElementById('searchResults').classList.remove('show');
-    return;
-  }
-
+  // Siempre agrega como línea nueva independiente
+  // (el mismo ítem puede tener diferente modalidad o valor en la misma factura)
   billingItems.push({
     id: Date.now(),
     item: prod.item,
@@ -6979,6 +6971,7 @@ function agregarProducto(itemCode) {
     total: 0,
     modalidad: null,
     plazo_comodato: null,
+    frecuencia_recurrencia: null,
   });
 
   renderBilling();
