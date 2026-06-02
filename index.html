@@ -6691,7 +6691,12 @@ const ConsecutivoService = {
    FACTURACIÓN SERVICE — desacoplado, listo para Gmail API
    ═══════════════════════════════════════════════════════ */
 const FacturacionService = {
-  destinatarios: ['Tatiana.mora@satlock.com', 'jackeline.varela@satlock.com'],
+  destinatarios: [
+    'Tatiana.mora@satlock.com',
+    'jackeline.varela@satlock.com',
+    'michel.villada@satlock.com',
+    'yesenia.gaez@satlock.com',
+  ],
 
   buildPayload(solicitud, detalle) {
     return {
@@ -7298,8 +7303,16 @@ function bloquearBotonesPostGuardado() {
 async function guardarSolicitud() {
   if (!validarFormulario()) return;
 
-  // Generar consecutivo real aquí — solo se consume al guardar efectivamente
-  const consec = await ConsecutivoService.getNext();
+  const esEdicion = !!window._editandoConsecutivo;
+  let consec;
+
+  if (esEdicion) {
+    consec = window._editandoConsecutivo;
+  } else {
+    // Generar consecutivo real solo al crear — no al abrir la pestaña
+    consec = await ConsecutivoService.getNext();
+  }
+
   const elConsec = document.getElementById('consecutivo');
   const bConsec  = document.getElementById('consecutivo-badge');
   if (elConsec) elConsec.value = consec;
@@ -7309,61 +7322,122 @@ async function guardarSolicitud() {
   const detalleCopia = billingItems.map(i => ({ ...i }));
 
   try {
-    // 1. Insertar cabecera en Supabase
-    const { data: solData, error: solErr } = await sb
-      .from('solicitudes_facturacion')
-      .insert({
-        consecutivo:           solicitud.consecutivo,
-        fecha:                 solicitud.fecha_iso,
-        fecha_iso:             solicitud.fecha_iso,
-        empresa:               solicitud.empresa,
-        nit:                   solicitud.nit,
-        link_propuesta:        solicitud.link_propuesta || null,
-        link_docs:             solicitud.link_docs || null,
-        observaciones:         solicitud.observaciones || null,
-        ipc_anual:             solicitud.ipc_anual || 0,
-        fecha_primera_factura: solicitud.fecha_primera_factura || null,
-        dia_corte:             solicitud.dia_corte || null,
-        ejecutivo_comercial:   solicitud.ejecutivo_comercial || null,
-        cuota_inicial:         solicitud.cuota_inicial || 1,
-        total_general:         solicitud.total_general,
-        usuario_id:            USER.id,
-        estado:                'Pendiente',
-        linea:                 solicitud.linea,
-      })
-      .select('id')
-      .single();
+    if (esEdicion) {
+      // ── MODO EDICIÓN: UPDATE cabecera + reemplazar detalle + borrar órdenes ──
+      const solExistente = solicitudes.find(x => x.consecutivo === consec);
 
-    if (solErr) throw solErr;
+      // 1. Borrar órdenes programadas anteriores
+      await sb.from('ordenes_programadas').delete().eq('solicitud_id', consec);
 
-    // 2. Insertar detalle
-    if (detalleCopia.length > 0) {
-      const detalleRows = detalleCopia.map(d => ({
-        solicitud_id:           solData.id,
-        item:                   d.item,
-        descripcion:            d.descripcion,
-        tipo_inventario:        d.tipo_inventario,
-        tipo_item:              d.tipo_item,
-        modalidad:              d.modalidad,
-        frecuencia_recurrencia: d.modalidad === 'Recurrente' ? (d.frecuencia_recurrencia || 'Mensual') : null,
-        plazo_comodato:         d.plazo_comodato || null,
-        cantidad:               d.cantidad,
-        valor_unitario:         d.valor_unitario,
-      }));
-      const { error: detErr } = await sb
-        .from('solicitudes_facturacion_detalle')
-        .insert(detalleRows);
-      if (detErr) throw detErr;
+      // 2. Borrar detalle anterior
+      if (solExistente?._uuid) {
+        await sb.from('solicitudes_facturacion_detalle').delete().eq('solicitud_id', solExistente._uuid);
+      }
+
+      // 3. UPDATE cabecera
+      const { data: solData, error: updErr } = await sb
+        .from('solicitudes_facturacion')
+        .update({
+          empresa:               solicitud.empresa,
+          nit:                   solicitud.nit,
+          link_propuesta:        solicitud.link_propuesta || null,
+          link_docs:             solicitud.link_docs || null,
+          observaciones:         solicitud.observaciones || null,
+          ipc_anual:             solicitud.ipc_anual || 0,
+          fecha_primera_factura: solicitud.fecha_primera_factura || null,
+          dia_corte:             solicitud.dia_corte || null,
+          ejecutivo_comercial:   solicitud.ejecutivo_comercial || null,
+          cuota_inicial:         solicitud.cuota_inicial || 1,
+          total_general:         solicitud.total_general,
+          estado:                'Pendiente',
+        })
+        .eq('consecutivo', consec)
+        .select('id')
+        .single();
+      if (updErr) throw updErr;
+
+      // 4. INSERT detalle nuevo
+      if (detalleCopia.length > 0) {
+        const detalleRows = detalleCopia.map(d => ({
+          solicitud_id:           solData.id,
+          item:                   d.item,
+          descripcion:            d.descripcion,
+          tipo_inventario:        d.tipo_inventario,
+          tipo_item:              d.tipo_item,
+          modalidad:              d.modalidad,
+          frecuencia_recurrencia: d.modalidad === 'Recurrente' ? (d.frecuencia_recurrencia || 'Mensual') : null,
+          plazo_comodato:         d.plazo_comodato || null,
+          cantidad:               d.cantidad,
+          valor_unitario:         d.valor_unitario,
+        }));
+        const { error: detErr } = await sb.from('solicitudes_facturacion_detalle').insert(detalleRows);
+        if (detErr) throw detErr;
+      }
+
+      // 5. Actualizar memoria local
+      const idx = solicitudes.findIndex(x => x.consecutivo === consec);
+      if (idx !== -1) solicitudes[idx] = { ...solicitudes[idx], ...solicitud, detalle: detalleCopia, _uuid: solExistente?._uuid };
+
+      window._editandoConsecutivo = null;
+      renderHistorial();
+      renderEstado();
+      habilitarBotonesPostGuardado({ ...solicitud, consecutivo: consec, detalle: detalleCopia, _uuid: solExistente?._uuid });
+      limpiarSoloFormulario();
+      verDetalle(consec);
+      showAlert('success', `Solicitud ${consec} actualizada correctamente.`);
+
+    } else {
+      // ── MODO CREACIÓN: INSERT normal ─────────────────────────────────────────
+      const { data: solData, error: solErr } = await sb
+        .from('solicitudes_facturacion')
+        .insert({
+          consecutivo:           consec,
+          fecha:                 solicitud.fecha_iso,
+          fecha_iso:             solicitud.fecha_iso,
+          empresa:               solicitud.empresa,
+          nit:                   solicitud.nit,
+          link_propuesta:        solicitud.link_propuesta || null,
+          link_docs:             solicitud.link_docs || null,
+          observaciones:         solicitud.observaciones || null,
+          ipc_anual:             solicitud.ipc_anual || 0,
+          fecha_primera_factura: solicitud.fecha_primera_factura || null,
+          dia_corte:             solicitud.dia_corte || null,
+          ejecutivo_comercial:   solicitud.ejecutivo_comercial || null,
+          cuota_inicial:         solicitud.cuota_inicial || 1,
+          total_general:         solicitud.total_general,
+          usuario_id:            USER.id,
+          estado:                'Pendiente',
+          linea:                 solicitud.linea,
+        })
+        .select('id')
+        .single();
+      if (solErr) throw solErr;
+
+      if (detalleCopia.length > 0) {
+        const detalleRows = detalleCopia.map(d => ({
+          solicitud_id:           solData.id,
+          item:                   d.item,
+          descripcion:            d.descripcion,
+          tipo_inventario:        d.tipo_inventario,
+          tipo_item:              d.tipo_item,
+          modalidad:              d.modalidad,
+          frecuencia_recurrencia: d.modalidad === 'Recurrente' ? (d.frecuencia_recurrencia || 'Mensual') : null,
+          plazo_comodato:         d.plazo_comodato || null,
+          cantidad:               d.cantidad,
+          valor_unitario:         d.valor_unitario,
+        }));
+        const { error: detErr } = await sb.from('solicitudes_facturacion_detalle').insert(detalleRows);
+        if (detErr) throw detErr;
+      }
+
+      const solConDetalle = { ...solicitud, consecutivo: consec, detalle: detalleCopia, _uuid: solData.id };
+      solicitudes.unshift(solConDetalle);
+      renderHistorial();
+      renderEstado();
+      habilitarBotonesPostGuardado(solConDetalle);
+      limpiarSoloFormulario();
+      verDetalle(consec);
     }
-
-    // 3. Actualizar memoria local
-    const solConDetalle = { ...solicitud, detalle: detalleCopia, _uuid: solData.id };
-    solicitudes.unshift(solConDetalle);
-    renderHistorial();
-    renderEstado();
-    habilitarBotonesPostGuardado(solConDetalle);
-    limpiarSoloFormulario();
-    verDetalle(solicitud.consecutivo);
 
   } catch(e) {
     console.error('Error guardando solicitud:', e);
@@ -7537,7 +7611,9 @@ async function confirmarEnvio() {
 
       // Notificación por Gmail a Tatiana y Jackeline
       if (typeof enviarCorreoGmail === 'function' && gcalToken) {
-        const destinatarios = 'Tatiana.mora@satlock.com, jackeline.varela@satlock.com';
+        const destinatarios = 'Tatiana.mora@satlock.com, jackeline.varela@satlock.com, michel.villada@satlock.com, yesenia.gaez@satlock.com';
+        // CC al ejecutivo que envía para trazabilidad
+        const ccEjecutivo = USER?.email || '';
         const asunto = `Nueva solicitud de facturación — ${solicitud.consecutivo} | ${solicitud.empresa}`;
         const itemsHtml = detalle.map(d => `
           <tr>
@@ -7592,6 +7668,7 @@ async function confirmarEnvio() {
 
         await enviarCorreoGmail({
           para:   destinatarios,
+          cc:     ccEjecutivo,
           asunto: asunto,
           cuerpo: cuerpo,
         });
@@ -7829,28 +7906,48 @@ async function editarDesdeModal() {
   const s = solicitudes.find(x => x.consecutivo === consecutivo);
   if (!s) return;
 
+  // Solo se puede editar si no está Facturada
+  if (s.estado === 'Facturada') {
+    showAlert('danger', 'No se puede editar una solicitud ya facturada.');
+    return;
+  }
+
   cerrarModalDetalle();
 
-  // Poblar formulario con datos de la solicitud original
+  // Marcar que estamos editando esta solicitud (no creando una nueva)
+  window._editandoConsecutivo = consecutivo;
+
+  // Poblar formulario con datos existentes
+  const selEj = document.getElementById('ejecutivo_comercial');
+  if (selEj) selEj.value = s.ejecutivo_comercial || '';
+  document.getElementById('nit').value            = s.nit;
   document.getElementById('empresa').value        = s.empresa;
   document.getElementById('empresa').classList.remove('readonly');
-  document.getElementById('nit').value            = s.nit;
   document.getElementById('linkPropuesta').value  = s.link_propuesta || '';
   document.getElementById('linkDocs').value       = s.link_docs || '';
   document.getElementById('observaciones').value  = s.observaciones || '';
 
-  // Clonar el detalle con un nuevo id por ítem para no pisar el original
+  const elIPC = document.getElementById('ipcAnual');
+  if (elIPC) elIPC.value = s.ipc_anual || '';
+  const elFecha = document.getElementById('fechaPrimeraFactura');
+  if (elFecha) elFecha.value = s.fecha_primera_factura || '';
+  const elCorte = document.getElementById('diaCorte');
+  if (elCorte) elCorte.value = s.dia_corte || '';
+  const elCuota = document.getElementById('cuotaInicial');
+  if (elCuota) elCuota.value = s.cuota_inicial || '';
+
+  // Usar el mismo consecutivo
+  const elConsec = document.getElementById('consecutivo');
+  const badge    = document.getElementById('consecutivo-badge');
+  if (elConsec) elConsec.value       = consecutivo;
+  if (badge)    badge.textContent    = consecutivo + ' (editando)';
+
+  // Poblar ítems
   billingItems = (s.detalle || []).map(d => ({ ...d, id: Date.now() + Math.random() }));
-
-  // Nuevo consecutivo — esta edición genera un registro nuevo
-  const nuevoConsec = await ConsecutivoService.getNext();
-  document.getElementById('consecutivo').value = nuevoConsec;
-  const badge = document.getElementById('consecutivo-badge');
-  if (badge) badge.textContent = nuevoConsec;
-
   renderBilling();
+
   switchTabDirect('nueva');
-  showAlert('info', `Editando copia de la solicitud ${consecutivo}. Al guardar se creará con el consecutivo ${nuevoConsec}.`);
+  showAlert('info', `Editando solicitud ${consecutivo}. Corrija lo necesario y vuelva a guardar.`);
 }
 
 function switchTabDirect(tab) {
@@ -8104,6 +8201,7 @@ function showAlert(type, msg) {
 
 /* "Solicitud nueva" — limpia todo y bloquea los 3 botones */
 function limpiarFormulario() {
+  window._editandoConsecutivo = null;
   limpiarSoloFormulario();
   const el = document.getElementById('consecutivo');
   if (el) el.value = '';
