@@ -7558,7 +7558,10 @@ async function confirmarEnvio() {
       .eq('consecutivo', solicitud.consecutivo);
     if (updErr) throw updErr;
 
-    // 2. Generar y persistir órdenes programadas (Recurrente + Comodato)
+    // 2. Borrar órdenes anteriores (por si se reenvía o edita)
+    await sb.from('ordenes_programadas').delete().eq('solicitud_id', solicitud.consecutivo);
+
+    // 3. Generar y persistir órdenes programadas
     const nuevasOrdenes = OrdenesProgramadasService.generarOrdenes(solicitud);
 
     if (nuevasOrdenes.length > 0) {
