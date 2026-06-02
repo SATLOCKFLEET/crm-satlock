@@ -7298,6 +7298,13 @@ function bloquearBotonesPostGuardado() {
 async function guardarSolicitud() {
   if (!validarFormulario()) return;
 
+  // Generar consecutivo real aquí — solo se consume al guardar efectivamente
+  const consec = await ConsecutivoService.getNext();
+  const elConsec = document.getElementById('consecutivo');
+  const bConsec  = document.getElementById('consecutivo-badge');
+  if (elConsec) elConsec.value = consec;
+  if (bConsec)  bConsec.textContent = consec;
+
   const solicitud    = buildSolicitud('Pendiente');
   const detalleCopia = billingItems.map(i => ({ ...i }));
 
@@ -8096,13 +8103,12 @@ function showAlert(type, msg) {
 }
 
 /* "Solicitud nueva" — limpia todo y bloquea los 3 botones */
-async function limpiarFormulario() {
+function limpiarFormulario() {
   limpiarSoloFormulario();
-  const c = await ConsecutivoService.getNext();
   const el = document.getElementById('consecutivo');
-  if (el) el.value = c;
+  if (el) el.value = '';
   const badge = document.getElementById('consecutivo-badge');
-  if (badge) badge.textContent = c;
+  if (badge) badge.textContent = '— se asigna al guardar —';
   bloquearBotonesPostGuardado();
 }
 
@@ -8202,21 +8208,20 @@ function renderFacturacion(container){
   setTimeout(async () => {
     const nombre = (typeof PERFIL !== 'undefined' && PERFIL) ? PERFIL.nombre : '';
     const linea  = (typeof PERFIL !== 'undefined' && PERFIL) ? ((PERFIL.linea||'fleet').charAt(0).toUpperCase()+(PERFIL.linea||'fleet').slice(1)) : 'Fleet';
-    const consec = await ConsecutivoService.getNext();
 
     // Inputs ocultos para buildSolicitud
-    const elEjec = document.getElementById('ejecutivo');
+    const elEjec  = document.getElementById('ejecutivo');
     const elLinea = document.getElementById('linea');
     const elConsec = document.getElementById('consecutivo');
     if(elEjec)  elEjec.value  = nombre;
     if(elLinea) elLinea.value = linea;
-    if(elConsec) elConsec.value = consec;
+    if(elConsec) elConsec.value = ''; // se asigna al guardar
 
     // Badges visibles
     const bConsec = document.getElementById('consecutivo-badge');
     const bEjec   = document.getElementById('ejecutivo-badge');
     const bLinea  = document.getElementById('linea-badge');
-    if(bConsec) bConsec.textContent = consec;
+    if(bConsec) bConsec.textContent = '— se asigna al guardar —';
     if(bEjec)   bEjec.textContent   = nombre;
     if(bLinea)  bLinea.textContent  = linea;
 
@@ -8463,12 +8468,11 @@ function inicializarModuloFacturacion(){
 
   // Inicializar estado de botones y datos
   bloquearBotonesPostGuardado();
-  ConsecutivoService.getNext().then(c => {
-    const el = document.getElementById('consecutivo');
-    if (el) el.value = c;
-    const badge = document.getElementById('consecutivo-badge');
-    if (badge) badge.textContent = c;
-  });
+  // El consecutivo se genera solo al guardar — no consumir la secuencia al abrir
+  const elConsecInit = document.getElementById('consecutivo');
+  const badgeInit    = document.getElementById('consecutivo-badge');
+  if (elConsecInit) elConsecInit.value = '';
+  if (badgeInit)    badgeInit.textContent = '— se asigna al guardar —';
   cargarDatosDemoHistorial().then(() => {
     renderHistorial();
     renderEstado();
