@@ -9227,42 +9227,225 @@ function pfac_portalTab(tab) {
    INDICADORES DE FACTURACIÓN
    ═══════════════════════════════════════════════════════ */
 function pfac_renderIndicadores() {
-  const facturadas = pfac_ordenes.filter(o => o.estado === 'Facturada');
-  const pendientes = pfac_ordenes.filter(o => o.estado === 'Pendiente').length;
-  const totalVal   = facturadas.reduce((a, o) => a + o.valor_unitario * o.cantidad, 0);
-  const clientes   = new Set(facturadas.map(o => o.nit)).size;
+  const hoy      = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+  const mesLabel  = hoy.toLocaleDateString('es-CO', { month:'long', year:'numeric' });
 
-  document.getElementById('pfac-ind-total').textContent      = formatCOP(totalVal);
-  document.getElementById('pfac-ind-count').textContent      = facturadas.length;
-  document.getElementById('pfac-ind-clientes').textContent   = clientes;
-  document.getElementById('pfac-ind-pendientes').textContent = pendientes;
+  // ── Filtros por mes ──────────────────────────────────────────────────────
+  const delMes        = pfac_ordenes.filter(o => o.fecha_factura && o.fecha_factura.startsWith(mesActual));
+  const facturadas    = delMes.filter(o => o.estado === 'Facturada');
+  const pendientes    = delMes.filter(o => o.estado === 'Pendiente');
+  const omitidas      = delMes.filter(o => o.estado === 'Omitida');
 
-  const tbody = document.getElementById('pfac-ind-tabla-body');
-  if (facturadas.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-hint);font-style:italic;">Sin facturas emitidas aún.</td></tr>`;
-    return;
-  }
+  const totalFacturado  = facturadas.reduce((a, o) => a + o.valor_unitario, 0);
+  const totalPendiente  = pendientes.reduce((a, o) => a + o.valor_unitario, 0);
+  const clientesFac     = new Set(facturadas.map(o => o.nit)).size;
+  const clientesPend    = new Set(pendientes.map(o => o.nit)).size;
 
-  // Ordenar por fecha descendente
-  const sorted = [...facturadas].sort((a,b) => (b.facturada_at||'').localeCompare(a.facturada_at||''));
+  // ── Histórico acumulado (todo el tiempo) ──────────────────────────────────
+  const todasFac        = pfac_ordenes.filter(o => o.estado === 'Facturada');
+  const totalHistorico  = todasFac.reduce((a, o) => a + o.valor_unitario, 0);
 
-  tbody.innerHTML = sorted.map((o, i) => {
-    const bg = i % 2 === 0 ? 'white' : 'var(--bg)';
-    const fecha = o.facturada_at ? new Date(o.facturada_at).toLocaleDateString('es-CO') : o.fecha_factura;
-    const modalidadColor = o.modalidad === 'Recurrente' ? 'var(--teal)' : 'var(--warning)';
-    const modalidadBg    = o.modalidad === 'Recurrente' ? 'var(--teal-bg)' : 'var(--warning-bg)';
-    return `
-      <tr style="background:${bg}">
-        <td style="padding:9px 12px;font-weight:700;color:var(--sat-blue);white-space:nowrap;">${o.num_factura || '—'}</td>
-        <td style="padding:9px 12px;white-space:nowrap;">${fecha}</td>
-        <td style="padding:9px 12px;font-weight:500;">${o.empresa}</td>
-        <td style="padding:9px 12px;color:var(--text-muted);font-variant-numeric:tabular-nums;">${o.nit}</td>
-        <td style="padding:9px 12px;">${o.item} — <span style="color:var(--text-muted)">${o.descripcion.slice(0,30)}${o.descripcion.length>30?'…':''}</span></td>
-        <td style="padding:9px 12px;"><span style="background:${modalidadBg};color:${modalidadColor};padding:2px 8px;border-radius:12px;font-size:10px;font-weight:700;">${o.modalidad}</span></td>
-        <td style="padding:9px 12px;color:var(--text-muted);">${o.ejecutivo}</td>
-        <td style="padding:9px 12px;text-align:right;font-weight:600;color:var(--sat-blue);font-variant-numeric:tabular-nums;">${formatCOP(o.valor_unitario * o.cantidad)}</td>
-      </tr>`;
-  }).join('');
+  // ── Resumen por ejecutivo del mes ─────────────────────────────────────────
+  const porEjecutivo = {};
+  delMes.forEach(o => {
+    if (!porEjecutivo[o.ejecutivo]) porEjecutivo[o.ejecutivo] = { fac:0, pend:0, valFac:0, valPend:0 };
+    if (o.estado === 'Facturada') { porEjecutivo[o.ejecutivo].fac++;    porEjecutivo[o.ejecutivo].valFac  += o.valor_unitario; }
+    if (o.estado === 'Pendiente') { porEjecutivo[o.ejecutivo].pend++;   porEjecutivo[o.ejecutivo].valPend += o.valor_unitario; }
+  });
+
+  // ── Resumen por modalidad del mes ─────────────────────────────────────────
+  const porModalidad = {};
+  delMes.forEach(o => {
+    const k = o.modalidad || 'Sin definir';
+    if (!porModalidad[k]) porModalidad[k] = { fac:0, pend:0, valFac:0, valPend:0 };
+    if (o.estado === 'Facturada') { porModalidad[k].fac++;  porModalidad[k].valFac  += o.valor_unitario; }
+    if (o.estado === 'Pendiente') { porModalidad[k].pend++; porModalidad[k].valPend += o.valor_unitario; }
+  });
+
+  // ── Resumen por persona que factura ──────────────────────────────────────
+  const porFaclurador = {};
+  facturadas.forEach(o => {
+    const quien = o.facturada_por || 'Sin registrar';
+    if (!porFaclurador[quien]) porFaclurador[quien] = { count: 0, valor: 0, clientes: new Set() };
+    porFaclurador[quien].count++;
+    porFaclurador[quien].valor += o.valor_unitario;
+    porFaclurador[quien].clientes.add(o.nit);
+  });
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  const panel = document.getElementById('pfac-ppanel-indicadores');
+  if (!panel) return;
+
+  const pct = delMes.length > 0 ? Math.round(facturadas.length / delMes.length * 100) : 0;
+  const barColor = pct >= 80 ? '#1B7A4A' : pct >= 50 ? '#E8A020' : '#A32D2D';
+
+  panel.innerHTML = `
+    <!-- Selector de mes -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div>
+        <span style="font-size:18px;font-weight:700;color:#19428C;text-transform:capitalize;">${mesLabel}</span>
+        <span style="font-size:12px;color:#6B7A99;margin-left:8px;">— Dashboard de facturación</span>
+      </div>
+      <div style="font-size:11px;color:#6B7A99;">Actualizado al abrir la pestaña</div>
+    </div>
+
+    <!-- Métricas principales del mes -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7A99;margin-bottom:6px;">Facturado en el mes</div>
+        <div style="font-size:20px;font-weight:700;color:#1B7A4A;font-variant-numeric:tabular-nums;">${formatCOP(totalFacturado)}</div>
+        <div style="font-size:11px;color:#6B7A99;margin-top:4px;">${facturadas.length} orden(es) · ${clientesFac} cliente(s)</div>
+      </div>
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7A99;margin-bottom:6px;">Pendiente por facturar</div>
+        <div style="font-size:20px;font-weight:700;color:#E8A020;font-variant-numeric:tabular-nums;">${formatCOP(totalPendiente)}</div>
+        <div style="font-size:11px;color:#6B7A99;margin-top:4px;">${pendientes.length} orden(es) · ${clientesPend} cliente(s)</div>
+      </div>
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7A99;margin-bottom:6px;">Avance del mes</div>
+        <div style="font-size:20px;font-weight:700;color:#19428C;">${pct}%</div>
+        <div style="background:#EEF1F8;border-radius:20px;height:6px;margin-top:8px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:${barColor};border-radius:20px;transition:width .4s;"></div>
+        </div>
+        <div style="font-size:10px;color:#6B7A99;margin-top:4px;">${facturadas.length} de ${delMes.length} órdenes del mes</div>
+      </div>
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7A99;margin-bottom:6px;">Total histórico facturado</div>
+        <div style="font-size:20px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;">${formatCOP(totalHistorico)}</div>
+        <div style="font-size:11px;color:#6B7A99;margin-top:4px;">${todasFac.length} factura(s) emitida(s)</div>
+      </div>
+    </div>
+
+    <!-- Por ejecutivo y por modalidad -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+
+      <!-- Por ejecutivo -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Por ejecutivo — ${mesLabel}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:#F4F6FA;">
+            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#6B7A99;text-transform:uppercase;">Ejecutivo</th>
+            <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#1B7A4A;text-transform:uppercase;">Facturado</th>
+            <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#E8A020;text-transform:uppercase;">Pendiente</th>
+          </tr></thead>
+          <tbody>
+            ${Object.entries(porEjecutivo).length === 0
+              ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#9AAABF;font-style:italic;">Sin datos</td></tr>`
+              : Object.entries(porEjecutivo)
+                  .sort((a,b) => b[1].valFac - a[1].valFac)
+                  .map(([ej, v], i) => `
+                <tr style="background:${i%2===0?'white':'#F8F9FC'};border-bottom:1px solid #EEF1F8;">
+                  <td style="padding:8px 12px;font-weight:500;">${ej}</td>
+                  <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#1B7A4A;font-weight:600;">${formatCOP(v.valFac)} <span style="color:#9AAABF;font-weight:400;">(${v.fac})</span></td>
+                  <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#E8A020;font-weight:600;">${formatCOP(v.valPend)} <span style="color:#9AAABF;font-weight:400;">(${v.pend})</span></td>
+                </tr>`).join('')
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Por modalidad -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Por modalidad — ${mesLabel}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:#F4F6FA;">
+            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#6B7A99;text-transform:uppercase;">Modalidad</th>
+            <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#1B7A4A;text-transform:uppercase;">Facturado</th>
+            <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#E8A020;text-transform:uppercase;">Pendiente</th>
+          </tr></thead>
+          <tbody>
+            ${Object.entries(porModalidad).length === 0
+              ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#9AAABF;font-style:italic;">Sin datos</td></tr>`
+              : Object.entries(porModalidad)
+                  .sort((a,b) => b[1].valFac - a[1].valFac)
+                  .map(([mod, v], i) => {
+                    const col = mod==='Recurrente'?'#0F6E56':mod==='Comodato'?'#7A5A0F':'#19428C';
+                    const bg2 = mod==='Recurrente'?'#E1F5EE':mod==='Comodato'?'#FDF6E3':'#E8EEF8';
+                    return `<tr style="background:${i%2===0?'white':'#F8F9FC'};border-bottom:1px solid #EEF1F8;">
+                      <td style="padding:8px 12px;">
+                        <span style="background:${bg2};color:${col};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">${mod}</span>
+                      </td>
+                      <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#1B7A4A;font-weight:600;">${formatCOP(v.valFac)} <span style="color:#9AAABF;font-weight:400;">(${v.fac})</span></td>
+                      <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#E8A020;font-weight:600;">${formatCOP(v.valPend)} <span style="color:#9AAABF;font-weight:400;">(${v.pend})</span></td>
+                    </tr>`;
+                  }).join('')
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Pendientes del mes — detalle ─────────────────────────────────────── -->
+    ${pendientes.length > 0 ? `
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);margin-bottom:20px;">
+      <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;font-weight:700;color:#A32D2D;text-transform:uppercase;letter-spacing:.06em;">⚠ Pendientes por facturar este mes (${pendientes.length})</span>
+        <span style="font-size:12px;font-weight:700;color:#A32D2D;font-variant-numeric:tabular-nums;">${formatCOP(totalPendiente)}</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="background:#FFF4F4;">
+          <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Fecha</th>
+          <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Cliente</th>
+          <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Ejecutivo</th>
+          <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Modalidad</th>
+          <th style="padding:7px 12px;text-align:right;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Valor</th>
+        </tr></thead>
+        <tbody>
+          ${pendientes
+            .sort((a,b) => a.fecha_factura.localeCompare(b.fecha_factura))
+            .map((o,i) => `
+              <tr style="background:${i%2===0?'white':'#FFF8F8'};border-bottom:1px solid #F5DADA;">
+                <td style="padding:7px 12px;white-space:nowrap;color:#A32D2D;font-weight:600;">${o.fecha_factura}</td>
+                <td style="padding:7px 12px;font-weight:500;">${o.empresa}</td>
+                <td style="padding:7px 12px;color:#6B7A99;">${o.ejecutivo}</td>
+                <td style="padding:7px 12px;"><span style="font-size:10px;font-weight:700;background:#FDF6E3;color:#7A5A0F;padding:2px 7px;border-radius:10px;">${o.modalidad}</span></td>
+                <td style="padding:7px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${formatCOP(o.valor_unitario)}</td>
+              </tr>`).join('')
+          }
+        </tbody>
+      </table>
+    </div>` : ''}
+
+    <!-- Registro completo de facturas emitidas ───────────────────────────── -->
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+      <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Registro de facturas emitidas — ${mesLabel}</span>
+        <span style="font-size:12px;font-weight:700;color:#1B7A4A;font-variant-numeric:tabular-nums;">${formatCOP(totalFacturado)}</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px;">
+          <thead><tr style="background:#F4F6FA;">
+            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">N° Factura</th>
+            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Fecha</th>
+            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Cliente</th>
+            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Modalidad</th>
+            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Ejecutivo</th>
+            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Facturado por</th>
+            <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Valor</th>
+          </tr></thead>
+          <tbody id="pfac-ind-tabla-body">
+            ${facturadas.length === 0
+              ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:#9AAABF;font-style:italic;">Sin facturas emitidas en ${mesLabel}.</td></tr>`
+              : [...facturadas].sort((a,b) => (b.facturada_at||'').localeCompare(a.facturada_at||'')).map((o,i) => {
+                  const fecha = o.facturada_at ? new Date(o.facturada_at).toLocaleDateString('es-CO') : o.fecha_factura;
+                  const modCol = o.modalidad==='Recurrente'?'#0F6E56':o.modalidad==='Comodato'?'#7A5A0F':'#19428C';
+                  const modBg  = o.modalidad==='Recurrente'?'#E1F5EE':o.modalidad==='Comodato'?'#FDF6E3':'#E8EEF8';
+                  return `<tr style="background:${i%2===0?'white':'#F8F9FC'};border-bottom:1px solid #EEF1F8;">
+                    <td style="padding:8px 12px;font-weight:700;color:#19428C;white-space:nowrap;">${o.num_factura||'—'}</td>
+                    <td style="padding:8px 12px;white-space:nowrap;">${fecha}</td>
+                    <td style="padding:8px 12px;font-weight:500;">${o.empresa}</td>
+                    <td style="padding:8px 12px;"><span style="background:${modBg};color:${modCol};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">${o.modalidad}</span></td>
+                    <td style="padding:8px 12px;color:#6B7A99;">${o.ejecutivo}</td>
+                    <td style="padding:8px 12px;color:#6B7A99;">${o.facturada_por||'—'}</td>
+                    <td style="padding:8px 12px;text-align:right;font-weight:600;color:#19428C;font-variant-numeric:tabular-nums;">${formatCOP(o.valor_unitario)}</td>
+                  </tr>`;
+                }).join('')
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -9476,40 +9659,8 @@ function renderPortalFacturacion(container){
         <div id="pfac-ordenes-container"></div>
       </div>
 
-      <!-- Panel: Indicadores -->
-      <div id="pfac-ppanel-indicadores" style="display:none;">
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
-          <div class="pfac-metric-mini"><div class="label">Total facturado</div><div class="value" id="pfac-ind-total" style="font-size:16px">$0</div></div>
-          <div class="pfac-metric-mini success"><div class="label">Órdenes facturadas</div><div class="value" id="pfac-ind-count">0</div></div>
-          <div class="pfac-metric-mini teal"><div class="label">Clientes activos</div><div class="value" id="pfac-ind-clientes">0</div></div>
-          <div class="pfac-metric-mini orange"><div class="label">Pendientes</div><div class="value" id="pfac-ind-pendientes">0</div></div>
-        </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.08);">
-          <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;">
-            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);">Registro de facturas emitidas</span>
-            <span id="pfac-ind-filtro-mes-label" style="font-size:11px;color:var(--text-hint);margin-left:auto;"></span>
-          </div>
-          <div style="overflow-x:auto;">
-            <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px;" id="pfac-ind-tabla">
-              <thead>
-                <tr style="background:var(--bg);">
-                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">N° Factura</th>
-                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Fecha</th>
-                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Cliente</th>
-                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">NIT</th>
-                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Producto</th>
-                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Modalidad</th>
-                  <th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Ejecutivo</th>
-                  <th style="padding:9px 12px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);border-bottom:2px solid var(--border);">Valor</th>
-                </tr>
-              </thead>
-              <tbody id="pfac-ind-tabla-body">
-                <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-hint);font-style:italic;">Sin facturas emitidas aún.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      <!-- Panel: Indicadores — generado dinámicamente por pfac_renderIndicadores -->
+      <div id="pfac-ppanel-indicadores" style="display:none;"></div>
 
     </main>
   </div></div>`;
