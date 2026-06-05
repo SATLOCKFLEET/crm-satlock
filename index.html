@@ -2448,7 +2448,7 @@ async function guardarOp(){
   const paisFormNIT = document.getElementById('f-pais')?.value || 'Colombia';
   if(nit && paisFormNIT === 'Colombia'){
     if(!/^\d{9}$/.test(nit)){
-      alert('El NIT para Colombia debe tener exactamente 9 dígitos numéricos, sin puntos, guiones ni caracteres especiales.\nEjemplo: 900123456');
+      alert('El NIT debe tener entre 8 y 10 dígitos numéricos, sin puntos, guiones ni caracteres especiales.\nEjemplo: 900123456');
       document.getElementById('f-nit')?.focus();
       return;
     }
@@ -7143,8 +7143,8 @@ const ClientesCRM = {
     try {
       const { data, error } = await sb
         .from('oportunidades')
-        .select('empresa, nit, link_drive')
-        .eq('nit', nit)
+        .select('empresa, nit, link_drive, contacto, telefono, correo, ciudad')
+        .like('nit', nit.slice(0,9) + '%')
         .limit(1)
         .maybeSingle();
       if (error || !data) return null;
@@ -7152,6 +7152,10 @@ const ClientesCRM = {
         nit:       data.nit,
         empresa:   data.empresa,
         link_docs: data.link_drive || '',
+        contacto:  data.contacto || '',
+        telefono:  data.telefono || '',
+        correo:    data.correo || '',
+        ciudad:    data.ciudad || '',
       };
     } catch(e) {
       console.warn('ClientesCRM.buscarPorNIT error:', e);
@@ -7161,16 +7165,20 @@ const ClientesCRM = {
 };
 
 async function validateNIT(input) {
-  input.value = input.value.replace(/\D/g, '').slice(0, 9);
+  input.value = input.value.replace(/\D/g, '').slice(0, 10);
   clearFieldError('nit');
   const badge = document.getElementById('nit-match-badge');
   if (badge) badge.style.display = 'none';
 
-  if (input.value.length === 9) {
+  if (input.value.length >= 8 && input.value.length <= 10) {
     const cliente = await ClientesCRM.buscarPorNIT(input.value);
     if (cliente) {
       const empresaEl  = document.getElementById('empresa');
       const linkDocsEl = document.getElementById('linkDocs');
+      const contactoEl = document.getElementById('fac-contacto');
+      const telEl      = document.getElementById('fac-telefono');
+      const emailEl    = document.getElementById('fac-email');
+      const ciudadEl   = document.getElementById('fac-ciudad');
 
       if (empresaEl && !empresaEl.value.trim()) {
         empresaEl.value = cliente.empresa;
@@ -7180,6 +7188,10 @@ async function validateNIT(input) {
       if (linkDocsEl && !linkDocsEl.value.trim() && cliente.link_docs) {
         linkDocsEl.value = cliente.link_docs;
       }
+      if (contactoEl && !contactoEl.value.trim() && cliente.contacto) contactoEl.value = cliente.contacto;
+      if (telEl      && !telEl.value.trim()      && cliente.telefono) telEl.value = cliente.telefono;
+      if (emailEl    && !emailEl.value.trim()    && cliente.correo)   emailEl.value = cliente.correo;
+      if (ciudadEl   && !ciudadEl.value.trim()   && cliente.ciudad)   ciudadEl.value = cliente.ciudad;
 
       if (badge) {
         badge.textContent   = '✓ Cliente encontrado en CRM';
@@ -7213,7 +7225,7 @@ function validarFormulario() {
   if (!empresa) { setFieldError('empresa', 'La empresa es obligatoria.'); ok = false; }
 
   const nit = document.getElementById('nit').value.trim();
-  if (!nit || !/^\d{9}$/.test(nit)) { setFieldError('nit', 'El NIT debe tener exactamente 9 dígitos numéricos.'); ok = false; }
+  if (!nit || !/^\d{8,10}$/.test(nit)) { setFieldError('nit', 'El NIT debe tener entre 8 y 10 dígitos numéricos.'); ok = false; }
 
   if (billingItems.length === 0) {
     document.getElementById('err-productos').style.display = 'block';
@@ -7404,6 +7416,14 @@ async function guardarSolicitud() {
           dia_corte:             solicitud.dia_corte || null,
           ejecutivo_comercial:   solicitud.ejecutivo_comercial || null,
           cuota_inicial:         solicitud.cuota_inicial || 1,
+          contacto:              solicitud.contacto || null,
+          telefono:              solicitud.telefono || null,
+          email_facturacion:     solicitud.email_facturacion || null,
+          ciudad:                solicitud.ciudad || null,
+          req_orden_compra:      solicitud.req_orden_compra || false,
+          req_prefactura:        solicitud.req_prefactura || false,
+          req_aprobacion:        solicitud.req_aprobacion || false,
+          req_ensamble:          solicitud.req_ensamble || false,
           total_general:         solicitud.total_general,
           usuario_id:            USER.id,
           estado:                'Pendiente',
@@ -7457,6 +7477,12 @@ function limpiarSoloFormulario() {
   const elCuotaI = document.getElementById('cuotaInicial');
   if (elEjCom)  elEjCom.value  = '';
   if (elCuotaI) elCuotaI.value = '';
+  ['fac-contacto','fac-telefono','fac-email','fac-ciudad'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['fac-req-oc','fac-req-prefactura','fac-req-aprobacion','fac-req-ensamble'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.checked = false;
+  });
   document.getElementById('ipcAnual').value = '';
   const elFPF = document.getElementById('fechaPrimeraFactura');
   const elDC  = document.getElementById('diaCorte');
@@ -7489,6 +7515,14 @@ function buildSolicitud(estado) {
     dia_corte:              parseInt(document.getElementById('diaCorte')?.value) || null,
     ejecutivo_comercial:    document.getElementById('ejecutivo_comercial')?.value || '',
     cuota_inicial:          parseInt(document.getElementById('cuotaInicial')?.value) || 1,
+    contacto:               document.getElementById('fac-contacto')?.value.trim() || null,
+    telefono:               document.getElementById('fac-telefono')?.value.trim() || null,
+    email_facturacion:      document.getElementById('fac-email')?.value.trim() || null,
+    ciudad:                 document.getElementById('fac-ciudad')?.value.trim() || null,
+    req_orden_compra:       document.getElementById('fac-req-oc')?.checked || false,
+    req_prefactura:         document.getElementById('fac-req-prefactura')?.checked || false,
+    req_aprobacion:         document.getElementById('fac-req-aprobacion')?.checked || false,
+    req_ensamble:           document.getElementById('fac-req-ensamble')?.checked || false,
     total_general: billingItems.reduce((a, i) => a + i.total, 0),
     estado:        estado,
     updated_at:    hoy.toLocaleString('es-CO'),
@@ -8392,8 +8426,8 @@ function inicializarModuloFacturacion(){
         </div>
         <div class="form-group">
           <label>NIT <span class="req">*</span></label>
-          <input type="text" id="nit" placeholder="9 dígitos sin guión" maxlength="9" oninput="validateNIT(this)">
-          <span class="error-msg" id="err-nit">El NIT debe tener exactamente 9 dígitos numéricos.</span>
+          <input type="text" id="nit" placeholder="8 a 10 dígitos sin guión" maxlength="10" oninput="validateNIT(this)">
+          <span class="error-msg" id="err-nit">El NIT debe tener entre 8 y 10 dígitos numéricos.</span>
           <span id="nit-match-badge" style="display:none;background:var(--teal-light);color:var(--teal-dark);border:1px solid #9FE1CB;border-radius:20px;font-size:11px;font-weight:600;padding:2px 10px;margin-top:4px;"></span>
         </div>
         <div class="form-group">
@@ -8414,7 +8448,49 @@ function inicializarModuloFacturacion(){
           <input type="url" id="linkDocs" placeholder="https://drive.google.com/..." oninput="clearFieldError('linkDocs')">
           <span class="error-msg" id="err-linkDocs">La carpeta de documentos es obligatoria.</span>
         </div>
+
+        <!-- Datos de contacto del cliente -->
+        <div class="form-group">
+          <label>Nombre de contacto</label>
+          <input type="text" id="fac-contacto" placeholder="Nombre de quien recibe la factura">
+        </div>
+        <div class="form-group">
+          <label>Teléfono</label>
+          <input type="text" id="fac-telefono" placeholder="Ej: 3001234567" maxlength="15">
+        </div>
+        <div class="form-group">
+          <label>Email de facturación</label>
+          <input type="email" id="fac-email" placeholder="facturacion@empresa.com">
+        </div>
+        <div class="form-group">
+          <label>Ciudad</label>
+          <input type="text" id="fac-ciudad" placeholder="Ej: Bogotá">
+        </div>
+
         <div class="form-group span2"><label>Observaciones</label><textarea id="observaciones" placeholder="Condiciones especiales, notas..."></textarea></div>
+
+        <!-- Checkboxes de requerimientos -->
+        <div class="form-group span2">
+          <label style="margin-bottom:8px;display:block;">Requerimientos especiales</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;text-transform:none;">
+              <input type="checkbox" id="fac-req-oc" style="width:16px;height:16px;cursor:pointer;">
+              Requiere orden de compra
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;text-transform:none;">
+              <input type="checkbox" id="fac-req-prefactura" style="width:16px;height:16px;cursor:pointer;">
+              Requiere prefactura
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;text-transform:none;">
+              <input type="checkbox" id="fac-req-aprobacion" style="width:16px;height:16px;cursor:pointer;">
+              Requiere aprobación
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;text-transform:none;" id="label-req-ensamble">
+              <input type="checkbox" id="fac-req-ensamble" style="width:16px;height:16px;cursor:pointer;">
+              Requiere ensamble <span style="font-size:10px;color:var(--text3)">(solo comodato)</span>
+            </label>
+          </div>
+        </div>
         <div class="form-group">
           <label>IPC anual aplicable <span style="font-weight:400;color:var(--text3)">(%) — opcional</span></label>
           <div style="position:relative;">
@@ -8720,6 +8796,41 @@ function pfac_renderOrdenesDia(iso) {
     // safeId debe definirse primero — se usa tanto en tablaDetalle como en los botones
     const safeId = o.id.replace(/[^a-z0-9]/gi,'-');
 
+    // Datos de contacto, observaciones y requerimientos
+    const contactoInfo = [
+      o.contacto          && `Contacto: ${o.contacto}`,
+      o.telefono          && `Tel: ${o.telefono}`,
+      o.email_facturacion && `Email: ${o.email_facturacion}`,
+      o.ciudad            && `Ciudad: ${o.ciudad}`,
+    ].filter(Boolean);
+
+    const reqs = [
+      o.req_orden_compra && '📋 Requiere orden de compra',
+      o.req_prefactura   && '📄 Requiere prefactura',
+      o.req_aprobacion   && '✅ Requiere aprobación',
+      o.req_ensamble     && '🔧 REQUIERE ENSAMBLE',
+    ].filter(Boolean);
+
+    const ensambleAlert = o.req_ensamble ? `
+      <div style="background:#FCEBEB;border:2px solid #A32D2D;border-radius:8px;padding:10px 14px;margin-bottom:8px;text-align:center;">
+        <strong style="font-size:12px;color:#A32D2D;letter-spacing:.05em;">⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR ⚠</strong>
+      </div>` : '';
+
+    const contactoHTML = contactoInfo.length ? `
+      <div style="margin-top:6px;padding:6px 10px;background:#F4F6FA;border-radius:6px;font-size:11px;color:#3d5080;line-height:1.8;">
+        ${contactoInfo.join(' &nbsp;·&nbsp; ')}
+      </div>` : '';
+
+    const obsHTML = o.observaciones ? `
+      <div style="margin-top:4px;padding:6px 10px;background:#FDF6E3;border-radius:6px;font-size:11px;color:#7A5A0F;border-left:3px solid #E8A020;">
+        <strong>Observaciones:</strong> ${o.observaciones}
+      </div>` : '';
+
+    const reqsHTML = reqs.length ? `
+      <div style="margin-top:4px;padding:6px 10px;background:#E6F1FB;border-radius:6px;font-size:11px;color:#185FA5;line-height:1.8;">
+        <strong>Requerimientos:</strong> ${reqs.join(' &nbsp;·&nbsp; ')}
+      </div>` : '';
+
     // Detalle de ítems (acordeón)
     let tablaDetalle = '';
     try {
@@ -8809,11 +8920,15 @@ function pfac_renderOrdenesDia(iso) {
 
     return `
       <div style="background:white;border:1px solid #DDE3EE;border-left:4px solid ${borderColor};border-radius:10px;padding:16px 20px;margin-bottom:12px;box-shadow:0 1px 4px rgba(25,66,140,.08);${o.estado==='Omitida'?'opacity:.65':''}">
+        ${ensambleAlert}
         <div style="display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;">
           <div>
             <div style="font-size:15px;font-weight:700;color:#19428C;margin-bottom:2px;">${o.empresa}</div>
-            <div style="font-size:11px;color:#6B7A99;margin-bottom:8px;">NIT ${o.nit} · Orden ${o.solicitud_id} · ${o.ejecutivo}</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+            <div style="font-size:11px;color:#6B7A99;margin-bottom:4px;">NIT ${o.nit} · Orden ${o.solicitud_id} · ${o.ejecutivo}</div>
+            ${contactoHTML}
+            ${obsHTML}
+            ${reqsHTML}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0;">
               ${tagCuota}${tagMod}${tagIPC}${estadoBadge}
             </div>
             ${tablaDetalle}
@@ -8850,14 +8965,35 @@ function pfac_exportarExcel(id) {
   let items = [];
   try { items = o.items_detalle ? (typeof o.items_detalle === 'string' ? JSON.parse(o.items_detalle) : o.items_detalle) : []; } catch(e) {}
 
-  const header = [['Satlock SAS — Detalle de Facturación'], [],
-    ['Orden:', o.id], ['Solicitud:', o.solicitud_id], ['Empresa:', o.empresa],
-    ['NIT:', o.nit], ['Fecha factura:', o.fecha_factura],
-    ['Cuota:', `${o.cuota_num}${o.cuotas_total&&o.modalidad!=='Recurrente'?'/'+o.cuotas_total:''}`],
-    ['Modalidad:', o.modalidad + (o.frecuencia_recurrencia?' · '+o.frecuencia_recurrencia:'')],
-    ['Ejecutivo:', o.ejecutivo], [],
+  const reqs = [];
+  if (o.req_orden_compra) reqs.push('Requiere orden de compra');
+  if (o.req_prefactura)   reqs.push('Requiere prefactura');
+  if (o.req_aprobacion)   reqs.push('Requiere aprobación');
+  if (o.req_ensamble)     reqs.push('⚠ REQUIERE ENSAMBLE — SOLICITAR A CONTABILIDAD ANTES DE FACTURAR');
+
+  const header = [
+    ['Satlock SAS — Detalle de Facturación'], [],
+    ['Orden:',          o.id],
+    ['Solicitud:',      o.solicitud_id],
+    ['Empresa:',        o.empresa],
+    ['NIT:',            o.nit],
+    ['Contacto:',       o.contacto || '—'],
+    ['Teléfono:',       o.telefono || '—'],
+    ['Email:',          o.email_facturacion || '—'],
+    ['Ciudad:',         o.ciudad || '—'],
+    ['Fecha factura:',  o.fecha_factura],
+    ['Cuota:',          `${o.cuota_num}${o.cuotas_total&&o.modalidad!=='Recurrente'?'/'+o.cuotas_total:''}`],
+    ['Modalidad:',      o.modalidad + (o.frecuencia_recurrencia?' · '+o.frecuencia_recurrencia:'')],
+    ['Ejecutivo:',      o.ejecutivo],
+    ['Observaciones:',  o.observaciones || '—'],
+    ...(reqs.length ? [[], ['⚠ REQUERIMIENTOS ESPECIALES:'], ...reqs.map(r => ['', r])] : []),
+    [],
     ['Ítem', 'Descripción', 'Modalidad', 'Frecuencia', 'Cantidad', 'Valor Unitario', 'Subtotal']
   ];
+
+  if (o.req_ensamble) {
+    header.splice(2, 0, ['⚠⚠⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR ⚠⚠⚠'], []);
+  }
 
   const filas = items.map(i => [
     i.item, i.descripcion, i.modalidad, i.frecuencia || '—',
@@ -8881,25 +9017,59 @@ async function pfac_exportarPDF(id) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', format: 'letter' });
 
+  // Alerta de ensamble
+  if (o.req_ensamble) {
+    doc.setFontSize(12); doc.setTextColor(163, 45, 45);
+    doc.setFont(undefined, 'bold');
+    doc.text('⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR', 14, 14);
+    doc.setFont(undefined, 'normal');
+  }
+
   // Encabezado
-  doc.setFontSize(16); doc.setTextColor(25, 66, 140);
-  doc.text('Satlock SAS — Detalle de Facturación', 14, 18);
-  doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+  const yStart = o.req_ensamble ? 24 : 18;
+  doc.setFontSize(14); doc.setTextColor(25, 66, 140);
+  doc.text('Satlock SAS — Detalle de Facturación', 14, yStart);
+  doc.setFontSize(9); doc.setTextColor(80, 80, 80);
 
   const info = [
-    [`Orden: ${o.id}`, `Solicitud: ${o.solicitud_id}`],
-    [`Empresa: ${o.empresa}`, `NIT: ${o.nit}`],
+    [`Orden: ${o.id}`,                    `Solicitud: ${o.solicitud_id}`],
+    [`Empresa: ${o.empresa}`,             `NIT: ${o.nit}`],
+    [`Contacto: ${o.contacto||'—'}`,      `Tel: ${o.telefono||'—'}`],
+    [`Email: ${o.email_facturacion||'—'}`,`Ciudad: ${o.ciudad||'—'}`],
     [`Fecha factura: ${o.fecha_factura}`, `Cuota: ${o.cuota_num}${o.cuotas_total&&o.modalidad!=='Recurrente'?'/'+o.cuotas_total:''}`],
     [`Modalidad: ${o.modalidad}${o.frecuencia_recurrencia?' · '+o.frecuencia_recurrencia:''}`, `Ejecutivo: ${o.ejecutivo}`],
   ];
-  let y = 28;
+  let y = yStart + 8;
   info.forEach(([a, b]) => {
-    doc.text(a, 14, y); doc.text(b, 110, y); y += 6;
+    doc.text(a, 14, y); doc.text(b, 110, y); y += 5;
   });
 
-  y += 4;
+  // Observaciones
+  if (o.observaciones) {
+    doc.setTextColor(100, 80, 0);
+    doc.text(`Observaciones: ${o.observaciones}`, 14, y); y += 5;
+    doc.setTextColor(80, 80, 80);
+  }
+
+  // Requerimientos especiales
+  const reqs = [
+    o.req_orden_compra && 'Requiere orden de compra',
+    o.req_prefactura   && 'Requiere prefactura',
+    o.req_aprobacion   && 'Requiere aprobación',
+    o.req_ensamble     && 'REQUIERE ENSAMBLE — SOLICITAR A CONTABILIDAD ANTES DE FACTURAR',
+  ].filter(Boolean);
+  if (reqs.length) {
+    y += 2;
+    doc.setTextColor(163, 45, 45); doc.setFont(undefined, 'bold');
+    doc.text('Requerimientos especiales:', 14, y); y += 4;
+    doc.setFont(undefined, 'normal');
+    reqs.forEach(r => { doc.text(`• ${r}`, 18, y); y += 4; });
+    doc.setTextColor(80, 80, 80);
+    y += 2;
+  }
+
   doc.autoTable({
-    startY: y,
+    startY: y + 2,
     head: [['Ítem', 'Descripción', 'Modalidad', 'Cant.', 'V. Unit.', 'Subtotal']],
     body: items.map(i => [
       i.item, i.descripcion,
@@ -8910,7 +9080,7 @@ async function pfac_exportarPDF(id) {
     headStyles: { fillColor: [25, 66, 140], fontSize: 9 },
     footStyles: { fillColor: [232, 238, 248], textColor: [25, 66, 140], fontStyle: 'bold' },
     bodyStyles: { fontSize: 9 },
-    columnStyles: { 0:{cellWidth:14}, 1:{cellWidth:68}, 2:{cellWidth:28}, 3:{cellWidth:12, halign:'right'}, 4:{cellWidth:24, halign:'right'}, 5:{cellWidth:24, halign:'right'} },
+    columnStyles: { 0:{cellWidth:14}, 1:{cellWidth:60}, 2:{cellWidth:28}, 3:{cellWidth:12, halign:'right'}, 4:{cellWidth:24, halign:'right'}, 5:{cellWidth:24, halign:'right'} },
   });
 
   doc.save(`Factura_${o.solicitud_id}_Cuota${o.cuota_num}_${o.empresa.replace(/\s+/g,'_')}.pdf`);
@@ -9353,12 +9523,20 @@ async function pfac_inicializarPortal(){
   try {
     const { data, error } = await sb
       .from('ordenes_programadas')
-      .select('*, items_detalle')
+      .select(`
+        *, items_detalle,
+        solicitudes_facturacion!solicitud_id (
+          contacto, telefono, email_facturacion, ciudad, observaciones,
+          req_orden_compra, req_prefactura, req_aprobacion, req_ensamble
+        )
+      `)
       .order('fecha_factura', { ascending: true });
 
     if (error) throw error;
 
-    pfac_ordenes = (data || []).map(o => ({
+    pfac_ordenes = (data || []).map(o => {
+      const sol = o.solicitudes_facturacion || {};
+      return {
       id:                     o.id,
       solicitud_id:           o.solicitud_id,
       empresa:                o.empresa,
@@ -9379,7 +9557,18 @@ async function pfac_inicializarPortal(){
       facturada_at:           o.facturada_at || null,
       facturada_por:          o.facturada_por || null,
       items_detalle:          o.items_detalle || null,
-    }));
+      // Datos de contacto y requerimientos desde solicitudes_facturacion
+      contacto:               sol.contacto || null,
+      telefono:               sol.telefono || null,
+      email_facturacion:      sol.email_facturacion || null,
+      ciudad:                 sol.ciudad || null,
+      observaciones:          sol.observaciones || null,
+      req_orden_compra:       sol.req_orden_compra || false,
+      req_prefactura:         sol.req_prefactura || false,
+      req_aprobacion:         sol.req_aprobacion || false,
+      req_ensamble:           sol.req_ensamble || false,
+    };
+    });
 
     // Renderizar después de tener los datos — el semáforo necesita pfac_ordenes cargado
     pfac_renderCalendario();
