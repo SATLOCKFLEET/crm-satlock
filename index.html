@@ -7482,12 +7482,20 @@ async function guardarSolicitud() {
           linea:                 solicitud.linea,
         })
         .select('id')
-        .single();
+        .maybeSingle();
       if (solErr) throw solErr;
+
+      // Si RLS no retorna el id, buscarlo directamente
+      let solCreacionUUID = solData?.id;
+      if (!solCreacionUUID) {
+        const { data: solBusq } = await sb.from('solicitudes_facturacion')
+          .select('id').eq('consecutivo', consec).maybeSingle();
+        solCreacionUUID = solBusq?.id;
+      }
 
       if (detalleCopia.length > 0) {
         const detalleRows = detalleCopia.map(d => ({
-          solicitud_id:           solData.id,
+          solicitud_id:           solCreacionUUID,
           item:                   d.item,
           descripcion:            d.descripcion,
           tipo_inventario:        d.tipo_inventario,
@@ -7502,7 +7510,7 @@ async function guardarSolicitud() {
         if (detErr) throw detErr;
       }
 
-      const solConDetalle = { ...solicitud, consecutivo: consec, detalle: detalleCopia, _uuid: solUUID };
+      const solConDetalle = { ...solicitud, consecutivo: consec, detalle: detalleCopia, _uuid: solCreacionUUID };
       solicitudes.unshift(solConDetalle);
       renderHistorial();
       renderEstado();
