@@ -7142,25 +7142,60 @@ const ClientesCRM = {
   buscarPorNIT: async (nit) => {
     try {
       const base9 = nit.slice(0, 9);
-      // Buscar exacto primero, luego por primeros 9 dígitos
-      const { data, error } = await sb
-        .from('oportunidades')
+
+      // 1. Buscar en oportunidades — exacto primero, luego por primeros 9 dígitos
+      let opData = null;
+      const { data: opExacto } = await sb.from('oportunidades')
         .select('empresa, nit, link_drive, contacto, telefono, correo, ciudad')
-        .or(`nit.eq.${nit},nit.like.${base9}%`)
-        .not('empresa', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error || !data) return null;
-      return {
-        nit:       data.nit,
-        empresa:   data.empresa,
-        link_docs: data.link_drive || '',
-        contacto:  data.contacto || '',
-        telefono:  data.telefono || '',
-        correo:    data.correo || '',
-        ciudad:    data.ciudad || '',
+        .eq('nit', nit).not('empresa','is',null)
+        .order('created_at',{ascending:false}).limit(1).maybeSingle();
+      if (opExacto) {
+        opData = opExacto;
+      } else {
+        const { data: opBase } = await sb.from('oportunidades')
+          .select('empresa, nit, link_drive, contacto, telefono, correo, ciudad')
+          .eq('nit', base9).not('empresa','is',null)
+          .order('created_at',{ascending:false}).limit(1).maybeSingle();
+        opData = opBase;
+      }
+
+      if (opData) return {
+        nit:       opData.nit,
+        empresa:   opData.empresa,
+        link_docs: opData.link_drive || '',
+        contacto:  opData.contacto || '',
+        telefono:  opData.telefono || '',
+        correo:    opData.correo || '',
+        ciudad:    opData.ciudad || '',
       };
+
+      // 2. Buscar en solicitudes_facturacion — exacto primero, luego por primeros 9
+      let solData = null;
+      const { data: solExacto } = await sb.from('solicitudes_facturacion')
+        .select('empresa, nit, link_docs, contacto, telefono, email_facturacion, ciudad')
+        .eq('nit', nit).not('empresa','is',null)
+        .order('created_at',{ascending:false}).limit(1).maybeSingle();
+      if (solExacto) {
+        solData = solExacto;
+      } else {
+        const { data: solBase } = await sb.from('solicitudes_facturacion')
+          .select('empresa, nit, link_docs, contacto, telefono, email_facturacion, ciudad')
+          .eq('nit', base9).not('empresa','is',null)
+          .order('created_at',{ascending:false}).limit(1).maybeSingle();
+        solData = solBase;
+      }
+
+      if (solData) return {
+        nit:       solData.nit,
+        empresa:   solData.empresa,
+        link_docs: solData.link_docs || '',
+        contacto:  solData.contacto || '',
+        telefono:  solData.telefono || '',
+        correo:    solData.email_facturacion || '',
+        ciudad:    solData.ciudad || '',
+      };
+
+      return null;
     } catch(e) {
       console.warn('ClientesCRM.buscarPorNIT error:', e);
       return null;
