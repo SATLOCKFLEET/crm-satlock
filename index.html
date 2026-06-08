@@ -7365,13 +7365,20 @@ async function guardarSolicitud() {
         })
         .eq('consecutivo', consec)
         .select('id')
-        .single();
+        .maybeSingle();
       if (updErr) throw updErr;
+      // Si RLS no retorna el id, buscarlo directamente
+      let solUUID = solData?.id;
+      if (!solUUID) {
+        const { data: solBusq } = await sb.from('solicitudes_facturacion')
+          .select('id').eq('consecutivo', consec).maybeSingle();
+        solUUID = solBusq?.id;
+      }
 
       // 4. INSERT detalle nuevo
       if (detalleCopia.length > 0) {
         const detalleRows = detalleCopia.map(d => ({
-          solicitud_id:           solData.id,
+          solicitud_id:           solUUID,
           item:                   d.item,
           descripcion:            d.descripcion,
           tipo_inventario:        d.tipo_inventario,
@@ -7450,7 +7457,7 @@ async function guardarSolicitud() {
         if (detErr) throw detErr;
       }
 
-      const solConDetalle = { ...solicitud, consecutivo: consec, detalle: detalleCopia, _uuid: solData.id };
+      const solConDetalle = { ...solicitud, consecutivo: consec, detalle: detalleCopia, _uuid: solUUID };
       solicitudes.unshift(solConDetalle);
       renderHistorial();
       renderEstado();
