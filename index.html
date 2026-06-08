@@ -9078,6 +9078,7 @@ function pfac_limpiarBusqueda() {
 
 
 function pfac_toggleDetalle(cardId) {
+  const el = document.getElementById('det-' + cardId);
   if (!el) { pfac_toast('warning', 'Sin detalle de ítems disponible para esta orden.'); return; }
   const visible = el.style.display !== 'none';
   el.style.display = visible ? 'none' : 'block';
