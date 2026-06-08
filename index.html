@@ -2448,7 +2448,7 @@ async function guardarOp(){
   const paisFormNIT = document.getElementById('f-pais')?.value || 'Colombia';
   if(nit && paisFormNIT === 'Colombia'){
     if(!/^\d{9}$/.test(nit)){
-      alert('El NIT debe tener entre 8 y 10 dígitos numéricos, sin puntos, guiones ni caracteres especiales.\nEjemplo: 900123456');
+      alert('El NIT debe tener entre 7 y 10 dígitos numéricos, sin puntos, guiones ni caracteres especiales.\nEjemplo: 900123456');
       document.getElementById('f-nit')?.focus();
       return;
     }
@@ -7212,7 +7212,7 @@ async function validateNIT(input) {
   if (badge) badge.style.display = 'none';
 
   const nit = input.value;
-  if (nit.length < 8 || nit.length > 10) {
+  if (nit.length < 7 || nit.length > 10) {
     const empresaEl = document.getElementById('empresa');
     if (empresaEl) empresaEl.classList.remove('readonly');
     return;
@@ -7270,7 +7270,7 @@ function validarFormulario() {
   if (!empresa) { setFieldError('empresa', 'La empresa es obligatoria.'); ok = false; }
 
   const nit = document.getElementById('nit').value.trim();
-  if (!nit || !/^\d{8,10}$/.test(nit)) { setFieldError('nit', 'El NIT debe tener entre 8 y 10 dígitos numéricos.'); ok = false; }
+  if (!nit || !/^\d{7,10}$/.test(nit)) { setFieldError('nit', 'El NIT debe tener entre 7 y 10 dígitos numéricos.'); ok = false; }
 
   if (billingItems.length === 0) {
     document.getElementById('err-productos').style.display = 'block';
@@ -8486,8 +8486,8 @@ function inicializarModuloFacturacion(){
         </div>
         <div class="form-group">
           <label>NIT <span class="req">*</span></label>
-          <input type="text" id="nit" placeholder="8 a 10 dígitos sin guión" maxlength="10" oninput="validateNIT(this)">
-          <span class="error-msg" id="err-nit">El NIT debe tener entre 8 y 10 dígitos numéricos.</span>
+          <input type="text" id="nit" placeholder="7 a 10 dígitos sin guión" maxlength="10" oninput="validateNIT(this)">
+          <span class="error-msg" id="err-nit">El NIT debe tener entre 7 y 10 dígitos numéricos.</span>
           <span id="nit-match-badge" style="display:none;background:var(--teal-light);color:var(--teal-dark);border:1px solid #9FE1CB;border-radius:20px;font-size:11px;font-weight:600;padding:2px 10px;margin-top:4px;"></span>
         </div>
         <div class="form-group">
