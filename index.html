@@ -7141,10 +7141,14 @@ const ClientesCRM = {
   /* Consulta oportunidades en Supabase — devuelve el primer registro con ese NIT */
   buscarPorNIT: async (nit) => {
     try {
+      const base9 = nit.slice(0, 9);
+      // Buscar exacto primero, luego por primeros 9 dígitos
       const { data, error } = await sb
         .from('oportunidades')
         .select('empresa, nit, link_drive, contacto, telefono, correo, ciudad')
-        .like('nit', nit.slice(0,9) + '%')
+        .or(`nit.eq.${nit},nit.like.${base9}%`)
+        .not('empresa', 'is', null)
+        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (error || !data) return null;
@@ -7164,14 +7168,25 @@ const ClientesCRM = {
   }
 };
 
+let _nitDebounceTimer = null;
+
 async function validateNIT(input) {
   input.value = input.value.replace(/\D/g, '').slice(0, 10);
   clearFieldError('nit');
   const badge = document.getElementById('nit-match-badge');
   if (badge) badge.style.display = 'none';
 
-  if (input.value.length >= 8 && input.value.length <= 10) {
-    const cliente = await ClientesCRM.buscarPorNIT(input.value);
+  const nit = input.value;
+  if (nit.length < 8 || nit.length > 10) {
+    const empresaEl = document.getElementById('empresa');
+    if (empresaEl) empresaEl.classList.remove('readonly');
+    return;
+  }
+
+  // Debounce: esperar 400ms después de que el usuario deje de escribir
+  clearTimeout(_nitDebounceTimer);
+  _nitDebounceTimer = setTimeout(async () => {
+    const cliente = await ClientesCRM.buscarPorNIT(nit);
     if (cliente) {
       const empresaEl  = document.getElementById('empresa');
       const linkDocsEl = document.getElementById('linkDocs');
@@ -7185,24 +7200,19 @@ async function validateNIT(input) {
         empresaEl.classList.add('readonly');
         clearFieldError('empresa');
       }
-      if (linkDocsEl && !linkDocsEl.value.trim() && cliente.link_docs) {
-        linkDocsEl.value = cliente.link_docs;
-      }
-      if (contactoEl && !contactoEl.value.trim() && cliente.contacto) contactoEl.value = cliente.contacto;
-      if (telEl      && !telEl.value.trim()      && cliente.telefono) telEl.value = cliente.telefono;
-      if (emailEl    && !emailEl.value.trim()    && cliente.correo)   emailEl.value = cliente.correo;
-      if (ciudadEl   && !ciudadEl.value.trim()   && cliente.ciudad)   ciudadEl.value = cliente.ciudad;
+      if (linkDocsEl && !linkDocsEl.value.trim() && cliente.link_docs) linkDocsEl.value = cliente.link_docs;
+      if (contactoEl && !contactoEl.value.trim() && cliente.contacto)  contactoEl.value = cliente.contacto;
+      if (telEl      && !telEl.value.trim()      && cliente.telefono)  telEl.value      = cliente.telefono;
+      if (emailEl    && !emailEl.value.trim()    && cliente.correo)    emailEl.value    = cliente.correo;
+      if (ciudadEl   && !ciudadEl.value.trim()   && cliente.ciudad)    ciudadEl.value   = cliente.ciudad;
 
       if (badge) {
-        badge.textContent   = '✓ Cliente encontrado en CRM';
+        badge.textContent   = '✓ ' + cliente.empresa + ' encontrado';
         badge.style.display = 'inline-block';
-        setTimeout(() => { badge.style.display = 'none'; }, 4000);
+        setTimeout(() => { badge.style.display = 'none'; }, 5000);
       }
     }
-  } else {
-    const empresaEl = document.getElementById('empresa');
-    if (empresaEl) empresaEl.classList.remove('readonly');
-  }
+  }, 400);
 }
 
 function clearFieldError(field) {
