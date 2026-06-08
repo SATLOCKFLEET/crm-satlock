@@ -8946,8 +8946,138 @@ function pfac_renderOrdenesDia(iso) {
   }).join('');
 }
 
+function pfac_buscarOrdenes(query) {
+  const q = (query || '').toLowerCase().trim();
+  const badge = document.getElementById('pfac-search-badge');
+  if (badge) badge.style.display = q ? 'block' : 'none';
+
+  if (!q) {
+    // Sin búsqueda — mostrar la vista normal del día seleccionado
+    pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+    const title = document.getElementById('pfac-day-title');
+    const count = document.getElementById('pfac-day-count');
+    if (title) {
+      const [y, m, d] = pfac_fechaSeleccionada.split('-');
+      const fecha = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+      const label = fecha.toLocaleDateString('es-CO', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+      title.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+    }
+    return;
+  }
+
+  // Buscar en todas las órdenes (sin filtrar por fecha)
+  const resultados = pfac_ordenes.filter(o =>
+    o.empresa?.toLowerCase().includes(q) ||
+    o.nit?.includes(q) ||
+    o.observaciones?.toLowerCase().includes(q) ||
+    o.ejecutivo?.toLowerCase().includes(q) ||
+    o.solicitud_id?.includes(q)
+  );
+
+  // Actualizar título y contador
+  const title = document.getElementById('pfac-day-title');
+  const count = document.getElementById('pfac-day-count');
+  if (title) title.textContent = `Resultados para "${query}"`;
+  if (count) count.textContent = `${resultados.length} orden(es) encontrada(s)`;
+
+  // Renderizar usando la misma lógica de tarjetas pero con los resultados filtrados
+  const container = document.getElementById('pfac-ordenes-container');
+  if (!container) return;
+
+  if (resultados.length === 0) {
+    container.innerHTML = `
+      <div class="pfac-empty-day">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <p>Sin resultados para "<strong>${query}</strong>".<br>
+        <span style="font-size:12px;color:#9AAABF;">Busque por nombre de cliente, NIT, observaciones o número de solicitud.</span></p>
+      </div>`;
+    return;
+  }
+
+  // Agrupar por fecha para dar contexto visual
+  const porFecha = {};
+  resultados.forEach(o => {
+    if (!porFecha[o.fecha_factura]) porFecha[o.fecha_factura] = [];
+    porFecha[o.fecha_factura].push(o);
+  });
+
+  // Reusar pfac_renderOrdenesDia pero con override temporal
+  const fechasOrdenadas = Object.keys(porFecha).sort();
+  let html = '';
+
+  fechasOrdenadas.forEach(fecha => {
+    const [y, m, d] = fecha.split('-');
+    const fechaObj = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+    const labelFecha = fechaObj.toLocaleDateString('es-CO', { weekday:'short', year:'numeric', month:'short', day:'numeric' });
+    html += `<div style="font-size:11px;font-weight:700;color:#6B7A99;text-transform:uppercase;letter-spacing:.06em;
+      padding:6px 0;margin:12px 0 6px;border-bottom:1px solid #EEF1F8;">${labelFecha}</div>`;
+
+    porFecha[fecha].forEach(o => {
+      const safeId   = o.id.replace(/[^a-z0-9]/gi,'-');
+      const borderColor = o.estado === 'Facturada' ? '#1B7A4A' : o.estado === 'Omitida' ? '#DDE3EE' : '#FF5E34';
+
+      // Reusar helpers de tarjeta
+      const tagCuota = `<span style="font-size:11px;font-weight:700;background:#E8EEF8;color:#19428C;padding:3px 10px;border-radius:12px;">Cuota ${o.cuota_num}${o.cuotas_total&&o.modalidad!=='Recurrente'?'/'+o.cuotas_total:''}</span>`;
+      const tagMod = o.modalidad==='Recurrente'
+        ? `<span style="font-size:11px;font-weight:700;background:#E1F5EE;color:#0F6E56;padding:3px 10px;border-radius:12px;">Recurrente${o.frecuencia_recurrencia?' · '+o.frecuencia_recurrencia:''}</span>`
+        : o.modalidad==='Comodato'
+        ? `<span style="font-size:11px;font-weight:700;background:#FDF6E3;color:#7A5A0F;padding:3px 10px;border-radius:12px;">Comodato</span>`
+        : `<span style="font-size:11px;font-weight:700;background:#E8EEF8;color:#19428C;padding:3px 10px;border-radius:12px;">Venta Única</span>`;
+
+      const estadoBadge = o.estado==='Facturada'
+        ? `<span style="font-size:11px;font-weight:700;background:#E1F5EE;color:#1B7A4A;padding:3px 10px;border-radius:12px;border:1px solid #9FE1CB;">✓ Factura ${o.num_factura||'—'}</span>`
+        : o.estado==='Omitida'
+        ? `<span style="font-size:11px;font-weight:700;background:#F4F6FA;color:#6B7A99;padding:3px 10px;border-radius:12px;border:1px solid #DDE3EE;">Omitida</span>`
+        : `<span style="font-size:11px;font-weight:700;background:#FDF6E3;color:#7A5A0F;padding:3px 10px;border-radius:12px;border:1px solid #E8D080;">Pendiente</span>`;
+
+      const obsHTML = o.observaciones ? `<div style="margin-top:4px;padding:5px 8px;background:#FDF6E3;border-radius:5px;font-size:11px;color:#7A5A0F;border-left:3px solid #E8A020;"><strong>Obs:</strong> ${o.observaciones}</div>` : '';
+      const ensambleAlert = o.req_ensamble ? `<div style="background:#FCEBEB;border:1.5px solid #A32D2D;border-radius:6px;padding:6px 10px;margin-bottom:6px;text-align:center;font-size:11px;font-weight:700;color:#A32D2D;">⚠ REQUIERE ENSAMBLE — SOLICITAR A CONTABILIDAD ANTES DE FACTURAR</div>` : '';
+
+      html += `
+        <div style="background:white;border:1px solid #DDE3EE;border-left:4px solid ${borderColor};border-radius:10px;padding:14px 18px;margin-bottom:10px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+          ${ensambleAlert}
+          <div style="display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start;">
+            <div>
+              <div style="font-size:14px;font-weight:700;color:#19428C;margin-bottom:1px;">${o.empresa}</div>
+              <div style="font-size:11px;color:#6B7A99;margin-bottom:6px;">NIT ${o.nit} · Orden ${o.solicitud_id} · ${o.ejecutivo}</div>
+              ${obsHTML}
+              <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;">${tagCuota}${tagMod}${estadoBadge}</div>
+              <div style="margin-top:8px;display:flex;gap:6px;">
+                <button class="pfac-btn-sm pfac-btn-deshacer" onclick="pfac_seleccionarFecha('${fecha}');document.getElementById('pfac-search-ordenes').value='';pfac_limpiarBusqueda();"
+                  style="font-size:11px;">Ver en agenda</button>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:18px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatCOP(o.valor_unitario)}</div>
+            </div>
+          </div>
+        </div>`;
+    });
+  });
+
+  container.innerHTML = html;
+}
+
+function pfac_limpiarBusqueda() {
+  const input = document.getElementById('pfac-search-ordenes');
+  const badge = document.getElementById('pfac-search-badge');
+  if (input) input.value = '';
+  if (badge) badge.style.display = 'none';
+  pfac_renderOrdenesDia(pfac_fechaSeleccionada);
+  const title = document.getElementById('pfac-day-title');
+  const count = document.getElementById('pfac-day-count');
+  if (title) {
+    const [y, m, d] = pfac_fechaSeleccionada.split('-');
+    const fecha = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
+    const label = fecha.toLocaleDateString('es-CO', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    title.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+  }
+}
+
+
 function pfac_toggleDetalle(cardId) {
-  const el = document.getElementById('det-' + cardId);
   if (!el) { pfac_toast('warning', 'Sin detalle de ítems disponible para esta orden.'); return; }
   const visible = el.style.display !== 'none';
   el.style.display = visible ? 'none' : 'block';
@@ -9681,6 +9811,24 @@ function renderPortalFacturacion(container){
           <div class="pfac-day-title" id="pfac-day-title">Cargando...</div>
           <div class="pfac-day-count" id="pfac-day-count"></div>
         </div>
+
+        <!-- Buscador de órdenes -->
+        <div style="margin-bottom:14px;position:relative;">
+          <input type="text" id="pfac-search-ordenes"
+            placeholder="Buscar por cliente, NIT u observaciones..."
+            oninput="pfac_buscarOrdenes(this.value)"
+            style="width:100%;padding:10px 14px 10px 38px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;background:white;box-sizing:border-box;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#9AAABF" stroke-width="2"
+            style="position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;pointer-events:none;">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <div id="pfac-search-badge" style="display:none;position:absolute;right:10px;top:50%;transform:translateY(-50%);
+            font-size:11px;font-weight:600;background:#E8EEF8;color:#19428C;padding:2px 8px;border-radius:10px;cursor:pointer;"
+            onclick="pfac_limpiarBusqueda()">
+            Limpiar ✕
+          </div>
+        </div>
+
         <div id="pfac-ordenes-container"></div>
       </div>
 
