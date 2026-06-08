@@ -9077,6 +9077,107 @@ function pfac_limpiarBusqueda() {
 }
 
 
+function pfac_exportarIndicadoresExcel() {
+  const hoy       = new Date();
+  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
+  const mesLabel  = hoy.toLocaleDateString('es-CO', { month:'long', year:'numeric' });
+
+  const delMes     = pfac_ordenes.filter(o => o.fecha_factura?.startsWith(mesActual));
+  const facturadas = delMes.filter(o => o.estado === 'Facturada');
+  const pendientes = delMes.filter(o => o.estado === 'Pendiente');
+  const todasFac   = pfac_ordenes.filter(o => o.estado === 'Facturada');
+
+  const wb = XLSX.utils.book_new();
+
+  // ── Hoja 1: Resumen del mes ───────────────────────────────────────────────
+  const totalFac  = facturadas.reduce((a, o) => a + o.valor_unitario, 0);
+  const totalPend = pendientes.reduce((a, o) => a + o.valor_unitario, 0);
+  const pct       = delMes.length > 0 ? Math.round(facturadas.length / delMes.length * 100) : 0;
+
+  // Por ejecutivo
+  const porEj = {};
+  delMes.forEach(o => {
+    if (!porEj[o.ejecutivo]) porEj[o.ejecutivo] = { fac:0, pend:0, valFac:0, valPend:0 };
+    if (o.estado==='Facturada') { porEj[o.ejecutivo].fac++;  porEj[o.ejecutivo].valFac  += o.valor_unitario; }
+    if (o.estado==='Pendiente') { porEj[o.ejecutivo].pend++; porEj[o.ejecutivo].valPend += o.valor_unitario; }
+  });
+
+  // Por facturadora
+  const porFac = {};
+  facturadas.forEach(o => {
+    const q = o.facturada_por || 'Sin registrar';
+    if (!porFac[q]) porFac[q] = { count:0, valor:0, clientes: new Set() };
+    porFac[q].count++;
+    porFac[q].valor += o.valor_unitario;
+    porFac[q].clientes.add(o.nit);
+  });
+
+  const resumen = [
+    [`Dashboard de Facturación — ${mesLabel.charAt(0).toUpperCase()+mesLabel.slice(1)}`],
+    [],
+    ['RESUMEN GENERAL'],
+    ['Facturado en el mes', totalFac],
+    ['Pendiente por facturar', totalPend],
+    ['Avance del mes', `${pct}%`],
+    ['Órdenes facturadas', facturadas.length],
+    ['Órdenes pendientes', pendientes.length],
+    ['Total histórico facturado', todasFac.reduce((a,o)=>a+o.valor_unitario,0)],
+    [],
+    ['POR EJECUTIVO COMERCIAL'],
+    ['Ejecutivo', 'Órdenes facturadas', 'Valor facturado', 'Órdenes pendientes', 'Valor pendiente'],
+    ...Object.entries(porEj).sort((a,b)=>b[1].valFac-a[1].valFac)
+      .map(([ej,v]) => [ej, v.fac, v.valFac, v.pend, v.valPend]),
+    [],
+    ['POR FACTURADORA'],
+    ['Facturadora', 'Facturas procesadas', 'Clientes atendidos', 'Valor procesado'],
+    ...Object.entries(porFac).sort((a,b)=>b[1].valor-a[1].valor)
+      .map(([q,v]) => [q, v.count, v.clientes.size, v.valor]),
+  ];
+  const ws1 = XLSX.utils.aoa_to_sheet(resumen);
+  ws1['!cols'] = [{wch:35},{wch:20},{wch:20},{wch:20},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
+
+  // ── Hoja 2: Facturas emitidas ─────────────────────────────────────────────
+  const headFac = ['N° Factura','Fecha factura','Fecha emisión','Empresa','NIT','Contacto',
+                   'Teléfono','Email','Ciudad','Modalidad','Ejecutivo','Facturada por','Valor'];
+  const rowsFac = [...facturadas].sort((a,b)=>(b.facturada_at||'').localeCompare(a.facturada_at||''))
+    .map(o => [
+      o.num_factura||'—',
+      o.fecha_factura,
+      o.facturada_at ? new Date(o.facturada_at).toLocaleDateString('es-CO') : '—',
+      o.empresa, o.nit,
+      o.contacto||'—', o.telefono||'—', o.email_facturacion||'—', o.ciudad||'—',
+      o.modalidad, o.ejecutivo, o.facturada_por||'—',
+      o.valor_unitario,
+    ]);
+  const ws2 = XLSX.utils.aoa_to_sheet([headFac, ...rowsFac]);
+  ws2['!cols'] = [{wch:14},{wch:14},{wch:14},{wch:30},{wch:12},{wch:20},{wch:14},{wch:28},{wch:16},{wch:12},{wch:28},{wch:20},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Facturadas');
+
+  // ── Hoja 3: Pendientes del mes ────────────────────────────────────────────
+  const headPend = ['Fecha factura','Empresa','NIT','Contacto','Teléfono','Email','Ciudad',
+                    'Modalidad','Ejecutivo','Observaciones','Req. OC','Req. Prefactura',
+                    'Req. Aprobación','Req. Ensamble','Valor'];
+  const rowsPend = [...pendientes].sort((a,b)=>a.fecha_factura.localeCompare(b.fecha_factura))
+    .map(o => [
+      o.fecha_factura, o.empresa, o.nit,
+      o.contacto||'—', o.telefono||'—', o.email_facturacion||'—', o.ciudad||'—',
+      o.modalidad, o.ejecutivo, o.observaciones||'—',
+      o.req_orden_compra?'Sí':'No',
+      o.req_prefactura?'Sí':'No',
+      o.req_aprobacion?'Sí':'No',
+      o.req_ensamble?'Sí':'No',
+      o.valor_unitario,
+    ]);
+  const ws3 = XLSX.utils.aoa_to_sheet([headPend, ...rowsPend]);
+  ws3['!cols'] = [{wch:14},{wch:30},{wch:12},{wch:20},{wch:14},{wch:28},{wch:16},{wch:12},{wch:28},{wch:30},{wch:10},{wch:14},{wch:14},{wch:12},{wch:16}];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Pendientes');
+
+  const nombreArchivo = `Facturacion_${hoy.getFullYear()}_${String(hoy.getMonth()+1).padStart(2,'0')}_Satlock.xlsx`;
+  XLSX.writeFile(wb, nombreArchivo);
+}
+
+
 function pfac_toggleDetalle(cardId) {
   const el = document.getElementById('det-' + cardId);
   if (!el) { pfac_toast('warning', 'Sin detalle de ítems disponible para esta orden.'); return; }
@@ -9419,6 +9520,17 @@ function pfac_renderIndicadores() {
         <span style="font-size:12px;color:#6B7A99;margin-left:8px;">— Dashboard de facturación</span>
       </div>
       <div style="font-size:11px;color:#6B7A99;">Actualizado al abrir la pestaña</div>
+      <button onclick="pfac_exportarIndicadoresExcel()"
+        style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;border:none;border-radius:7px;
+               background:#1D6F42;color:white;cursor:pointer;display:flex;align-items:center;gap:6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="8" y1="13" x2="16" y2="13"/>
+          <line x1="8" y1="17" x2="16" y2="17"/>
+        </svg>
+        Descargar Excel
+      </button>
     </div>
 
     <!-- Métricas principales del mes -->
