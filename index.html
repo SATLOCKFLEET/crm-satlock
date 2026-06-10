@@ -10104,8 +10104,9 @@ function buscarOpItem(query) {
     (p.siesa && p.siesa.includes(q))
   );
 
-  // Buscar en catálogo SIESA general
-  const resultsSIESA = PRODUCTOS_FACTURACION.filter(p =>
+  // Buscar en catálogo SIESA general — puede no estar cargado si el módulo de facturación no se abrió aún
+  const catalogoSIESA = (typeof PRODUCTOS_FACTURACION !== 'undefined') ? PRODUCTOS_FACTURACION : [];
+  const resultsSIESA = catalogoSIESA.filter(p =>
     p.item.includes(q) ||
     p.descripcion.toLowerCase().includes(q)
   ).slice(0, 10);
