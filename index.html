@@ -1432,7 +1432,7 @@ function construirTabs(){
   if(ROLES_FAC.includes(PERFIL.rol)){
     base.push({label:'Facturación',render:renderFacturacion});
   }
-  if(['facturacion','gerencia','alta_gerencia','jefe_fleet'].includes(PERFIL.rol)){
+  if(['facturacion','gerencia','alta_gerencia','jefe_fleet','ejecutivo_fleet'].includes(PERFIL.rol)){
     base.push({label:'🧾 Portal Facturación',render:renderPortalFacturacion});
   }
   return base;
@@ -2265,26 +2265,18 @@ function formatearMoneda(el){
   el.dataset.raw=v;
 }
 function limpiarNIT(input){
-  const pais = document.getElementById('f-pais')?.value || 'Colombia';
-  if(pais !== 'Colombia') return; // Solo restringir para Colombia
-  // Eliminar todo lo que no sea dígito
-  const limpio = input.value.replace(/[^0-9]/g,'');
+  const limpio = input.value.replace(/[^0-9]/g,'').slice(0, 10);
   input.value = limpio;
   const hint = document.getElementById('f-nit-hint');
   if(!hint) return;
   if(limpio.length === 0){
     hint.style.display='none'; hint.textContent='';
-  } else if(limpio.length < 9){
-    hint.style.display='block'; hint.textContent=`${limpio.length}/9 dígitos`;
+  } else if(limpio.length < 7){
+    hint.style.display='block'; hint.textContent=`${limpio.length} dígito(s) — mínimo 7`;
     hint.style.color='var(--amber)';
-  } else if(limpio.length === 9){
+  } else if(limpio.length >= 7 && limpio.length <= 10){
     hint.style.display='block'; hint.textContent='✓ NIT válido';
     hint.style.color='var(--green)';
-  } else {
-    // Truncar a 9
-    input.value = limpio.slice(0,9);
-    hint.style.display='block'; hint.textContent='Máximo 9 dígitos para Colombia';
-    hint.style.color='var(--red)';
   }
 }
 async function autocompletarDesdeNIT(nit){
