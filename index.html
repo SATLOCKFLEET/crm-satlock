@@ -2436,10 +2436,9 @@ async function guardarOp(){
   if(!productoCheck){alert('Seleccione el producto.');return;}
   if(!tipoUnica&&!tipoRec){alert('Seleccione al menos un tipo de negocio (Venta única o Recurrente).');return;}
 
-  // Validar formato NIT para Colombia
-  const paisFormNIT = document.getElementById('f-pais')?.value || 'Colombia';
-  if(nit && paisFormNIT === 'Colombia'){
-    if(!/^\d{9}$/.test(nit)){
+  // Validar formato NIT
+  if(nit){
+    if(!/^\d{7,10}$/.test(nit)){
       alert('El NIT debe tener entre 7 y 10 dígitos numéricos, sin puntos, guiones ni caracteres especiales.\nEjemplo: 900123456');
       document.getElementById('f-nit')?.focus();
       return;
