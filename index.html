@@ -8332,7 +8332,7 @@ async function cargarDatosDemoHistorial() {
       consecutivo:           s.consecutivo,
       fecha:                 new Date(s.fecha).toLocaleDateString('es-CO'),
       fecha_iso:             s.fecha,
-      ejecutivo:             PERFIL?.nombre || '',
+      ejecutivo:             s.ejecutivo_comercial || PERFIL?.nombre || '',
       ejecutivo_comercial:   s.ejecutivo_comercial || '',
       linea:                 s.linea,
       empresa:               s.empresa,
