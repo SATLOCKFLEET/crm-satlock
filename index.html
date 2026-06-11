@@ -7920,6 +7920,34 @@ function verDetalle(consecutivo) {
     document.getElementById('det-obs').textContent = s.observaciones;
   } else { rowObs.style.display = 'none'; }
 
+  // Datos de contacto
+  const setRow = (rowId, elId, val) => {
+    const row = document.getElementById(rowId);
+    const el  = document.getElementById(elId);
+    if (!row || !el) return;
+    if (val) { row.style.display = 'block'; el.textContent = val; }
+    else { row.style.display = 'none'; }
+  };
+  setRow('det-row-contacto', 'det-contacto',   s.contacto);
+  setRow('det-row-telefono', 'det-telefono',   s.telefono);
+  setRow('det-row-email',    'det-email-fac',  s.email_facturacion);
+  setRow('det-row-ciudad',   'det-ciudad',     s.ciudad);
+
+  // Requerimientos especiales
+  const reqs = [
+    s.req_orden_compra && 'Requiere orden de compra',
+    s.req_prefactura   && 'Requiere prefactura',
+    s.req_aprobacion   && 'Requiere aprobación',
+    s.req_ensamble     && 'Requiere ensamble',
+  ].filter(Boolean);
+  const rowReqs    = document.getElementById('det-row-reqs');
+  const rowEnsamble = document.getElementById('det-row-ensamble');
+  if (reqs.length) {
+    rowReqs.style.display = 'block';
+    document.getElementById('det-reqs').textContent = reqs.join(' · ');
+  } else { rowReqs.style.display = 'none'; }
+  if (rowEnsamble) rowEnsamble.style.display = s.req_ensamble ? 'block' : 'none';
+
   const rowIPC = document.getElementById('det-row-ipc');
   if (s.ipc_anual && s.ipc_anual > 0) {
     rowIPC.style.display = 'block';
@@ -8103,20 +8131,32 @@ function exportarExcel() {
 
   const wb = XLSX.utils.book_new();
 
+  const reqs = [
+    s.req_orden_compra && 'Requiere OC',
+    s.req_prefactura   && 'Requiere prefactura',
+    s.req_aprobacion   && 'Requiere aprobación',
+    s.req_ensamble     && '⚠ REQUIERE ENSAMBLE',
+  ].filter(Boolean).join(' · ') || '—';
+
   const infoData = [
+    s.req_ensamble ? ['⚠⚠⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR ⚠⚠⚠'] : [],
     ['SOLICITUD DE FACTURACIÓN — SATLOCK FLEET'],
     [],
     ['Consecutivo',        consec],
     ['Fecha',              fechaLeg],
-    ['Ejecutivo',          currentUser.nombre],
-    ['Línea',              currentUser.linea],
+    ['Ejecutivo comercial', s.ejecutivo_comercial || currentUser.nombre],
     ['Empresa',            empresa],
     ['NIT',                nit],
+    ['Contacto',           s.contacto || '—'],
+    ['Teléfono',           s.telefono || '—'],
+    ['Email facturación',  s.email_facturacion || '—'],
+    ['Ciudad',             s.ciudad || '—'],
     ['Link propuesta',     linkProp || '—'],
     ['Carpeta documentos', linkDocs || '—'],
     ['Observaciones',      obs || '—'],
+    ['Requerimientos',     reqs],
     [],
-  ];
+  ].filter(r => r.length > 0);
 
   const headerDetalle = ['Ítem', 'Descripción', 'Tipo Inventario', 'Tipo Ítem', 'Modalidad', 'Frecuencia', 'Plazo (meses)', 'Cantidad', 'Valor Unitario', 'Total'];
   const detalleData   = items.map(i => [
@@ -8208,6 +8248,8 @@ function exportarPDF() {
   const filas = [
     ['Empresa:', empresa,  'NIT:', nit],
   ];
+  if (s.contacto)           filas.push(['Contacto:', s.contacto, 'Teléfono:', s.telefono || '—']);
+  if (s.email_facturacion)  filas.push(['Email:', s.email_facturacion, 'Ciudad:', s.ciudad || '—']);
   if (linkProp) filas.push(['Link propuesta:', linkProp, '', '']);
   if (linkDocs) filas.push(['Carpeta documentos:', linkDocs, '', '']);
 
@@ -8227,6 +8269,30 @@ function exportarPDF() {
     const obsLines = doc.splitTextToSize(obs, 160);
     doc.text(obsLines, 38, y);
     y += obsLines.length * 5;
+  }
+
+  // Requerimientos especiales
+  const reqsList = [
+    s.req_orden_compra && 'Requiere orden de compra',
+    s.req_prefactura   && 'Requiere prefactura',
+    s.req_aprobacion   && 'Requiere aprobación',
+    s.req_ensamble     && 'REQUIERE ENSAMBLE — SOLICITAR A CONTABILIDAD ANTES DE FACTURAR',
+  ].filter(Boolean);
+  if (reqsList.length) {
+    doc.setFontSize(8.5); doc.setTextColor(25, 66, 140);
+    doc.setFont('helvetica', 'bold'); doc.text('Requerimientos:', 10, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(reqsList.join('  ·  '), 38, y);
+    y += 6;
+  }
+
+  // Alerta ensamble destacada
+  if (s.req_ensamble) {
+    doc.setFillColor(252, 235, 235);
+    doc.rect(10, y, 196, 8, 'F');
+    doc.setTextColor(163, 45, 45); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+    doc.text('⚠  DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR  ⚠', 108, y + 5, { align: 'center' });
+    y += 12;
   }
 
   y += 4;
@@ -10384,6 +10450,33 @@ function getCatalogoLinea(linea) {
           <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px;">Carpeta documentos</div>
           <div style="font-size:12px;" id="det-docs">—</div>
         </div>
+        <div id="det-row-contacto" style="display:none;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px;">Contacto</div>
+          <div style="font-size:13px;" id="det-contacto">—</div>
+        </div>
+        <div id="det-row-telefono" style="display:none;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px;">Teléfono</div>
+          <div style="font-size:13px;" id="det-telefono">—</div>
+        </div>
+        <div id="det-row-email" style="display:none;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px;">Email facturación</div>
+          <div style="font-size:13px;" id="det-email-fac">—</div>
+        </div>
+        <div id="det-row-ciudad" style="display:none;">
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:3px;">Ciudad</div>
+          <div style="font-size:13px;" id="det-ciudad">—</div>
+        </div>
+      </div>
+
+      <!-- Requerimientos especiales -->
+      <div id="det-row-reqs" style="display:none;margin-bottom:12px;padding:8px 14px;background:#E6F1FB;border-radius:var(--radius);border-left:3px solid #19428C;">
+        <div style="font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px;">Requerimientos especiales</div>
+        <div style="font-size:12px;color:#19428C;" id="det-reqs">—</div>
+      </div>
+
+      <!-- Alerta ensamble -->
+      <div id="det-row-ensamble" style="display:none;margin-bottom:12px;padding:10px 14px;background:#FCEBEB;border-radius:var(--radius);border:2px solid #A32D2D;text-align:center;">
+        <strong style="font-size:13px;color:#A32D2D;letter-spacing:.05em;">⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR ⚠</strong>
       </div>
 
       <div id="det-row-obs" style="display:none;margin-bottom:16px;padding:10px 14px;background:var(--bg);border-radius:var(--radius);border-left:3px solid var(--sat-orange);">
