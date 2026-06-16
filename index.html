@@ -1510,7 +1510,7 @@ async function renderSeguimiento(container){
     <div class="table-wrap"><table>
       <thead><tr>
         <th>Fecha</th><th>Cliente</th><th>Contacto</th><th>Producto</th>
-        <th>N° propuesta</th><th>Próx. acción</th><th>Días</th><th>Avance</th><th>Estado</th>
+        <th>N° propuesta</th><th>Próx. acción</th><th>Compromiso</th><th>Avance</th><th>Estado</th>
         ${['gerencia','jefe_fleet'].includes(PERFIL.rol)?'<th>Ejecutivo</th>':''}
         <th></th>
       </tr></thead>
@@ -1569,8 +1569,8 @@ function renderOpRows(rows, filtro, q){
           ${r.de_mercadeo?`<span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;background:#fdeee8;color:var(--sat-orange);border:0.5px solid var(--sat-orange)">Mercadeo</span>`:''}
         </div>
       </td>
-      <td style="text-align:center">${badgeDiasGestion(diasGestion(r.fecha_inicio_gestion, (r.estado==='cerrado'||r.estado==='perdido')?r.updated_at?.split('T')[0]:null), r.estado)}</td>
-      <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:${r.avance}%;background:${cfg.color}"></div></div><div class="bar-pct">${r.avance}%</div></div></td>
+      <td style="text-align:center">${badgeProximaAccion(r.fecha_proxima_accion)}</td>
+      <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:${r.avance||0}%;background:${cfg.color}"></div></div><div class="bar-pct">${r.avance||0}%</div></div></td>
       <td><span class="pill ${cfg.cls}"><span class="dot"></span>${cfg.label}</span></td>
       ${esJefe?`<td style="font-size:11px;color:var(--text2)">${r.usuarios?.nombre||'Sin perfil'}</td>`:''}
       <td style="white-space:nowrap">
@@ -2566,6 +2566,25 @@ function diasGestion(fechaInicio, fechaFin){
   return Math.floor((fin - ini) / (1000*60*60*24));
 }
 
+function badgeProximaAccion(fechaProxima) {
+  if (!fechaProxima) return '<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:#F4F6FA;color:#9AAABF">Sin fecha</span>';
+  const hoy   = new Date(); hoy.setHours(0,0,0,0);
+  const fecha = new Date(fechaProxima + 'T00:00:00');
+  const diff  = Math.round((fecha - hoy) / (1000*60*60*24));
+
+  if (diff < 0) {
+    // Vencida
+    const dias = Math.abs(diff);
+    return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:#FCEBEB;color:#A32D2D">${dias}d vencida</span>`;
+  } else if (diff === 0) {
+    return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:#FFF0EC;color:#FF5E34">Hoy</span>`;
+  } else if (diff <= 3) {
+    return `<span style="font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;background:#FDF6E3;color:#7A5A0F">En ${diff}d</span>`;
+  } else {
+    return `<span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:#E1F5EE;color:#1B7A4A">En ${diff}d</span>`;
+  }
+}
+
 function badgeDiasGestion(dias, estado){
   if(dias===null) return '—';
   const cerrado = estado==='cerrado'||estado==='perdido';
@@ -2574,7 +2593,7 @@ function badgeDiasGestion(dias, estado){
     // Negocio cerrado/perdido: mostrar total en días
     if(dias<=30){color='#27500A';bg='#EAF3DE';}
     else if(dias<=60){color='#633806';bg='#FAEEDA';}
-    else{color='#791F1F';bg:'#FCEBEB';}
+    else{color='#791F1F';bg='#FCEBEB';}
     label=dias+'d';
   } else {
     // En proceso: semáforo de urgencia
