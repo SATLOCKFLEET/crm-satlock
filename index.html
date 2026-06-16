@@ -2925,6 +2925,14 @@ async function guardarGestionDesdeFicha(opId){
     // Actualizar también en memoria local
     const idxOp = (window._diarioOps||[]).findIndex(o=>o.id===opId);
     if(idxOp>-1) window._diarioOps[idxOp].fecha_proxima_accion = proxGest;
+    // Actualizar también en el array global de oportunidades si existe
+    if(window._allOps) {
+      const idxAll = window._allOps.findIndex(o=>o.id===opId);
+      if(idxAll>-1) {
+        window._allOps[idxAll].fecha_proxima_accion = proxGest;
+        window._allOps[idxAll].proxima_accion = nota.slice(0,120);
+      }
+    }
   }
 
   // Actualizar diario en memoria
@@ -2933,6 +2941,10 @@ async function guardarGestionDesdeFicha(opId){
   // Reabrir la ficha para reflejar la nueva gestión
   document.getElementById('modal-editar')?.remove();
   abrirEditar(opId);
+
+  // Refrescar el seguimiento si está visible para que deje de mostrar como vencida
+  const mainContent = document.getElementById('main-content');
+  if (mainContent) renderSeguimiento(mainContent);
   // Refrescar MI DÍA
   const q=document.getElementById('diario-search')?.value||'';
   renderDiarioLista(q, _diarioFiltro);
