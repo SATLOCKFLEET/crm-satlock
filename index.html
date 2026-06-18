@@ -5880,28 +5880,34 @@ async function _cargarConsolidado(container){
       if(esQ){const dia=d.getDate();return quincena===1?(dia>=1&&dia<=15):(dia>=16);}
       return true;
     };
+    // Leads abiertos en el período (por fecha de creación/apertura)
     const tc=uops2.filter(o=>enPeriodoU(o.created_at)).length;
-    const tq=uops2.filter(o=>['propuesta_enviada','cerrado'].includes(o.estado)&&enPeriodoU(o.created_at)).length;
+    // Propuestas enviadas en el período (por fecha de actualización al estado)
+    const tq=uops2.filter(o=>['propuesta_enviada','cerrado'].includes(o.estado)&&enPeriodoU(o.updated_at)).length;
+    // Cierres en el período (por fecha de cierre, NO de apertura del lead)
     const tci=uops2.filter(o=>o.estado==='cerrado'&&enPeriodoU(o.updated_at)).length;
     const uops=ops?.filter(o=>o.usuario_id===u.id)||[];
-    const cerrados=uops.filter(o=>o.estado==='cerrado').length;
+    // "Cerrados" y "en proceso" de las minitarjetas: respetar el período filtrado
+    const cerrados=uops.filter(o=>o.estado==='cerrado'&&enPeriodoU(o.updated_at)).length;
+    const perdidosMes=uops.filter(o=>o.estado==='perdido'&&enPeriodoU(o.updated_at)).length;
+    // "En proceso" es estado actual (no tiene sentido filtrarlo por período pasado)
     const proceso=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).length;
     const puntaje=calcPuntaje(tc,tq,tci,metas);
     const color=EXEC_COLORS[idx%EXEC_COLORS.length];
-    // Días promedio de gestión en negocios cerrados
-    const opsCerradas=uops.filter(o=>o.estado==='cerrado'&&o.fecha_inicio_gestion);
+    // Días promedio de gestión en negocios cerrados EN EL PERÍODO
+    const opsCerradas=uops.filter(o=>o.estado==='cerrado'&&o.fecha_inicio_gestion&&enPeriodoU(o.updated_at));
     const diasProm=opsCerradas.length
       ?Math.round(opsCerradas.reduce((s,o)=>{
           const d=diasGestion(o.fecha_inicio_gestion,o.updated_at?.split('T')[0]);
           return s+(d||0);
         },0)/opsCerradas.length)
       :null;
-    // Pipeline y leads del ejecutivo
+    // Pipeline activo HOY (estado actual, no del período histórico)
     const uPipeline=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
     const uRec=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
     const uGestMes=(gestAll||[]).filter(g=>g.usuario_id===u.id&&g.fecha&&meses.includes(new Date(g.fecha).getMonth()+1)&&new Date(g.fecha).getFullYear()===anio).length;
     const tasaConv=tci>0&&tc>0?Math.round(tci/tc*100):0;
-    return {u,tc,tq,tci,cerrados,proceso,puntaje,metas,color,diasProm,uPipeline,uRec,uGestMes,tasaConv};
+    return {u,tc,tq,tci,cerrados,perdidosMes,proceso,puntaje,metas,color,diasProm,uPipeline,uRec,uGestMes,tasaConv};
   }
 
 
@@ -5957,6 +5963,11 @@ async function _cargarConsolidado(container){
           <option value="cerrado">Cerrado</option>
           <option value="perdido">Perdido</option>
         </select>
+        <select class="fsel" id="pipe-mes" onchange="renderPipelineDetallado()" style="font-size:11px;padding:4px 8px">
+          <option value="">Todos los meses</option>
+          <option value="periodo">📅 ${label} (filtro actual)</option>
+          ${MESES_L.map((m,i)=>`<option value="${i+1}">${m} ${anio}</option>`).join('')}
+        </select>
       </div>
       <div id="pipeline-tabla"></div>
     </div>`;
@@ -5976,14 +5987,32 @@ function renderPipelineDetallado(){
   const pais=document.getElementById('pipe-pais')?.value||'';
   const exec=document.getElementById('pipe-exec')?.value||'';
   const estado=document.getElementById('pipe-estado')?.value||'';
-  
+  const mesFiltro=document.getElementById('pipe-mes')?.value||'';
+
   // Leer ejecutivo del filtro del consolidado si no hay filtro propio
   const execConsol=document.getElementById('cf-exec-sel')?.value||'';
   const execFinal=exec||execConsol;
+
+  // Determinar meses/año a filtrar según selección
+  let mesesFiltrar=null, anioFiltrar=null;
+  if(mesFiltro==='periodo'){
+    const p=getPeriodoMeses();
+    mesesFiltrar=p.meses; anioFiltrar=p.anio;
+  } else if(mesFiltro){
+    mesesFiltrar=[parseInt(mesFiltro)]; anioFiltrar=_periodoFiltro.anio;
+  }
+
   let ops=(window._opsDetalle||[]).filter(o=>{
     if(pais&&o.pais!==pais) return false;
     if(execFinal&&o.usuario_id!==execFinal) return false;
     if(estado&&o.estado!==estado) return false;
+    if(mesesFiltrar){
+      // Para cerrados/perdidos usar fecha de cierre (updated_at); para los demás, fecha de apertura (created_at)
+      const fechaRef = ['cerrado','perdido'].includes(o.estado) ? o.updated_at : o.created_at;
+      if(!fechaRef) return false;
+      const d=new Date(fechaRef);
+      if(!mesesFiltrar.includes(d.getMonth()+1)||d.getFullYear()!==anioFiltrar) return false;
+    }
     return true;
   });
   
