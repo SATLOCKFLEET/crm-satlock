@@ -1598,13 +1598,15 @@ async function cambiarEstado(id,estadoActual){
   const update={estado:siguiente};
   if(siguiente==='cerrado') update.avance=100;
   if(siguiente==='perdido') update.avance=0;
+  // fecha_cierre se fija una sola vez al cerrar/perder — no se sobrescribe en ediciones futuras
+  if(siguiente==='cerrado'||siguiente==='perdido') update.fecha_cierre=new Date().toISOString();
   await sb.from('oportunidades').update(update).eq('id',id);
   if(siguiente==='propuesta_enviada') await registrarQCOAuto(0,1,0);
   else if(siguiente==='cerrado') await registrarQCOAuto(0,0,1);
   // Actualizar _lastRows localmente para reflejar el cambio sin recargar
   if(window._lastRows){
     const r=window._lastRows.find(x=>x.id===id);
-    if(r){r.estado=siguiente;if(siguiente==='cerrado')r.avance=100;if(siguiente==='perdido')r.avance=0;}
+    if(r){r.estado=siguiente;if(siguiente==='cerrado')r.avance=100;if(siguiente==='perdido')r.avance=0;if(update.fecha_cierre)r.fecha_cierre=update.fecha_cierre;}
   }
   switchTab(0);
 }
@@ -2770,7 +2772,7 @@ async function abrirEditar(id){
           ${r.link_drive?`<div style="grid-column:1/-1"><a href="${r.link_drive}" target="_blank" style="color:var(--sat-blue);font-size:12px">Ver propuesta en Drive ↗</a></div>`:''}
           <div style="grid-column:1/-1"><span style="color:var(--text3)">Notas</span><div style="margin-top:2px;white-space:pre-wrap">${r.notas||'—'}</div></div>
           <div><span style="color:var(--text3)">Apertura</span><div style="margin-top:2px">${r.fecha_inicio_gestion||r.fecha||'—'}</div></div>
-          <div><span style="color:var(--text3)">Días en gestión</span><div style="margin-top:2px">${diasGestion(r.fecha_inicio_gestion||r.fecha,r.estado==='cerrado'||r.estado==='perdido'?r.updated_at?.split('T')[0]:null)||'—'}d</div></div>
+          <div><span style="color:var(--text3)">Días en gestión</span><div style="margin-top:2px">${diasGestion(r.fecha_inicio_gestion||r.fecha,r.estado==='cerrado'||r.estado==='perdido'?(r.fecha_cierre||r.updated_at)?.split('T')[0]:null)||'—'}d</div></div>
         </div>
       </div>
 
@@ -2976,10 +2978,18 @@ function actualizarProductosEditar(){
 }
 async function guardarEdicion(id){
   // Obtener valores anteriores para detectar cambios
-  const {data:anterior}=await sb.from('oportunidades').select('estado,avance,producto,proxima_accion,notas').eq('id',id).single();
+  const {data:anterior}=await sb.from('oportunidades').select('estado,avance,producto,proxima_accion,notas,fecha_cierre').eq('id',id).single();
   const notaTraz=document.getElementById('e-nota-traz')?.value.trim()||'';
   const nuevoEstado=document.getElementById('e-estado')?.value;
   const nuevoAvance=nuevoEstado==='cerrado'?100:nuevoEstado==='perdido'?0:(parseInt(document.getElementById('e-avance')?.value)||0);
+
+  // fecha_cierre: solo se fija la PRIMERA vez que el estado pasa a cerrado/perdido.
+  // Si ya estaba cerrado/perdido y se sigue editando, NO se vuelve a tocar.
+  const estabaCerrado = anterior?.estado==='cerrado'||anterior?.estado==='perdido';
+  const ahoraCerrado  = nuevoEstado==='cerrado'||nuevoEstado==='perdido';
+  const fechaCierreUpdate = (ahoraCerrado && !estabaCerrado) ? new Date().toISOString()
+                          : (ahoraCerrado && estabaCerrado) ? (anterior?.fecha_cierre || new Date().toISOString())
+                          : null;
 
   const {error}=await sb.from('oportunidades').update({
     fecha:document.getElementById('e-fecha')?.value,
@@ -3018,7 +3028,8 @@ async function guardarEdicion(id){
     avance:(document.getElementById('e-estado')?.value==='cerrado'?100:parseInt(document.getElementById('e-avance')?.value)),
     proxima_accion:document.getElementById('e-prox')?.value,
     fecha_proxima_accion:document.getElementById('e-proxima')?.value||document.getElementById('e-fprox')?.value||null,
-        notas:document.getElementById('e-notas')?.value,
+    notas:document.getElementById('e-notas')?.value,
+    ...(fechaCierreUpdate ? {fecha_cierre: fechaCierreUpdate} : {}),
   }).eq('id',id);
   if(error){alert('Error: '+error.message);return;}
 
@@ -4084,13 +4095,15 @@ async function nuevoPend(){
 }
 
 // ── 15·5·1 ───────────────────────────────────────────────────────────────────
-function getMetasQCO(linea, rol){
+function getMetasQCO(linea, rol, nombre){
   if(rol==='gerencia'||rol==='jefe_fleet'){
     return {c:999,q:999,ci:999,periodo:'mensual',periodoLabel:'mes',sinCuota:true};
   }
-  return linea==='fleet'
-    ? {c:15,q:5,ci:1,periodo:'quincenal',periodoLabel:'quincena',sinCuota:false}
-    : {c:15,q:5,ci:1,periodo:'mensual',periodoLabel:'mes',sinCuota:false};
+  // Caso especial: Daniel Macías tiene meta diferenciada 30·10·2 mensual
+  if(nombre && nombre.includes('Daniel Macías')){
+    return {c:30,q:10,ci:2,periodo:'mensual',periodoLabel:'mes',sinCuota:false};
+  }
+  return {c:15,q:5,ci:1,periodo:'mensual',periodoLabel:'mes',sinCuota:false};
 }
 function getQuincenaActual(){
   const d=new Date().getDate();
@@ -4111,13 +4124,13 @@ async function refrescarQCO(){
 async function _cargarQCO(container){
   const {meses,anio,label}=getPeriodoMeses();
   const quincena=getQuincenaActual();
-  const metas=getMetasQCO(PERFIL.linea, PERFIL.rol);
+  const metas=getMetasQCO(PERFIL.linea, PERFIL.rol, PERFIL.nombre);
   const sinCuota=metas.sinCuota||false;
 
-  const {data:ops}=await sb.from('oportunidades').select('id,empresa,estado,created_at,updated_at,producto,ciudad,unidades,valor_unitario,unidades_instalacion,valor_instalacion,unidades_recurrentes,valor_recurrente,tipo_recurrencia,moneda').eq('usuario_id',USER.id).order('created_at',{ascending:false});
+  const {data:ops}=await sb.from('oportunidades').select('id,empresa,estado,created_at,updated_at,fecha_cierre,producto,ciudad,unidades,valor_unitario,unidades_instalacion,valor_instalacion,unidades_recurrentes,valor_recurrente,tipo_recurrencia,moneda').eq('usuario_id',USER.id).order('created_at',{ascending:false});
   const allOps=ops||[];
 
-  const esQuincenal=PERFIL.linea==='fleet'&&PERFIL.rol!=='jefe_fleet'&&_periodoFiltro.tipo==='mes';
+  const esQuincenal=metas.periodo==='quincenal';
   const enPeriodo=(fecha)=>{
     if(!fecha) return false;
     const d=new Date(fecha);
@@ -4130,8 +4143,8 @@ async function _cargarQCO(container){
   };
 
   const contactos=allOps.filter(o=>enPeriodo(o.created_at)).length;
-  const cotizaciones=allOps.filter(o=>['propuesta_enviada','cerrado'].includes(o.estado)&&enPeriodo(o.created_at)).length;
-  const cierres=allOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.created_at)).length;
+  const cotizaciones=allOps.filter(o=>['propuesta_enviada','cerrado'].includes(o.estado)&&enPeriodo(o.updated_at)).length;
+  const cierres=allOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.fecha_cierre||o.updated_at)).length;
 
   const pctC=sinCuota?100:Math.min(100,metas.c>0?Math.round(contactos/metas.c*100):0);
   const pctQ=sinCuota?100:Math.min(100,metas.q>0?Math.round(cotizaciones/metas.q*100):0);
@@ -5080,10 +5093,10 @@ function renderAgContent(){
   // ── KPIs principales ──
   const opsActivas       = opsFilt.filter(o => ['en_proceso','propuesta_enviada'].includes(o.estado));
   const leadsEnPeriodo   = opsFilt.filter(o => enPeriodo(o.created_at));
-  const cerradosEnPeriodo= opsFilt.filter(o => o.estado==='cerrado' && enPeriodo(o.updated_at));
-  const perdidosEnPeriodo= opsFilt.filter(o => o.estado==='perdido' && enPeriodo(o.updated_at));
+  const cerradosEnPeriodo= opsFilt.filter(o => o.estado==='cerrado' && enPeriodo(o.fecha_cierre||o.updated_at));
+  const perdidosEnPeriodo= opsFilt.filter(o => o.estado==='perdido' && enPeriodo(o.fecha_cierre||o.updated_at));
   const gestEnPeriodo    = gestFilt.filter(g => enPeriodo(g.fecha));
-  const propEnviadas     = opsFilt.filter(o => (o.estado==='propuesta_enviada' || o.estado==='cerrado') && enPeriodo(o.updated_at));
+  const propEnviadas     = opsFilt.filter(o => (o.estado==='propuesta_enviada' || o.estado==='cerrado') && enPeriodo(o.fecha_cierre||o.updated_at));
   const tasa = leadsEnPeriodo.length > 0 ? Math.round(cerradosEnPeriodo.length / leadsEnPeriodo.length * 100) : 0;
   const tasaPropCierre = propEnviadas.length > 0 ? Math.round(cerradosEnPeriodo.length / propEnviadas.length * 100) : 0;
 
@@ -5095,7 +5108,7 @@ function renderAgContent(){
   const recurrenteMRR    = opsFilt.filter(o=>o.estado==='cerrado').reduce((s,o)=>s+recMesUSD(o),0);
 
   // ── Ciclo de venta promedio ──
-  const diasCiclo = o => { if(!o.fecha_inicio_gestion||!o.updated_at) return null; return Math.round((new Date(o.updated_at)-new Date(o.fecha_inicio_gestion))/(1000*60*60*24)); };
+  const diasCiclo = o => { const fc=o.fecha_cierre||o.updated_at; if(!o.fecha_inicio_gestion||!fc) return null; return Math.round((new Date(fc)-new Date(o.fecha_inicio_gestion))/(1000*60*60*24)); };
   const cierresDiasCiclo = cerradosEnPeriodo.map(diasCiclo).filter(d=>d!==null&&d>=0);
   const promCiclo = cierresDiasCiclo.length ? Math.round(cierresDiasCiclo.reduce((s,d)=>s+d,0)/cierresDiasCiclo.length) : null;
 
@@ -5104,7 +5117,7 @@ function renderAgContent(){
   const porPais = PAISES.map(p => {
     const pOps = opsFilt.filter(o=>(o.pais||'Colombia')===p);
     const pActivas = pOps.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado));
-    const pCerrados = pOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.updated_at));
+    const pCerrados = pOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.fecha_cierre||o.updated_at));
     return { pais:p, activas:pActivas.length, cerrados:pCerrados.length,
       pipelineUSD: pActivas.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0),
       cerradosUSD: pCerrados.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0) };
@@ -5114,7 +5127,7 @@ function renderAgContent(){
   const porLinea = ['fleet','carga'].map(l => {
     const lOps = opsFilt.filter(o=>o.linea===l);
     const lActivas = lOps.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado));
-    const lCerrados = lOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.updated_at));
+    const lCerrados = lOps.filter(o=>o.estado==='cerrado'&&enPeriodo(o.fecha_cierre||o.updated_at));
     return { linea:l, activas:lActivas.length, cerrados:lCerrados.length,
       pipelineUSD: lActivas.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0) };
   });
@@ -5142,13 +5155,13 @@ function renderAgContent(){
   const execData = execFilt.map(u => {
     const uActivas  = opsFilt.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado));
     const uLeads    = opsFilt.filter(o=>o.usuario_id===u.id&&enPeriodo(o.created_at)).length;
-    const uCierres  = opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.updated_at)).length;
-    const uPerdidos = opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='perdido'&&enPeriodo(o.updated_at)).length;
+    const uCierres  = opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.fecha_cierre||o.updated_at)).length;
+    const uPerdidos = opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='perdido'&&enPeriodo(o.fecha_cierre||o.updated_at)).length;
     const uGest     = gestFilt.filter(g=>g.usuario_id===u.id&&enPeriodo(g.fecha)).length;
     const uPipe     = uActivas.reduce((s,o)=>s+unicoUSD(o)+recMesUSD(o),0);
     const uRec      = uActivas.reduce((s,o)=>s+recMesUSD(o),0);
     const uTasa     = uLeads>0 ? Math.round(uCierres/uLeads*100) : 0;
-    const uCiclos   = opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.updated_at)).map(diasCiclo).filter(d=>d!==null&&d>=0);
+    const uCiclos   = opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.fecha_cierre||o.updated_at)).map(diasCiclo).filter(d=>d!==null&&d>=0);
     const uPromCiclo= uCiclos.length ? Math.round(uCiclos.reduce((s,d)=>s+d,0)/uCiclos.length) : null;
     return {u, uLeads, uCierres, uPerdidos, uGest, uPipe, uRec, uTasa, uPromCiclo};
   }).sort((a,b) => b.uCierres-a.uCierres || b.uLeads-a.uLeads);
@@ -5397,7 +5410,7 @@ function renderAgContent(){
      y:mesesAnio.map(m=>opsFilt.filter(o=>o.created_at&&new Date(o.created_at).getMonth()+1===m&&new Date(o.created_at).getFullYear()===anio).length),
      marker:{color:'#19428C'},opacity:.8},
     {name:'Cierres',type:'bar',x:mesesAnio.map(m=>MESES[m-1]),
-     y:mesesAnio.map(m=>opsFilt.filter(o=>o.estado==='cerrado'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===m&&new Date(o.updated_at).getFullYear()===anio).length),
+     y:mesesAnio.map(m=>opsFilt.filter(o=>o.estado==='cerrado'&&(o.fecha_cierre||o.updated_at)&&new Date(o.fecha_cierre||o.updated_at).getMonth()+1===m&&new Date(o.updated_at).getFullYear()===anio).length),
      marker:{color:'#1D9E75'},opacity:.9}
   ],pL({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.25},margin:{l:30,r:10,t:10,b:60}}),{responsive:true,displayModeBar:false});
 
@@ -5554,8 +5567,8 @@ function renderKPIContent(){
   // Filtrar por período
   const enPeriodo=(fecha)=>{ if(!fecha) return false; const d=new Date(fecha); return meses.includes(d.getMonth()+1)&&d.getFullYear()===anio; };
   const leadsEnPeriodo=opsFilt.filter(o=>enPeriodo(o.created_at));
-  const cerradosEnPeriodo=opsFilt.filter(o=>o.estado==='cerrado'&&enPeriodo(o.updated_at));
-  const perdidosEnPeriodo=opsFilt.filter(o=>o.estado==='perdido'&&enPeriodo(o.updated_at));
+  const cerradosEnPeriodo=opsFilt.filter(o=>o.estado==='cerrado'&&enPeriodo(o.fecha_cierre||o.updated_at));
+  const perdidosEnPeriodo=opsFilt.filter(o=>o.estado==='perdido'&&enPeriodo(o.fecha_cierre||o.updated_at));
   const gestEnPeriodo=gestFilt.filter(g=>enPeriodo(g.fecha));
   const opsActivas=opsFilt.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado));
 
@@ -5667,7 +5680,7 @@ function renderKPIContent(){
   const anioFilt=anio;
   Plotly.newPlot('chart-evolucion',[
     {name:'Leads',x:mesesAnio.map(m=>m.lbl),y:mesesAnio.map(m=>opsFilt.filter(o=>o.created_at&&new Date(o.created_at).getMonth()+1===m.m&&new Date(o.created_at).getFullYear()===anioFilt).length),type:'bar',marker:{color:'#19428C'},opacity:.8},
-    {name:'Cierres',x:mesesAnio.map(m=>m.lbl),y:mesesAnio.map(m=>opsFilt.filter(o=>o.estado==='cerrado'&&o.updated_at&&new Date(o.updated_at).getMonth()+1===m.m&&new Date(o.updated_at).getFullYear()===anioFilt).length),type:'bar',marker:{color:'#639922'},opacity:.9}
+    {name:'Cierres',x:mesesAnio.map(m=>m.lbl),y:mesesAnio.map(m=>opsFilt.filter(o=>o.estado==='cerrado'&&(o.fecha_cierre||o.updated_at)&&new Date(o.fecha_cierre||o.updated_at).getMonth()+1===m.m&&new Date(o.updated_at).getFullYear()===anioFilt).length),type:'bar',marker:{color:'#639922'},opacity:.9}
   ],pL({barmode:'group',showlegend:true,legend:{orientation:'h',y:-0.2}}),{responsive:true,displayModeBar:false});
 
   // Tipos contacto
@@ -5677,7 +5690,7 @@ function renderKPIContent(){
 
   // Ciclo
   const execCiclo=execFilt.map(u=>{
-    const uOps=opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&o.fecha_inicio_gestion&&o.updated_at);
+    const uOps=opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&o.fecha_inicio_gestion&&(o.fecha_cierre||o.updated_at));
     if(!uOps.length) return null;
     return {nombre:u.nombre.split(' ')[0],dias:Math.round(uOps.reduce((s,o)=>s+diasGestion(o.fecha_inicio_gestion,o.updated_at.split('T')[0]),0)/uOps.length)};
   }).filter(Boolean).sort((a,b)=>a.dias-b.dias);
@@ -5698,7 +5711,7 @@ function renderKPIContent(){
   const tablaEl=document.getElementById('tabla-ejecutivos');
   const execData=execFilt.map(u=>{
     const uLeads=opsFilt.filter(o=>o.usuario_id===u.id&&enPeriodo(o.created_at)).length;
-    const uCierres=opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.updated_at)).length;
+    const uCierres=opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.fecha_cierre||o.updated_at)).length;
     const uGest=gestFilt.filter(g=>g.usuario_id===u.id&&enPeriodo(g.fecha)).length;
     const uTasa=uLeads>0?Math.round(uCierres/uLeads*100):0;
     const uPipeline=opsFilt.filter(o=>o.usuario_id===u.id&&['en_proceso','propuesta_enviada'].includes(o.estado)).reduce((s,o)=>(o.unidades||0)*(o.valor_unitario||0)+(o.unidades_recurrentes||0)*(o.valor_recurrente||0)+s,0);
@@ -5710,7 +5723,7 @@ function renderKPIContent(){
   const topProd=prodEntries[0]?.[0]||'';
   const topCiudadNombre=ciudades[0]?.[0]||'';
   const origenTopKey=Object.entries(origenMap).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
-  const execTopNombre=execFilt.map(u=>({n:u.nombre,c:opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.updated_at)).length})).sort((a,b)=>b.c-a.c)[0]?.n||'';
+  const execTopNombre=execFilt.map(u=>({n:u.nombre,c:opsFilt.filter(o=>o.usuario_id===u.id&&o.estado==='cerrado'&&enPeriodo(o.fecha_cierre||o.updated_at)).length})).sort((a,b)=>b.c-a.c)[0]?.n||'';
 
   tablaEl.innerHTML=`<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">
     <thead><tr style="background:var(--surface2);border-bottom:0.5px solid var(--border)">
@@ -5849,10 +5862,6 @@ function semaforoRow(pct){
   if(pct>=50) return {cls:'ec-yellow',dot:'#BA7517',fill:'yellow',txt:'var(--amber)',bg:'var(--amber-light)',label:'En riesgo'};
   return {cls:'ec-red',dot:'#E24B4A',fill:'red',txt:'var(--red)',bg:'var(--red-light)',label:'Bajo meta'};
 }
-function getQuincenaActual(){const d=new Date().getDate();return d<=15?1:2;}
-function getMetasQCO(linea){
-  return {c:15,q:5,ci:1,periodo:linea==='fleet'?'quincenal':'mensual',periodoLabel:linea==='fleet'?'quincena':'mes'};
-}
 async function renderConsolidado(container){
   window._consContainer=container;
   await _cargarConsolidado(container);
@@ -5864,13 +5873,13 @@ async function _cargarConsolidado(container){
   container.innerHTML='<div class="loading">Cargando consolidado...</div>';
   const {meses,anio,label}=getPeriodoMeses();
   const {data:usuarios}=await sb.from('usuarios').select('*').neq('rol','gerencia').order('nombre');
-  const {data:ops}=await sb.from('oportunidades').select('usuario_id,estado,fecha_inicio_gestion,updated_at,created_at,de_mercadeo,valor_unitario,unidades,valor_recurrente,unidades_recurrentes,producto,origen_lead,tipo_recurrencia');
+  const {data:ops}=await sb.from('oportunidades').select('usuario_id,estado,fecha_inicio_gestion,updated_at,fecha_cierre,created_at,de_mercadeo,valor_unitario,unidades,valor_recurrente,unidades_recurrentes,producto,origen_lead,tipo_recurrencia');
   const {data:gestAll}=await sb.from('gestiones').select('usuario_id,fecha,tipo').order('fecha',{ascending:false});
   const quincena=getQuincenaActual();
   const qco=[];
 
   function buildExec(u,idx){
-    const metas=getMetasQCO(u.linea, u.rol);
+    const metas=getMetasQCO(u.linea, u.rol, u.nombre);
     const uops2=ops?.filter(o=>o.usuario_id===u.id)||[];
     const esQ = false; // Consolidado gerencial: siempre muestra el mes completo de cada ejecutivo
     const enPeriodoU=(fecha)=>{
@@ -5885,17 +5894,17 @@ async function _cargarConsolidado(container){
     // Propuestas enviadas en el período (por fecha de actualización al estado)
     const tq=uops2.filter(o=>['propuesta_enviada','cerrado'].includes(o.estado)&&enPeriodoU(o.updated_at)).length;
     // Cierres en el período (por fecha de cierre, NO de apertura del lead)
-    const tci=uops2.filter(o=>o.estado==='cerrado'&&enPeriodoU(o.updated_at)).length;
+    const tci=uops2.filter(o=>o.estado==='cerrado'&&enPeriodoU(o.fecha_cierre||o.updated_at)).length;
     const uops=ops?.filter(o=>o.usuario_id===u.id)||[];
     // "Cerrados" y "en proceso" de las minitarjetas: respetar el período filtrado
-    const cerrados=uops.filter(o=>o.estado==='cerrado'&&enPeriodoU(o.updated_at)).length;
-    const perdidosMes=uops.filter(o=>o.estado==='perdido'&&enPeriodoU(o.updated_at)).length;
+    const cerrados=uops.filter(o=>o.estado==='cerrado'&&enPeriodoU(o.fecha_cierre||o.updated_at)).length;
+    const perdidosMes=uops.filter(o=>o.estado==='perdido'&&enPeriodoU(o.fecha_cierre||o.updated_at)).length;
     // "En proceso" es estado actual (no tiene sentido filtrarlo por período pasado)
     const proceso=uops.filter(o=>['en_proceso','propuesta_enviada'].includes(o.estado)).length;
     const puntaje=calcPuntaje(tc,tq,tci,metas);
     const color=EXEC_COLORS[idx%EXEC_COLORS.length];
     // Días promedio de gestión en negocios cerrados EN EL PERÍODO
-    const opsCerradas=uops.filter(o=>o.estado==='cerrado'&&o.fecha_inicio_gestion&&enPeriodoU(o.updated_at));
+    const opsCerradas=uops.filter(o=>o.estado==='cerrado'&&o.fecha_inicio_gestion&&enPeriodoU(o.fecha_cierre||o.updated_at));
     const diasProm=opsCerradas.length
       ?Math.round(opsCerradas.reduce((s,o)=>{
           const d=diasGestion(o.fecha_inicio_gestion,o.updated_at?.split('T')[0]);
