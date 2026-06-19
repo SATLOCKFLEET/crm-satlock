@@ -8595,11 +8595,37 @@ function formatCOP(val) {
 }
 
 function showAlert(type, msg) {
+  // Intentar el alert del panel activo (Facturación)
   const el = document.getElementById('globalAlert');
-  el.className = `alert alert-${type} show`;
-  document.getElementById('alertMsg').textContent = msg;
-  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  setTimeout(() => el.classList.remove('show'), 5000);
+  if (el) {
+    el.className = `alert alert-${type} show`;
+    const msgEl = document.getElementById('alertMsg');
+    if (msgEl) msgEl.textContent = msg;
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setTimeout(() => el.classList.remove('show'), 5000);
+    return;
+  }
+  // Fallback: toast flotante global para paneles que no tienen globalAlert
+  let toast = document.getElementById('_globalToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = '_globalToast';
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:8px;font-size:13px;font-family:inherit;font-weight:500;max-width:360px;box-shadow:0 4px 16px rgba(0,0,0,.18);transition:opacity .3s';
+    document.body.appendChild(toast);
+  }
+  const colors = {
+    success: { bg:'#E1F5EE', color:'#1B7A4A', border:'#9FE1CB' },
+    danger:  { bg:'#FCEBEB', color:'#A32D2D', border:'#F5BABA' },
+    info:    { bg:'#E8EEF8', color:'#19428C', border:'#B5D4F4' },
+  };
+  const c = colors[type] || colors.info;
+  toast.style.background = c.bg;
+  toast.style.color = c.color;
+  toast.style.border = `1px solid ${c.border}`;
+  toast.style.opacity = '1';
+  toast.textContent = msg;
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 4500);
 }
 
 /* "Solicitud nueva" — limpia todo y bloquea los 3 botones */
