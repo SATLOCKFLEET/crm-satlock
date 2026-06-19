@@ -6882,17 +6882,23 @@ const OrdenesProgramadasService = {
 
     let detalle = [...itemsNoComodato];
     if (itemsComodato.length > 0) {
-      const valorSumado = itemsComodato.reduce((a, i) => a + (i.valor_unitario * i.cantidad), 0);
-      // Plazo del comodato agrupado = el mayor plazo entre los ítems marcados (deben coincidir,
-      // pero por seguridad se toma el máximo para no cortar facturación antes de tiempo)
+      // Plazo del comodato agrupado = el mayor plazo entre los ítems marcados
       const plazoAgrupado = Math.max(...itemsComodato.map(i => i.plazo_comodato || 12));
+      // Cantidad agrupada = suma de cantidades de todos los ítems comodato
+      // (ej: 3 cámaras + 3 accesorios + 3 cables = 9 unidades NO; en realidad
+      //  son 3 "kits" donde cada kit vale suma_valores_unitarios)
+      // Por instrucción comercial: cantidad = cantidad común del grupo (todos deben
+      // coincidir; si difieren se toma el máximo), valor_unitario = suma de valores
+      // unitarios de un kit, de modo que total = cantidad * valor_unit_kit
+      const cantidadGrupo = Math.max(...itemsComodato.map(i => i.cantidad || 1));
+      const valorUnitKit  = itemsComodato.reduce((a, i) => a + (i.valor_unitario || 0), 0);
       detalle.push({
         item:            '579',
         descripcion:     'AVL- SERVICIO RASTREO GPS EQU COMODATO',
         modalidad:       'Comodato',
         plazo_comodato:  plazoAgrupado,
-        cantidad:        1,
-        valor_unitario:  valorSumado,
+        cantidad:        cantidadGrupo,
+        valor_unitario:  valorUnitKit,
         frecuencia_recurrencia: null,
       });
     }
@@ -7557,17 +7563,17 @@ async function guardarSolicitud() {
       }
 
       // 5. Actualizar memoria local
-const idx = solicitudes.findIndex(x => x.consecutivo === consec);
-const solActualizada = { ...solicitudes[idx], ...solicitud, detalle: detalleCopia, _uuid: solExistente?._uuid };
-if (idx !== -1) solicitudes[idx] = solActualizada;
+      const idx = solicitudes.findIndex(x => x.consecutivo === consec);
+      const solActualizada = { ...solicitudes[idx], ...solicitud, detalle: detalleCopia, _uuid: solExistente?._uuid };
+      if (idx !== -1) solicitudes[idx] = solActualizada;
 
-// FIX: sincronizar solicitudGuardada para que PDF/Excel usen el detalle actualizado
-solicitudGuardada = { ...solActualizada, consecutivo: consec };
+      // FIX: sincronizar solicitudGuardada para que PDF/Excel usen el detalle actualizado
+      solicitudGuardada = { ...solActualizada, consecutivo: consec };
 
-window._editandoConsecutivo = null;
-renderHistorial();
-renderEstado();
-habilitarBotonesPostGuardado(solicitudGuardada);
+      window._editandoConsecutivo = null;
+      renderHistorial();
+      renderEstado();
+      habilitarBotonesPostGuardado(solicitudGuardada);
       limpiarSoloFormulario();
       verDetalle(consec);
       showAlert('success', `Solicitud ${consec} actualizada correctamente.`);
@@ -7898,11 +7904,11 @@ async function confirmarEnvio() {
           asunto: asunto,
           cuerpo: cuerpo,
         });
+      }
 
-        // ── Traslado de bodega — solo si requiere ensamble ──────────────────
-        if (solicitud.req_ensamble) {
-          await crearTrasladoYNotificar(solicitud, ccEjecutivo);
-        }
+      // ── Traslado de bodega — SIEMPRE si requiere ensamble, independiente del correo ──
+      if (solicitud.req_ensamble) {
+        await crearTrasladoYNotificar(solicitud, ccEjecutivo);
       }
     }
 
@@ -9106,8 +9112,10 @@ function pfac_diasConOrdenes(year, month) {
 }
 
 function pfac_renderCalendario() {
-  document.getElementById('pfac-cal-month-label').textContent = `${pfac_MESES[pfac_calMonth]} ${pfac_calYear}`;
-  const grid = document.getElementById('pfac-cal-grid');
+  const label = document.getElementById('pfac-cal-month-label');
+  const grid  = document.getElementById('pfac-cal-grid');
+  if (!label || !grid) return; // DOM aun no montado — abortar silenciosamente
+  label.textContent = `${pfac_MESES[pfac_calMonth]} ${pfac_calYear}`;
   grid.innerHTML = '';
 
   const estadoDias = pfac_estadoDias(pfac_calYear, pfac_calMonth);
