@@ -8300,12 +8300,15 @@ async function editarDesdeModal() {
     if (el) el.value = val || '';
   });
 
-  // Pre-cargar toggles de requerimientos con los valores guardados
+  // Al editar: cargar los valores guardados pero marcarlos como "pendientes de reconfirmar"
+  // El usuario debe tocar cada toggle para confirmar — evita que queden en false silenciosamente.
+  // Se usan los valores guardados como estado visual inicial, pero se exige confirmación
+  // almacenando undefined para los que están en false (No guardado) hasta que el usuario los toque.
   window._facReqValores = {
-    oc:         s.req_orden_compra === true,
-    prefactura: s.req_prefactura === true,
-    aprobacion: s.req_aprobacion === true,
-    ensamble:   s.req_ensamble === true,
+    oc:         s.req_orden_compra === true ? true : undefined,
+    prefactura: s.req_prefactura === true   ? true : undefined,
+    aprobacion: s.req_aprobacion === true   ? true : undefined,
+    ensamble:   s.req_ensamble === true     ? true : undefined,
   };
   renderToggleReqs(window._facReqValores);
 
