@@ -7934,20 +7934,68 @@ async function crearTrasladoYNotificar(solicitud, ccEjecutivo) {
       plazo_comodato: i.plazo_comodato || null,
     }));
 
-    // Insertar registro de traslado — mismo consecutivo que la solicitud de facturación
-    const { error: trasErr } = await sb.from('traslados_bodega').insert({
-      consecutivo:    solicitud.consecutivo,
-      empresa:        solicitud.empresa,
-      nit:            solicitud.nit,
-      contacto:       solicitud.contacto || null,
-      telefono:       solicitud.telefono || null,
-      ejecutivo:      solicitud.ejecutivo_comercial || solicitud.ejecutivo,
-      fecha:          new Date().toISOString(),
-      items_detalle:  JSON.stringify(itemsDetalle),
-      estado:         'Pendiente',
-      observaciones:  solicitud.observaciones || null,
-    });
-    if (trasErr) { console.error('Error creando traslado:', trasErr); return; }
+    // Upsert: si ya existe un traslado Pendiente para este consecutivo, actualizarlo.
+    // Si está Gestionado, crear uno nuevo (re-envío con cambios después de ejecutado).
+    const { data: trasExistente } = await sb
+      .from('traslados_bodega')
+      .select('id, estado')
+      .eq('consecutivo', solicitud.consecutivo)
+      .order('fecha', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let trasErr;
+    if (trasExistente && trasExistente.estado === 'Pendiente') {
+      // Traslado pendiente: actualizar con los nuevos ítems
+      const { error } = await sb.from('traslados_bodega').update({
+        empresa:       solicitud.empresa,
+        nit:           solicitud.nit,
+        contacto:      solicitud.contacto || null,
+        telefono:      solicitud.telefono || null,
+        ejecutivo:     solicitud.ejecutivo_comercial || solicitud.ejecutivo,
+        fecha:         new Date().toISOString(),
+        items_detalle: JSON.stringify(itemsDetalle),
+        observaciones: solicitud.observaciones || null,
+      }).eq('id', trasExistente.id);
+      trasErr = error;
+    } else if (trasExistente && trasExistente.estado === 'Gestionado') {
+      // ⚠ Ya ejecutado en SIESA: marcar el anterior como "Corregir en SIESA"
+      // para alertar a contabilidad, y crear uno nuevo Pendiente con los ítems actualizados
+      const { error: errMarca } = await sb.from('traslados_bodega')
+        .update({ estado: 'Corregir en SIESA' })
+        .eq('id', trasExistente.id);
+      if (errMarca) { console.error('Error marcando correccion SIESA:', errMarca); }
+      // Crear nuevo traslado Pendiente con los ítems modificados
+      const { error } = await sb.from('traslados_bodega').insert({
+        consecutivo:    solicitud.consecutivo,
+        empresa:        solicitud.empresa,
+        nit:            solicitud.nit,
+        contacto:       solicitud.contacto || null,
+        telefono:       solicitud.telefono || null,
+        ejecutivo:      solicitud.ejecutivo_comercial || solicitud.ejecutivo,
+        fecha:          new Date().toISOString(),
+        items_detalle:  JSON.stringify(itemsDetalle),
+        estado:         'Pendiente',
+        observaciones:  solicitud.observaciones || null,
+      });
+      trasErr = error;
+    } else {
+      // No existe traslado previo: insertar nuevo
+      const { error } = await sb.from('traslados_bodega').insert({
+        consecutivo:    solicitud.consecutivo,
+        empresa:        solicitud.empresa,
+        nit:            solicitud.nit,
+        contacto:       solicitud.contacto || null,
+        telefono:       solicitud.telefono || null,
+        ejecutivo:      solicitud.ejecutivo_comercial || solicitud.ejecutivo,
+        fecha:          new Date().toISOString(),
+        items_detalle:  JSON.stringify(itemsDetalle),
+        estado:         'Pendiente',
+        observaciones:  solicitud.observaciones || null,
+      });
+      trasErr = error;
+    }
+    if (trasErr) { console.error('Error en traslado:', trasErr); return; }
 
     // Correo paralelo a Jhon y Erika
     if (typeof enviarCorreoGmail === 'function' && gcalToken) {
@@ -10735,6 +10783,7 @@ async function renderTraslados(container){
             <option value="">Todos los estados</option>
             <option value="Pendiente">Pendientes</option>
             <option value="Gestionado">Gestionados</option>
+            <option value="Corregir en SIESA">⚠ Corregir en SIESA</option>
           </select>
         </div>
 
@@ -10785,6 +10834,10 @@ async function renderTraslados(container){
               </tr></thead>
               <tbody id="tras-det-items"></tbody>
             </table>
+            <div id="tras-det-correccion-wrap" style="display:none;padding:12px 16px;background:#FDF6E3;border-radius:8px;border:1px solid #E8C96B;border-left:4px solid #E8A020;font-size:12px;color:#7A5A0F;margin-bottom:8px;">
+              <div style="font-weight:700;font-size:13px;margin-bottom:4px;">⚠ Este traslado ya fue ejecutado en SIESA y requiere corrección</div>
+              <div>El ejecutivo modificó la factura después de que contabilidad registró el traslado. Por favor corrija el consecutivo <strong><span id="tras-det-siesa-corr"></span></strong> en SIESA para que coincida con los nuevos ítems.</div>
+            </div>
             <div id="tras-det-gestion-wrap" style="display:none;padding:10px 14px;background:#E1F5EE;border-radius:8px;border:1px solid #9FE1CB;font-size:12px;color:#1B7A4A;">
               <div><strong>Consecutivo SIESA:</strong> <span id="tras-det-siesa"></span></div>
               <div><strong>Ejecutado por:</strong> <span id="tras-det-ejecpor"></span> el <span id="tras-det-ejecat"></span></div>
@@ -10852,8 +10905,10 @@ function renderTrasladosTabla(){
     const fecha = t.fecha ? new Date(t.fecha).toLocaleDateString('es-CO') : '—';
     const totalItems = (t.items_detalle || []).length;
     const semaforo = t.estado === 'Gestionado'
-      ? `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#1B7A4A;"></span>`
-      : `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#A32D2D;"></span>`;
+      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#E1F5EE;color:#1B7A4A;border:1px solid #9FE1CB;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"><span style="width:7px;height:7px;border-radius:50%;background:#1B7A4A;flex-shrink:0;"></span>Ejecutado</span>`
+      : t.estado === 'Corregir en SIESA'
+      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#FDF6E3;color:#7A5A0F;border:1px solid #E8C96B;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"><span style="width:7px;height:7px;border-radius:50%;background:#E8A020;flex-shrink:0;"></span>Corregir SIESA</span>`
+      : `<span style="display:inline-flex;align-items:center;gap:5px;background:#FCEBEB;color:#A32D2D;border:1px solid #F5BABA;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"><span style="width:7px;height:7px;border-radius:50%;background:#A32D2D;flex-shrink:0;"></span>Pendiente</span>`;
     return `
       <tr style="border-bottom:1px solid #EEF1F8;">
         <td style="padding:9px 14px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;">${t.consecutivo}</td>
@@ -10888,9 +10943,12 @@ function abrirModalTrasDetalle(id){
   document.getElementById('tras-det-contacto').textContent= t.contacto || '—';
   document.getElementById('tras-det-telefono').textContent= t.telefono || '—';
   document.getElementById('tras-det-ejecutivo').textContent = t.ejecutivo;
-  document.getElementById('tras-det-estado').innerHTML = t.estado === 'Gestionado'
-    ? `<span style="color:#1B7A4A;font-weight:700;">✓ Gestionado</span>`
-    : `<span style="color:#A32D2D;font-weight:700;">Pendiente</span>`;
+  document.getElementById('tras-det-estado').innerHTML =
+    t.estado === 'Gestionado'
+      ? `<span style="color:#1B7A4A;font-weight:700;">✓ Ejecutado en SIESA</span>`
+      : t.estado === 'Corregir en SIESA'
+      ? `<span style="color:#7A5A0F;font-weight:700;">⚠ Requiere corrección en SIESA</span>`
+      : `<span style="color:#A32D2D;font-weight:700;">● Pendiente</span>`;
 
   const obsWrap = document.getElementById('tras-det-obs-wrap');
   if (t.observaciones) { obsWrap.style.display = 'block'; document.getElementById('tras-det-obs').textContent = t.observaciones; }
@@ -10906,16 +10964,30 @@ function abrirModalTrasDetalle(id){
       <td style="padding:6px 10px;text-align:right;font-weight:600;">${formatCOP(i.subtotal)}</td>
     </tr>`).join('');
 
-  const gestionWrap = document.getElementById('tras-det-gestion-wrap');
-  const btnEjecutado = document.getElementById('tras-btn-ejecutado');
+  const gestionWrap    = document.getElementById('tras-det-gestion-wrap');
+  const correccionWrap = document.getElementById('tras-det-correccion-wrap');
+  const btnEjecutado   = document.getElementById('tras-btn-ejecutado');
+
+  // Resetear visibilidad
+  gestionWrap.style.display    = 'none';
+  correccionWrap.style.display = 'none';
+  btnEjecutado.style.display   = 'none';
+
   if (t.estado === 'Gestionado') {
     gestionWrap.style.display = 'block';
-    document.getElementById('tras-det-siesa').textContent  = t.consecutivo_siesa || '—';
+    document.getElementById('tras-det-siesa').textContent   = t.consecutivo_siesa || '—';
     document.getElementById('tras-det-ejecpor').textContent = t.ejecutado_por || '—';
     document.getElementById('tras-det-ejecat').textContent  = t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleString('es-CO') : '—';
-    btnEjecutado.style.display = 'none';
+  } else if (t.estado === 'Corregir en SIESA') {
+    correccionWrap.style.display = 'block';
+    document.getElementById('tras-det-siesa-corr').textContent = t.consecutivo_siesa || '—';
+    // Mostrar también los datos de la ejecución original como referencia
+    gestionWrap.style.display = 'block';
+    document.getElementById('tras-det-siesa').textContent   = t.consecutivo_siesa || '—';
+    document.getElementById('tras-det-ejecpor').textContent = t.ejecutado_por || '—';
+    document.getElementById('tras-det-ejecat').textContent  = t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleString('es-CO') : '—';
   } else {
-    gestionWrap.style.display = 'none';
+    // Pendiente
     btnEjecutado.style.display = 'inline-block';
   }
 
