@@ -1409,6 +1409,14 @@ function construirTabs(){
       {label:'🧾 Portal Facturación',render:renderPortalFacturacion},
     ];
   }
+  // Rol contabilidad: Facturación + Portal + Traslados (sin el resto del CRM)
+  if(PERFIL.rol === 'contabilidad'){
+    return [
+      {label:'Facturación',render:renderFacturacion},
+      {label:'🧾 Portal Facturación',render:renderPortalFacturacion},
+      {label:'📦 Traslados',render:renderTraslados},
+    ];
+  }
 
   const base = [
     {label:'Seguimiento',render:renderSeguimiento},
@@ -1434,6 +1442,9 @@ function construirTabs(){
   }
   if(['facturacion','gerencia','alta_gerencia','jefe_fleet','ejecutivo_fleet'].includes(PERFIL.rol)){
     base.push({label:'🧾 Portal Facturación',render:renderPortalFacturacion});
+  }
+  if(['gerencia','alta_gerencia','jefe_fleet','ejecutivo_fleet'].includes(PERFIL.rol)){
+    base.push({label:'📦 Traslados',render:renderTraslados});
   }
   return base;
 }
@@ -6843,15 +6854,48 @@ const OrdenesProgramadasService = {
     return Math.round(valor);
   },
 
+  /* Detalle real de ítems en modalidad Comodato (sin agrupar bajo el 579).
+     Usado exclusivamente para el traslado de bodega — contabilidad necesita
+     ver cámara, accesorio, cableado, etc. por separado, no el ítem 579 agregado. */
+  getItemsComodatoReal(solicitud) {
+    return (solicitud.detalle || []).filter(i => i.modalidad === 'Comodato');
+  },
+
   generarOrdenes(solicitud) {
     const fechaPrimera = solicitud.fecha_primera_factura;
     const diaCorte     = Math.min(solicitud.dia_corte || 1, 28);
     const ipc          = solicitud.ipc_anual || 0;
-    const detalle      = solicitud.detalle || [];
+    const detalleOriginal = solicitud.detalle || [];
     const cuotaInicial = solicitud.cuota_inicial || 1;
     const INTERVALO    = { Mensual: 1, Trimestral: 3, Semestral: 6, Anual: 12 };
 
     if (!fechaPrimera) return [];
+
+    // ── Agrupar ítems Comodato bajo el ítem 579 con valor sumado ──────────────
+    // Instrucción de revisoría fiscal: todo comodato se factura como un solo
+    // concepto "579 AVL- SERVICIO RASTREO GPS EQU COMODATO" cuyo valor es la
+    // suma de los ítems individuales que el ejecutivo marcó como Comodato.
+    // El detalle real de ítems (cámara, accesorio, cableado, etc.) se conserva
+    // por separado para el traslado de bodega, pero NO se factura individualmente.
+    const itemsComodato = detalleOriginal.filter(i => i.modalidad === 'Comodato');
+    const itemsNoComodato = detalleOriginal.filter(i => i.modalidad !== 'Comodato');
+
+    let detalle = [...itemsNoComodato];
+    if (itemsComodato.length > 0) {
+      const valorSumado = itemsComodato.reduce((a, i) => a + (i.valor_unitario * i.cantidad), 0);
+      // Plazo del comodato agrupado = el mayor plazo entre los ítems marcados (deben coincidir,
+      // pero por seguridad se toma el máximo para no cortar facturación antes de tiempo)
+      const plazoAgrupado = Math.max(...itemsComodato.map(i => i.plazo_comodato || 12));
+      detalle.push({
+        item:            '579',
+        descripcion:     'AVL- SERVICIO RASTREO GPS EQU COMODATO',
+        modalidad:       'Comodato',
+        plazo_comodato:  plazoAgrupado,
+        cantidad:        1,
+        valor_unitario:  valorSumado,
+        frecuencia_recurrencia: null,
+      });
+    }
 
     const [fpAnio, fpMes] = fechaPrimera.split('-').map(Number);
 
@@ -7383,6 +7427,12 @@ function validarFormulario() {
     ok = false;
   }
 
+  if (!reqsCompletos()) {
+    setFieldError('requerimientos', 'Debe indicar Sí o No en cada requerimiento.');
+    showAlert('danger', 'Complete los 4 requerimientos especiales (Sí/No) antes de guardar.');
+    ok = false;
+  }
+
   const diaC = document.getElementById('diaCorte')?.value;
   if (!diaC || parseInt(diaC) < 1 || parseInt(diaC) > 28) {
     setFieldError('diaCorte', 'El día de corte es obligatorio (1-28).');
@@ -7608,9 +7658,8 @@ function limpiarSoloFormulario() {
   ['fac-contacto','fac-telefono','fac-email','fac-ciudad'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
-  ['fac-req-oc','fac-req-prefactura','fac-req-aprobacion','fac-req-ensamble'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.checked = false;
-  });
+  window._facReqValores = {};
+  renderToggleReqs();
   document.getElementById('ipcAnual').value = '';
   const elFPF = document.getElementById('fechaPrimeraFactura');
   const elDC  = document.getElementById('diaCorte');
@@ -7647,10 +7696,10 @@ function buildSolicitud(estado) {
     telefono:               document.getElementById('fac-telefono')?.value.trim() || null,
     email_facturacion:      document.getElementById('fac-email')?.value.trim() || null,
     ciudad:                 document.getElementById('fac-ciudad')?.value.trim() || null,
-    req_orden_compra:       document.getElementById('fac-req-oc')?.checked || false,
-    req_prefactura:         document.getElementById('fac-req-prefactura')?.checked || false,
-    req_aprobacion:         document.getElementById('fac-req-aprobacion')?.checked || false,
-    req_ensamble:           document.getElementById('fac-req-ensamble')?.checked || false,
+    req_orden_compra:       getReqToggle('oc') === true,
+    req_prefactura:         getReqToggle('prefactura') === true,
+    req_aprobacion:         getReqToggle('aprobacion') === true,
+    req_ensamble:           getReqToggle('ensamble') === true,
     total_general: billingItems.reduce((a, i) => a + i.total, 0),
     estado:        estado,
     updated_at:    hoy.toLocaleString('es-CO'),
@@ -7808,6 +7857,14 @@ async function confirmarEnvio() {
                 ${solicitud.observaciones ? `<tr><td style="padding:4px 0;color:#666;">Observaciones</td><td style="padding:4px 0;font-style:italic;">${solicitud.observaciones}</td></tr>` : ''}
               </table>
 
+              <h3 style="font-size:13px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;">Requerimientos especiales</h3>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
+                <tr><td style="padding:3px 0;color:#666;width:200px;">Requiere orden de compra</td><td style="padding:3px 0;font-weight:600;color:${solicitud.req_orden_compra?'#1B7A4A':'#888'};">${solicitud.req_orden_compra?'Sí':'No'}</td></tr>
+                <tr><td style="padding:3px 0;color:#666;">Requiere prefactura</td><td style="padding:3px 0;font-weight:600;color:${solicitud.req_prefactura?'#1B7A4A':'#888'};">${solicitud.req_prefactura?'Sí':'No'}</td></tr>
+                <tr><td style="padding:3px 0;color:#666;">Requiere aprobación</td><td style="padding:3px 0;font-weight:600;color:${solicitud.req_aprobacion?'#1B7A4A':'#888'};">${solicitud.req_aprobacion?'Sí':'No'}</td></tr>
+                <tr><td style="padding:3px 0;color:#666;">Requiere ensamble</td><td style="padding:3px 0;font-weight:600;color:${solicitud.req_ensamble?'#1B7A4A':'#888'};">${solicitud.req_ensamble?'Sí — se notificó a Contabilidad':'No'}</td></tr>
+              </table>
+
               <h3 style="font-size:13px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;">Detalle de ítems</h3>
               <table style="width:100%;border-collapse:collapse;font-size:12px;background:white;border:1px solid #e0e4ef;border-radius:6px;overflow:hidden;">
                 <thead>
@@ -7837,12 +7894,110 @@ async function confirmarEnvio() {
           asunto: asunto,
           cuerpo: cuerpo,
         });
+
+        // ── Traslado de bodega — solo si requiere ensamble ──────────────────
+        if (solicitud.req_ensamble) {
+          await crearTrasladoYNotificar(solicitud, ccEjecutivo);
+        }
       }
     }
 
   } catch(e) {
     console.error('Error enviando solicitud:', e);
     showAlert('danger', `Error al enviar: ${e.message || 'revise la consola'}`);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   TRASLADOS DE BODEGA — módulo Contabilidad
+   ═══════════════════════════════════════════════════════ */
+async function crearTrasladoYNotificar(solicitud, ccEjecutivo) {
+  try {
+    const itemsComodato = OrdenesProgramadasService.getItemsComodatoReal(solicitud);
+    if (itemsComodato.length === 0) return; // ensamble marcado pero sin ítems comodato — nada que trasladar
+
+    const itemsDetalle = itemsComodato.map(i => ({
+      item:        i.item,
+      descripcion: i.descripcion,
+      cantidad:    i.cantidad,
+      valor_unitario: i.valor_unitario,
+      subtotal:    i.cantidad * i.valor_unitario,
+      plazo_comodato: i.plazo_comodato || null,
+    }));
+
+    // Insertar registro de traslado — mismo consecutivo que la solicitud de facturación
+    const { error: trasErr } = await sb.from('traslados_bodega').insert({
+      consecutivo:    solicitud.consecutivo,
+      empresa:        solicitud.empresa,
+      nit:            solicitud.nit,
+      contacto:       solicitud.contacto || null,
+      telefono:       solicitud.telefono || null,
+      ejecutivo:      solicitud.ejecutivo_comercial || solicitud.ejecutivo,
+      fecha:          new Date().toISOString(),
+      items_detalle:  JSON.stringify(itemsDetalle),
+      estado:         'Pendiente',
+      observaciones:  solicitud.observaciones || null,
+    });
+    if (trasErr) { console.error('Error creando traslado:', trasErr); return; }
+
+    // Correo paralelo a Jhon y Erika
+    if (typeof enviarCorreoGmail === 'function' && gcalToken) {
+      const destinatariosTras = 'john.gomez@satlock.com, erika.villegas@satlock.com';
+      const asuntoTras = `Traslado de bodega requerido — ${solicitud.consecutivo} | ${solicitud.empresa}`;
+      const itemsHtmlTras = itemsDetalle.map(i => `
+        <tr>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;">${i.item}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;">${i.descripcion}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">${i.cantidad}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">$ ${Math.round(i.valor_unitario).toLocaleString('es-CO')}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600;">$ ${Math.round(i.subtotal).toLocaleString('es-CO')}</td>
+        </tr>`).join('');
+
+      const cuerpoTras = `
+        <div style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;">
+          <div style="background:#19428C;padding:20px 28px;border-radius:8px 8px 0 0;">
+            <h2 style="color:white;margin:0;font-size:18px;">Traslado de bodega requerido</h2>
+            <p style="color:rgba(255,255,255,.75);margin:4px 0 0;font-size:13px;">Satlock Fleet — Sistema CRM</p>
+          </div>
+          <div style="background:#f8f9fc;padding:20px 28px;border:1px solid #e0e4ef;border-top:none;">
+            <p style="font-size:13px;color:#333;margin:0 0 16px;">
+              Se requiere realizar el traslado de bodega para los siguientes ítems en modalidad <strong>Comodato</strong>,
+              de inventario disponible a bodega virtual de comodatos.
+            </p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px;">
+              <tr><td style="padding:4px 0;color:#666;width:160px;">Consecutivo</td><td style="padding:4px 0;font-weight:700;color:#19428C;">${solicitud.consecutivo}</td></tr>
+              <tr><td style="padding:4px 0;color:#666;">Empresa</td><td style="padding:4px 0;font-weight:600;">${solicitud.empresa}</td></tr>
+              <tr><td style="padding:4px 0;color:#666;">NIT</td><td style="padding:4px 0;">${solicitud.nit}</td></tr>
+              <tr><td style="padding:4px 0;color:#666;">Ejecutivo comercial</td><td style="padding:4px 0;">${solicitud.ejecutivo_comercial || solicitud.ejecutivo}</td></tr>
+            </table>
+            <h3 style="font-size:13px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;">Ítems a trasladar</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;background:white;border:1px solid #e0e4ef;border-radius:6px;overflow:hidden;">
+              <thead>
+                <tr style="background:#19428C;color:white;">
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;">Ítem</th>
+                  <th style="padding:8px 10px;text-align:left;font-weight:600;">Descripción</th>
+                  <th style="padding:8px 10px;text-align:right;font-weight:600;">Cant.</th>
+                  <th style="padding:8px 10px;text-align:right;font-weight:600;">V. Unit.</th>
+                  <th style="padding:8px 10px;text-align:right;font-weight:600;">Total</th>
+                </tr>
+              </thead>
+              <tbody>${itemsHtmlTras}</tbody>
+            </table>
+          </div>
+          <div style="background:#e8eef8;padding:12px 28px;border-radius:0 0 8px 8px;font-size:11px;color:#666;text-align:center;">
+            Este correo fue generado automáticamente por el CRM Satlock Fleet.
+          </div>
+        </div>`;
+
+      await enviarCorreoGmail({
+        para:   destinatariosTras,
+        cc:     ccEjecutivo,
+        asunto: asuntoTras,
+        cuerpo: cuerpoTras,
+      });
+    }
+  } catch(e) {
+    console.error('Error en crearTrasladoYNotificar:', e);
   }
 }
 
@@ -8129,6 +8284,21 @@ async function editarDesdeModal() {
   const elCuota = document.getElementById('cuotaInicial');
   if (elCuota) elCuota.value = s.cuota_inicial || '';
 
+  ['fac-contacto','fac-telefono','fac-email','fac-ciudad'].forEach((id,idx) => {
+    const el = document.getElementById(id);
+    const val = [s.contacto, s.telefono, s.email_facturacion, s.ciudad][idx];
+    if (el) el.value = val || '';
+  });
+
+  // Pre-cargar toggles de requerimientos con los valores guardados
+  window._facReqValores = {
+    oc:         s.req_orden_compra === true,
+    prefactura: s.req_prefactura === true,
+    aprobacion: s.req_aprobacion === true,
+    ensamble:   s.req_ensamble === true,
+  };
+  renderToggleReqs(window._facReqValores);
+
   // Usar el mismo consecutivo
   const elConsec = document.getElementById('consecutivo');
   const badge    = document.getElementById('consecutivo-badge');
@@ -8208,7 +8378,6 @@ function exportarExcel() {
   ].filter(Boolean).join(' · ') || '—';
 
   const infoData = [
-    s.req_ensamble ? ['⚠⚠⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR ⚠⚠⚠'] : [],
     ['SOLICITUD DE FACTURACIÓN — SATLOCK FLEET'],
     [],
     ['Consecutivo',        consec],
@@ -8353,15 +8522,6 @@ function exportarPDF() {
     doc.setFont('helvetica', 'normal');
     doc.text(reqsList.join('  ·  '), 38, y);
     y += 6;
-  }
-
-  // Alerta ensamble destacada
-  if (s.req_ensamble) {
-    doc.setFillColor(252, 235, 235);
-    doc.rect(10, y, 196, 8, 'F');
-    doc.setTextColor(163, 45, 45); doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    doc.text('⚠  DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR  ⚠', 108, y + 5, { align: 'center' });
-    y += 12;
   }
 
   y += 4;
@@ -8663,27 +8823,13 @@ function inicializarModuloFacturacion(){
 
         <div class="form-group span2"><label>Observaciones</label><textarea id="observaciones" placeholder="Condiciones especiales, notas..."></textarea></div>
 
-        <!-- Checkboxes de requerimientos -->
+        <!-- Requerimientos especiales — obligatorio Sí/No en cada uno -->
         <div class="form-group span2">
-          <label style="margin-bottom:8px;display:block;">Requerimientos especiales</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;text-transform:none;">
-              <input type="checkbox" id="fac-req-oc" style="width:16px;height:16px;cursor:pointer;">
-              Requiere orden de compra
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;text-transform:none;">
-              <input type="checkbox" id="fac-req-prefactura" style="width:16px;height:16px;cursor:pointer;">
-              Requiere prefactura
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;text-transform:none;">
-              <input type="checkbox" id="fac-req-aprobacion" style="width:16px;height:16px;cursor:pointer;">
-              Requiere aprobación
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:12px;font-weight:500;text-transform:none;" id="label-req-ensamble">
-              <input type="checkbox" id="fac-req-ensamble" style="width:16px;height:16px;cursor:pointer;">
-              Requiere ensamble <span style="font-size:10px;color:var(--text3)">(solo comodato)</span>
-            </label>
+          <label style="margin-bottom:8px;display:block;">Requerimientos especiales <span class="req">*</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;" id="fac-reqs-grid">
+            ${''/* generado por renderToggleReq */}
           </div>
+          <span class="error-msg" id="err-requerimientos">Debe indicar Sí o No en cada requerimiento.</span>
         </div>
         <div class="form-group">
           <label>IPC anual aplicable <span style="font-weight:400;color:var(--text3)">(%) — opcional</span></label>
@@ -8844,10 +8990,67 @@ function inicializarModuloFacturacion(){
   const badgeInit    = document.getElementById('consecutivo-badge');
   if (elConsecInit) elConsecInit.value = '';
   if (badgeInit)    badgeInit.textContent = '— se asigna al guardar —';
+  renderToggleReqs();
   cargarDatosDemoHistorial().then(() => {
     renderHistorial();
     renderEstado();
   });
+}
+
+/* Toggles Sí/No obligatorios para requerimientos especiales */
+const REQS_CONFIG = [
+  { id:'oc',         label:'Requiere orden de compra' },
+  { id:'prefactura', label:'Requiere prefactura' },
+  { id:'aprobacion', label:'Requiere aprobación' },
+  { id:'ensamble',   label:'Requiere ensamble', sub:'(comodato)' },
+];
+
+function renderToggleReqs(valores) {
+  const grid = document.getElementById('fac-reqs-grid');
+  if (!grid) return;
+  const v = valores || {};
+  grid.innerHTML = REQS_CONFIG.map(r => {
+    const val = v[r.id]; // true | false | undefined
+    return `
+      <div style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;">
+        <div style="font-size:12px;font-weight:500;margin-bottom:6px;">
+          ${r.label}${r.sub ? ` <span style="font-size:10px;color:var(--text3)">${r.sub}</span>` : ''}
+        </div>
+        <div style="display:flex;gap:6px;" data-reqgroup="${r.id}">
+          <button type="button" onclick="setReqToggle('${r.id}', true)"
+            id="req-${r.id}-si"
+            style="flex:1;padding:5px 0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;
+              border:1.5px solid ${val===true?'#1B7A4A':'var(--border)'};
+              background:${val===true?'#E1F5EE':'white'};
+              color:${val===true?'#1B7A4A':'var(--text3)'};">
+            Sí
+          </button>
+          <button type="button" onclick="setReqToggle('${r.id}', false)"
+            id="req-${r.id}-no"
+            style="flex:1;padding:5px 0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;
+              border:1.5px solid ${val===false?'#A32D2D':'var(--border)'};
+              background:${val===false?'#FCEBEB':'white'};
+              color:${val===false?'#A32D2D':'var(--text3)'};">
+            No
+          </button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function setReqToggle(reqId, valor) {
+  window._facReqValores = window._facReqValores || {};
+  window._facReqValores[reqId] = valor;
+  renderToggleReqs(window._facReqValores);
+  clearFieldError('requerimientos');
+}
+
+function getReqToggle(reqId) {
+  return (window._facReqValores || {})[reqId];
+}
+
+function reqsCompletos() {
+  return REQS_CONFIG.every(r => typeof getReqToggle(r.id) === 'boolean');
 }
 
 
@@ -9006,8 +9209,8 @@ function pfac_renderOrdenesDia(iso) {
     ].filter(Boolean);
 
     const ensambleAlert = o.req_ensamble ? `
-      <div style="background:#FCEBEB;border:2px solid #A32D2D;border-radius:8px;padding:10px 14px;margin-bottom:8px;text-align:center;">
-        <strong style="font-size:12px;color:#A32D2D;letter-spacing:.05em;">⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR ⚠</strong>
+      <div style="background:#E6F1FB;border:1px solid #B5D4F4;border-radius:8px;padding:6px 12px;margin-bottom:8px;text-align:center;">
+        <span style="font-size:11px;color:#185FA5;font-weight:600;">🔧 Comodato con traslado de bodega — gestionado por Contabilidad</span>
       </div>` : '';
 
     const contactoHTML = contactoInfo.length ? `
@@ -9227,7 +9430,7 @@ function pfac_buscarOrdenes(query) {
         : `<span style="font-size:11px;font-weight:700;background:#FDF6E3;color:#7A5A0F;padding:3px 10px;border-radius:12px;border:1px solid #E8D080;">Pendiente</span>`;
 
       const obsHTML = o.observaciones ? `<div style="margin-top:4px;padding:5px 8px;background:#FDF6E3;border-radius:5px;font-size:11px;color:#7A5A0F;border-left:3px solid #E8A020;"><strong>Obs:</strong> ${o.observaciones}</div>` : '';
-      const ensambleAlert = o.req_ensamble ? `<div style="background:#FCEBEB;border:1.5px solid #A32D2D;border-radius:6px;padding:6px 10px;margin-bottom:6px;text-align:center;font-size:11px;font-weight:700;color:#A32D2D;">⚠ REQUIERE ENSAMBLE — SOLICITAR A CONTABILIDAD ANTES DE FACTURAR</div>` : '';
+      const ensambleAlert = o.req_ensamble ? `<div style="background:#E6F1FB;border:1px solid #B5D4F4;border-radius:6px;padding:5px 10px;margin-bottom:6px;text-align:center;font-size:11px;font-weight:600;color:#185FA5;">🔧 Comodato con traslado de bodega</div>` : '';
 
       html += `
         <div style="background:white;border:1px solid #DDE3EE;border-left:4px solid ${borderColor};border-radius:10px;padding:14px 18px;margin-bottom:10px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
@@ -9417,10 +9620,6 @@ function pfac_exportarExcel(id) {
     ['Ítem', 'Descripción', 'Modalidad', 'Frecuencia', 'Cantidad', 'Valor Unitario', 'Subtotal']
   ];
 
-  if (o.req_ensamble) {
-    header.splice(2, 0, ['⚠⚠⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR ⚠⚠⚠'], []);
-  }
-
   const filas = items.map(i => [
     i.item, i.descripcion, i.modalidad, i.frecuencia || '—',
     i.cantidad, i.valor_unitario, i.subtotal
@@ -9443,16 +9642,8 @@ async function pfac_exportarPDF(id) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', format: 'letter' });
 
-  // Alerta de ensamble
-  if (o.req_ensamble) {
-    doc.setFontSize(12); doc.setTextColor(163, 45, 45);
-    doc.setFont(undefined, 'bold');
-    doc.text('⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR', 14, 14);
-    doc.setFont(undefined, 'normal');
-  }
-
   // Encabezado
-  const yStart = o.req_ensamble ? 24 : 18;
+  const yStart = 18;
   doc.setFontSize(14); doc.setTextColor(25, 66, 140);
   doc.text('Satlock SAS — Detalle de Facturación', 14, yStart);
   doc.setFontSize(9); doc.setTextColor(80, 80, 80);
@@ -10452,7 +10643,365 @@ function getCatalogoLinea(linea) {
   return (linea || '').toLowerCase() === 'carga' ? CATALOGO_CARGA : CATALOGO_FLEET;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   MÓDULO TRASLADOS — Contabilidad (traslado de bodega para comodatos)
+   ═══════════════════════════════════════════════════════════════ */
+let trasladosData = [];
+
+async function renderTraslados(container){
+  container.innerHTML = '<div class="loading">Cargando traslados...</div>';
+  try {
+    const { data, error } = await sb
+      .from('traslados_bodega')
+      .select('*')
+      .order('fecha', { ascending: false });
+    if (error) throw error;
+
+    trasladosData = (data || []).map(t => ({
+      id:                t.id,
+      consecutivo:       t.consecutivo,
+      empresa:           t.empresa,
+      nit:               t.nit,
+      contacto:          t.contacto,
+      telefono:          t.telefono,
+      ejecutivo:         t.ejecutivo,
+      fecha:             t.fecha,
+      items_detalle:     typeof t.items_detalle === 'string' ? JSON.parse(t.items_detalle) : (t.items_detalle || []),
+      estado:            t.estado,
+      observaciones:     t.observaciones,
+      consecutivo_siesa: t.consecutivo_siesa,
+      ejecutado_por:     t.ejecutado_por,
+      ejecutado_at:      t.ejecutado_at,
+    }));
+
+    container.innerHTML = `
+      <div style="max-width:1100px;margin:0 auto;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+          <div>
+            <h2 style="font-size:18px;font-weight:700;color:#19428C;margin:0;">📦 Traslados de bodega</h2>
+            <p style="font-size:12px;color:#6B7A99;margin:4px 0 0;">Comodatos pendientes de traslado de inventario a bodega virtual</p>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
+          <input type="text" id="tras-search" placeholder="Buscar por cliente, NIT o consecutivo..."
+            oninput="renderTrasladosTabla()"
+            style="flex:1;padding:9px 14px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;">
+          <select id="tras-filtro-estado" onchange="renderTrasladosTabla()"
+            style="padding:9px 14px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;background:white;">
+            <option value="">Todos los estados</option>
+            <option value="Pendiente">Pendientes</option>
+            <option value="Gestionado">Gestionados</option>
+          </select>
+        </div>
+
+        <div id="tras-tabla-wrap" style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#F4F6FA;">
+                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Consecutivo</th>
+                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Cliente</th>
+                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">NIT</th>
+                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Fecha</th>
+                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Ejecutivo</th>
+                <th style="padding:10px 14px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Ítems</th>
+                <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Estado</th>
+                <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tras-tabla-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Modal detalle de traslado -->
+      <div class="pfac-modal-backdrop" id="modal-tras-detalle">
+        <div class="pfac-modal-box" style="max-width:680px;">
+          <div class="pfac-modal-title" id="tras-det-titulo">Traslado de bodega</div>
+          <div class="pfac-modal-body">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;font-size:13px;">
+              <div><strong>Consecutivo:</strong> <span id="tras-det-consec"></span></div>
+              <div><strong>Fecha:</strong> <span id="tras-det-fecha"></span></div>
+              <div><strong>Cliente:</strong> <span id="tras-det-empresa"></span></div>
+              <div><strong>NIT:</strong> <span id="tras-det-nit"></span></div>
+              <div><strong>Contacto:</strong> <span id="tras-det-contacto"></span></div>
+              <div><strong>Teléfono:</strong> <span id="tras-det-telefono"></span></div>
+              <div><strong>Ejecutivo:</strong> <span id="tras-det-ejecutivo"></span></div>
+              <div><strong>Estado:</strong> <span id="tras-det-estado"></span></div>
+            </div>
+            <div id="tras-det-obs-wrap" style="display:none;margin-bottom:14px;padding:8px 12px;background:#FDF6E3;border-radius:6px;border-left:3px solid #E8A020;font-size:12px;color:#7A5A0F;">
+              <strong>Observaciones:</strong> <span id="tras-det-obs"></span>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
+              <thead><tr style="background:#F4F6FA;">
+                <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Ítem</th>
+                <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Descripción</th>
+                <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">Cant.</th>
+                <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">V. Unit.</th>
+                <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">Subtotal</th>
+              </tr></thead>
+              <tbody id="tras-det-items"></tbody>
+            </table>
+            <div id="tras-det-gestion-wrap" style="display:none;padding:10px 14px;background:#E1F5EE;border-radius:8px;border:1px solid #9FE1CB;font-size:12px;color:#1B7A4A;">
+              <div><strong>Consecutivo SIESA:</strong> <span id="tras-det-siesa"></span></div>
+              <div><strong>Ejecutado por:</strong> <span id="tras-det-ejecpor"></span> el <span id="tras-det-ejecat"></span></div>
+            </div>
+          </div>
+          <div class="pfac-modal-actions" style="flex-wrap:wrap;gap:8px;">
+            <button class="pfac-btn-sm pfac-btn-omitir" onclick="cerrarModalTrasDetalle()">Cerrar</button>
+            <button class="pfac-btn-sm" onclick="trasExportarExcel(window._trasActivoId)"
+              style="background:#1D6F42;color:white;border:none;">Excel</button>
+            <button class="pfac-btn-sm" onclick="trasExportarPDF(window._trasActivoId)"
+              style="background:#C0392B;color:white;border:none;">PDF</button>
+            <button class="pfac-btn-sm pfac-btn-facturar" id="tras-btn-ejecutado" onclick="abrirModalTrasEjecutado(window._trasActivoId)">
+              ✓ Traslado ejecutado
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal confirmar ejecución -->
+      <div class="pfac-modal-backdrop" id="modal-tras-ejecutado">
+        <div class="pfac-modal-box">
+          <div class="pfac-modal-title">Confirmar traslado ejecutado</div>
+          <div class="pfac-modal-body">
+            <p style="font-size:13px;color:#3d5080;margin-bottom:12px;">Ingrese el número de consecutivo asignado en SIESA para este traslado.</p>
+            <label style="font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.04em;">Número de consecutivo en SIESA <span style="color:#A32D2D">*</span></label>
+            <input type="text" id="tras-input-siesa" placeholder="Ej: TR-2026-00123"
+              style="width:100%;padding:9px 12px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;margin-top:6px;"
+              oninput="document.getElementById('err-tras-siesa').style.display='none'">
+            <div id="err-tras-siesa" style="display:none;font-size:11px;color:#A32D2D;margin-top:4px;">El consecutivo SIESA es obligatorio.</div>
+          </div>
+          <div class="pfac-modal-actions">
+            <button class="pfac-btn-sm pfac-btn-omitir" onclick="cerrarModalTrasEjecutado()">Cancelar</button>
+            <button class="pfac-btn-sm pfac-btn-facturar" onclick="confirmarTrasEjecutado()">✓ Confirmar ejecutado</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    renderTrasladosTabla();
+
+  } catch(e) {
+    console.error('Error cargando traslados:', e);
+    container.innerHTML = `<div class="empty">Error cargando traslados: ${e.message}</div>`;
+  }
+}
+
+function renderTrasladosTabla(){
+  const body = document.getElementById('tras-tabla-body');
+  if (!body) return;
+  const q = (document.getElementById('tras-search')?.value || '').toLowerCase().trim();
+  const filtroEstado = document.getElementById('tras-filtro-estado')?.value || '';
+
+  let filtrados = trasladosData.filter(t => {
+    if (filtroEstado && t.estado !== filtroEstado) return false;
+    if (q && !(`${t.empresa} ${t.nit} ${t.consecutivo}`.toLowerCase().includes(q))) return false;
+    return true;
+  });
+
+  if (filtrados.length === 0) {
+    body.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:#9AAABF;font-style:italic;">Sin traslados registrados.</td></tr>`;
+    return;
+  }
+
+  body.innerHTML = filtrados.map(t => {
+    const fecha = t.fecha ? new Date(t.fecha).toLocaleDateString('es-CO') : '—';
+    const totalItems = (t.items_detalle || []).length;
+    const semaforo = t.estado === 'Gestionado'
+      ? `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#1B7A4A;"></span>`
+      : `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#A32D2D;"></span>`;
+    return `
+      <tr style="border-bottom:1px solid #EEF1F8;">
+        <td style="padding:9px 14px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;">${t.consecutivo}</td>
+        <td style="padding:9px 14px;font-weight:500;">${t.empresa}</td>
+        <td style="padding:9px 14px;color:#6B7A99;font-variant-numeric:tabular-nums;">${t.nit}</td>
+        <td style="padding:9px 14px;white-space:nowrap;">${fecha}</td>
+        <td style="padding:9px 14px;color:#6B7A99;">${t.ejecutivo}</td>
+        <td style="padding:9px 14px;text-align:right;">${totalItems}</td>
+        <td style="padding:9px 14px;text-align:center;">${semaforo}</td>
+        <td style="padding:9px 14px;text-align:center;">
+          <button onclick="abrirModalTrasDetalle('${t.id}')"
+            style="background:#E8EEF8;color:#19428C;border:1px solid #B5D4F4;padding:4px 12px;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit;">
+            Ver
+          </button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+window._trasActivoId = null;
+
+function abrirModalTrasDetalle(id){
+  const t = trasladosData.find(x => x.id === id);
+  if (!t) return;
+  window._trasActivoId = id;
+
+  document.getElementById('tras-det-titulo').textContent = `Traslado — ${t.consecutivo}`;
+  document.getElementById('tras-det-consec').textContent  = t.consecutivo;
+  document.getElementById('tras-det-fecha').textContent   = t.fecha ? new Date(t.fecha).toLocaleDateString('es-CO') : '—';
+  document.getElementById('tras-det-empresa').textContent = t.empresa;
+  document.getElementById('tras-det-nit').textContent     = t.nit;
+  document.getElementById('tras-det-contacto').textContent= t.contacto || '—';
+  document.getElementById('tras-det-telefono').textContent= t.telefono || '—';
+  document.getElementById('tras-det-ejecutivo').textContent = t.ejecutivo;
+  document.getElementById('tras-det-estado').innerHTML = t.estado === 'Gestionado'
+    ? `<span style="color:#1B7A4A;font-weight:700;">✓ Gestionado</span>`
+    : `<span style="color:#A32D2D;font-weight:700;">Pendiente</span>`;
+
+  const obsWrap = document.getElementById('tras-det-obs-wrap');
+  if (t.observaciones) { obsWrap.style.display = 'block'; document.getElementById('tras-det-obs').textContent = t.observaciones; }
+  else obsWrap.style.display = 'none';
+
+  const items = t.items_detalle || [];
+  document.getElementById('tras-det-items').innerHTML = items.map(i => `
+    <tr style="border-bottom:1px solid #EEF1F8;">
+      <td style="padding:6px 10px;font-weight:600;">${i.item}</td>
+      <td style="padding:6px 10px;color:#3d5080;">${i.descripcion}</td>
+      <td style="padding:6px 10px;text-align:right;">${i.cantidad}</td>
+      <td style="padding:6px 10px;text-align:right;">${formatCOP(i.valor_unitario)}</td>
+      <td style="padding:6px 10px;text-align:right;font-weight:600;">${formatCOP(i.subtotal)}</td>
+    </tr>`).join('');
+
+  const gestionWrap = document.getElementById('tras-det-gestion-wrap');
+  const btnEjecutado = document.getElementById('tras-btn-ejecutado');
+  if (t.estado === 'Gestionado') {
+    gestionWrap.style.display = 'block';
+    document.getElementById('tras-det-siesa').textContent  = t.consecutivo_siesa || '—';
+    document.getElementById('tras-det-ejecpor').textContent = t.ejecutado_por || '—';
+    document.getElementById('tras-det-ejecat').textContent  = t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleString('es-CO') : '—';
+    btnEjecutado.style.display = 'none';
+  } else {
+    gestionWrap.style.display = 'none';
+    btnEjecutado.style.display = 'inline-block';
+  }
+
+  document.getElementById('modal-tras-detalle').classList.add('show');
+}
+
+function cerrarModalTrasDetalle(){
+  document.getElementById('modal-tras-detalle').classList.remove('show');
+}
+
+function abrirModalTrasEjecutado(id){
+  window._trasActivoId = id;
+  document.getElementById('tras-input-siesa').value = '';
+  document.getElementById('err-tras-siesa').style.display = 'none';
+  document.getElementById('modal-tras-ejecutado').classList.add('show');
+}
+
+function cerrarModalTrasEjecutado(){
+  document.getElementById('modal-tras-ejecutado').classList.remove('show');
+}
+
+async function confirmarTrasEjecutado(){
+  const siesa = document.getElementById('tras-input-siesa').value.trim();
+  if (!siesa) {
+    document.getElementById('err-tras-siesa').style.display = 'block';
+    return;
+  }
+  const id = window._trasActivoId;
+  const t = trasladosData.find(x => x.id === id);
+  if (!t) return;
+
+  try {
+    const { error } = await sb.from('traslados_bodega').update({
+      estado:            'Gestionado',
+      consecutivo_siesa: siesa,
+      ejecutado_por:      PERFIL?.nombre || '',
+      ejecutado_at:       new Date().toISOString(),
+    }).eq('id', id);
+    if (error) throw error;
+
+    t.estado            = 'Gestionado';
+    t.consecutivo_siesa = siesa;
+    t.ejecutado_por      = PERFIL?.nombre || '';
+    t.ejecutado_at        = new Date().toISOString();
+
+    cerrarModalTrasEjecutado();
+    cerrarModalTrasDetalle();
+    renderTrasladosTabla();
+    showAlert('success', `Traslado ${t.consecutivo} marcado como gestionado.`);
+  } catch(e) {
+    console.error('Error confirmando traslado:', e);
+    showAlert('danger', `Error: ${e.message}`);
+  }
+}
+
+function trasExportarExcel(id){
+  const t = trasladosData.find(x => x.id === id);
+  if (!t) return;
+  const items = t.items_detalle || [];
+
+  const header = [
+    ['Satlock SAS — Traslado de Bodega'], [],
+    ['Consecutivo:', t.consecutivo],
+    ['Fecha:',       t.fecha ? new Date(t.fecha).toLocaleDateString('es-CO') : '—'],
+    ['Empresa:',     t.empresa],
+    ['NIT:',         t.nit],
+    ['Contacto:',    t.contacto || '—'],
+    ['Teléfono:',    t.telefono || '—'],
+    ['Ejecutivo:',   t.ejecutivo],
+    ['Estado:',      t.estado],
+    ...(t.estado === 'Gestionado' ? [['Consecutivo SIESA:', t.consecutivo_siesa || '—'], ['Ejecutado por:', t.ejecutado_por || '—']] : []),
+    ['Observaciones:', t.observaciones || '—'],
+    [],
+    ['Ítem', 'Descripción', 'Cantidad', 'Valor Unitario', 'Subtotal']
+  ];
+
+  const filas = items.map(i => [i.item, i.descripcion, i.cantidad, i.valor_unitario, i.subtotal]);
+  const total = [['', '', '', 'TOTAL', items.reduce((a,i) => a + i.subtotal, 0)]];
+
+  const ws = XLSX.utils.aoa_to_sheet([...header, ...filas, [], ...total]);
+  ws['!cols'] = [{wch:10},{wch:45},{wch:10},{wch:16},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Traslado');
+  XLSX.writeFile(wb, `Traslado_${t.consecutivo}_${t.empresa.replace(/\s+/g,'_')}.xlsx`);
+}
+
+async function trasExportarPDF(id){
+  const t = trasladosData.find(x => x.id === id);
+  if (!t) return;
+  const items = t.items_detalle || [];
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', format: 'letter' });
+
+  doc.setFontSize(14); doc.setTextColor(25, 66, 140);
+  doc.text('Satlock SAS — Traslado de Bodega', 14, 18);
+  doc.setFontSize(9); doc.setTextColor(80, 80, 80);
+
+  const info = [
+    [`Consecutivo: ${t.consecutivo}`, `Fecha: ${t.fecha ? new Date(t.fecha).toLocaleDateString('es-CO') : '—'}`],
+    [`Empresa: ${t.empresa}`,         `NIT: ${t.nit}`],
+    [`Contacto: ${t.contacto||'—'}`,  `Teléfono: ${t.telefono||'—'}`],
+    [`Ejecutivo: ${t.ejecutivo}`,     `Estado: ${t.estado}`],
+  ];
+  let y = 28;
+  info.forEach(([a, b]) => { doc.text(a, 14, y); doc.text(b, 110, y); y += 5; });
+
+  if (t.estado === 'Gestionado') {
+    doc.text(`Consecutivo SIESA: ${t.consecutivo_siesa || '—'}`, 14, y);
+    y += 5;
+  }
+
+  y += 4;
+  doc.autoTable({
+    startY: y,
+    head: [['Ítem', 'Descripción', 'Cant.', 'V. Unit.', 'Subtotal']],
+    body: items.map(i => [i.item, i.descripcion, i.cantidad, formatCOP(i.valor_unitario), formatCOP(i.subtotal)]),
+    foot: [['', '', '', 'TOTAL', formatCOP(items.reduce((a,i) => a + i.subtotal, 0))]],
+    headStyles: { fillColor: [25, 66, 140], fontSize: 9 },
+    footStyles: { fillColor: [232, 238, 248], textColor: [25, 66, 140], fontStyle: 'bold' },
+    bodyStyles: { fontSize: 9 },
+    columnStyles: { 0:{cellWidth:14}, 1:{cellWidth:80}, 2:{cellWidth:16, halign:'right'}, 3:{cellWidth:30, halign:'right'}, 4:{cellWidth:30, halign:'right'} },
+  });
+
+  doc.save(`Traslado_${t.consecutivo}_${t.empresa.replace(/\s+/g,'_')}.pdf`);
+}
+
 </script>
+
 
 <!-- FACTURACIÓN MODALES -->
 <!-- ░░░ MODAL CONFIRMACIÓN ENVÍO ░░░ -->
@@ -10543,9 +11092,9 @@ function getCatalogoLinea(linea) {
         <div style="font-size:12px;color:#19428C;" id="det-reqs">—</div>
       </div>
 
-      <!-- Alerta ensamble -->
-      <div id="det-row-ensamble" style="display:none;margin-bottom:12px;padding:10px 14px;background:#FCEBEB;border-radius:var(--radius);border:2px solid #A32D2D;text-align:center;">
-        <strong style="font-size:13px;color:#A32D2D;letter-spacing:.05em;">⚠ DEBE SOLICITAR ENSAMBLE A CONTABILIDAD ANTES DE FACTURAR ⚠</strong>
+      <!-- Aviso ensamble -->
+      <div id="det-row-ensamble" style="display:none;margin-bottom:12px;padding:8px 14px;background:#E6F1FB;border-radius:var(--radius);border:1px solid #B5D4F4;text-align:center;">
+        <span style="font-size:12px;color:#185FA5;font-weight:600;">🔧 Comodato con traslado de bodega — gestionado automáticamente por Contabilidad</span>
       </div>
 
       <div id="det-row-obs" style="display:none;margin-bottom:16px;padding:10px 14px;background:var(--bg);border-radius:var(--radius);border-left:3px solid var(--sat-orange);">
