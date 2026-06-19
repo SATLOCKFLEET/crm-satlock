@@ -8619,10 +8619,12 @@ async function cargarDatosDemoHistorial() {
     const { data, error } = await sb
       .from('solicitudes_facturacion')
       .select(`
-        consecutivo, fecha, empresa, nit, link_propuesta, link_docs,
+        id, consecutivo, fecha, empresa, nit, link_propuesta, link_docs,
         observaciones, ipc_anual, total_general, estado, linea,
         updated_at, usuario_id,
         fecha_primera_factura, dia_corte, ejecutivo_comercial, cuota_inicial,
+        contacto, telefono, email_facturacion, ciudad,
+        req_orden_compra, req_prefactura, req_aprobacion, req_ensamble,
         solicitudes_facturacion_detalle (
           item, descripcion, tipo_inventario, tipo_item,
           modalidad, frecuencia_recurrencia, plazo_comodato,
@@ -8634,6 +8636,7 @@ async function cargarDatosDemoHistorial() {
     if (error) throw error;
 
     solicitudes = (data || []).map(s => ({
+      _uuid:                 s.id,
       consecutivo:           s.consecutivo,
       fecha:                 new Date(s.fecha).toLocaleDateString('es-CO'),
       fecha_iso:             s.fecha,
