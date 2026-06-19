@@ -7834,10 +7834,9 @@ async function confirmarEnvio() {
       bloquearBotonesPostGuardado();
 
       // Notificación por Gmail a Tatiana y Jackeline
+      const ccEjecutivo = USER?.email || ''; // definido aquí para que traslado también lo use
       if (typeof enviarCorreoGmail === 'function' && gcalToken) {
         const destinatarios = 'Tatiana.mora@satlock.com, jackeline.varela@satlock.com, michel.villada@satlock.com, yesenia.gaez@satlock.com';
-        // CC al ejecutivo que envía para trazabilidad
-        const ccEjecutivo = USER?.email || '';
         const asunto = `Nueva solicitud de facturación — ${solicitud.consecutivo} | ${solicitud.empresa}`;
         const itemsHtml = detalle.map(d => `
           <tr>
