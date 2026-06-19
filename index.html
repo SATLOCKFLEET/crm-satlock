@@ -7557,13 +7557,17 @@ async function guardarSolicitud() {
       }
 
       // 5. Actualizar memoria local
-      const idx = solicitudes.findIndex(x => x.consecutivo === consec);
-      if (idx !== -1) solicitudes[idx] = { ...solicitudes[idx], ...solicitud, detalle: detalleCopia, _uuid: solExistente?._uuid };
+const idx = solicitudes.findIndex(x => x.consecutivo === consec);
+const solActualizada = { ...solicitudes[idx], ...solicitud, detalle: detalleCopia, _uuid: solExistente?._uuid };
+if (idx !== -1) solicitudes[idx] = solActualizada;
 
-      window._editandoConsecutivo = null;
-      renderHistorial();
-      renderEstado();
-      habilitarBotonesPostGuardado({ ...solicitud, consecutivo: consec, detalle: detalleCopia, _uuid: solExistente?._uuid });
+// FIX: sincronizar solicitudGuardada para que PDF/Excel usen el detalle actualizado
+solicitudGuardada = { ...solActualizada, consecutivo: consec };
+
+window._editandoConsecutivo = null;
+renderHistorial();
+renderEstado();
+habilitarBotonesPostGuardado(solicitudGuardada);
       limpiarSoloFormulario();
       verDetalle(consec);
       showAlert('success', `Solicitud ${consec} actualizada correctamente.`);
