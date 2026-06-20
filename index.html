@@ -7926,12 +7926,13 @@ async function crearTrasladoYNotificar(solicitud, ccEjecutivo) {
     if (itemsComodato.length === 0) return; // ensamble marcado pero sin ítems comodato — nada que trasladar
 
     const itemsDetalle = itemsComodato.map(i => ({
-      item:        i.item,
-      descripcion: i.descripcion,
-      cantidad:    i.cantidad,
+      item:           i.item,
+      descripcion:    i.descripcion,
+      cantidad:       i.cantidad,
       valor_unitario: i.valor_unitario,
-      subtotal:    i.cantidad * i.valor_unitario,
+      subtotal:       i.cantidad * i.valor_unitario,
       plazo_comodato: i.plazo_comodato || null,
+      fecha_inicio:   solicitud.fecha_primera_factura || null,
     }));
 
     // Upsert: si ya existe un traslado Pendiente para este consecutivo, actualizarlo.
@@ -10809,7 +10810,7 @@ async function renderTraslados(container){
             <table style="width:100%;border-collapse:collapse;font-size:13px;">
               <thead>
                 <tr style="background:#F4F6FA;">
-                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Consecutivo</th>
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">N° Solicitud</th>
                   <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Cliente</th>
                   <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">NIT</th>
                   <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Fecha</th>
@@ -10933,112 +10934,268 @@ function trasSwitchTab(tab) {
 }
 
 /* ── Indicadores de comodatos ── */
+let _trasIndFiltros = { periodo: 'todo', plazo: 'todo', cliente: 'todo' };
+
 function renderTrasIndicadores() {
   const el = document.getElementById('tras-ind-content');
   if (!el) return;
 
-  // Solo traslados Gestionados
   const gestionados = trasladosData.filter(t => t.estado === 'Gestionado');
 
-  if (gestionados.length === 0) {
-    el.innerHTML = `<div style="text-align:center;padding:48px;color:#9AAABF;font-size:13px;">No hay traslados gestionados aún.</div>`;
-    return;
-  }
-
-  // Expandir ítems — una fila por ítem por traslado
-  const filas = [];
+  // Expandir filas
+  const todasFilas = [];
   gestionados.forEach(t => {
     (t.items_detalle || []).forEach(it => {
-      filas.push({
-        consecutivo:      t.consecutivo,
-        empresa:          t.empresa,
-        nit:              t.nit,
-        ejecutivo:        t.ejecutivo,
-        item:             it.item,
-        descripcion:      it.descripcion,
-        cantidad:         it.cantidad || 0,
-        valor_unitario:   it.valor_unitario || 0,
-        valor_total:      it.subtotal || (it.cantidad * it.valor_unitario) || 0,
-        plazo_comodato:   it.plazo_comodato || '—',
-        trasladado_por:   t.ejecutado_por || '—',
-        fecha_traslado:   t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleDateString('es-CO') : '—',
-        siesa:            t.consecutivo_siesa || '—',
+      todasFilas.push({
+        consecutivo:    t.consecutivo,
+        empresa:        t.empresa,
+        nit:            t.nit,
+        ejecutivo:      t.ejecutivo,
+        item:           it.item,
+        descripcion:    it.descripcion,
+        cantidad:       it.cantidad || 0,
+        valor_unitario: it.valor_unitario || 0,
+        valor_total:    it.subtotal || (it.cantidad * it.valor_unitario) || 0,
+        plazo_comodato: it.plazo_comodato || null,
+        fecha_inicio:   it.fecha_inicio || null,
+        trasladado_por: t.ejecutado_por || '—',
+        fecha_traslado_iso: t.ejecutado_at || null,
+        fecha_traslado: t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleDateString('es-CO') : '—',
+        siesa:          t.consecutivo_siesa || '—',
+        _tid:           t.id,
       });
     });
   });
 
-  // Métricas resumen
-  const totalClientes  = new Set(gestionados.map(t => t.nit)).size;
-  const totalUnidades  = filas.reduce((a, f) => a + (f.cantidad || 0), 0);
-  const totalValor     = filas.reduce((a, f) => a + (f.valor_total || 0), 0);
+  // Clientes únicos para selector
+  const clientes = [...new Map(todasFilas.map(f => [f.nit, f.empresa])).entries()]
+    .map(([nit, empresa]) => ({ nit, empresa }))
+    .sort((a,b) => a.empresa.localeCompare(b.empresa));
+
+  // Helper: filtrar por periodo
+  const filtroPeriodo = (filas) => {
+    const p = _trasIndFiltros.periodo;
+    if (p === 'todo') return filas;
+    const now = new Date();
+    const year = now.getFullYear();
+    return filas.filter(f => {
+      if (!f.fecha_traslado_iso) return false;
+      const d = new Date(f.fecha_traslado_iso);
+      if (p === 'mes')  return d.getMonth() === now.getMonth() && d.getFullYear() === year;
+      if (p === 'q1')   return d.getFullYear() === year && d.getMonth() < 3;
+      if (p === 'q2')   return d.getFullYear() === year && d.getMonth() >= 3 && d.getMonth() < 6;
+      if (p === 'q3')   return d.getFullYear() === year && d.getMonth() >= 6 && d.getMonth() < 9;
+      if (p === 'q4')   return d.getFullYear() === year && d.getMonth() >= 9;
+      if (p === 'año')  return d.getFullYear() === year;
+      return true;
+    });
+  };
+
+  const filtrarFilas = (filas) => {
+    let f = filtroPeriodo(filas);
+    if (_trasIndFiltros.plazo !== 'todo') f = f.filter(x => String(x.plazo_comodato) === _trasIndFiltros.plazo);
+    if (_trasIndFiltros.cliente !== 'todo') f = f.filter(x => x.nit === _trasIndFiltros.cliente);
+    return f;
+  };
+
+  const filasFiltradas = filtrarFilas(todasFilas);
+
+  // Métricas
+  const totalClientes  = new Set(filtrarFilas(todasFilas).map(f => f.nit)).size;
+  const totalUnidades  = filasFiltradas.reduce((a, f) => a + f.cantidad, 0);
+  const totalValor     = filasFiltradas.reduce((a, f) => a + f.valor_total, 0);
   const totalPendientes = trasladosData.filter(t => t.estado === 'Pendiente' || t.estado === 'Corregir en SIESA').length;
 
+  // Meses restantes
+  const mesesRestantes = (fechaInicioStr, plazo) => {
+    if (!fechaInicioStr || !plazo) return null;
+    const inicio = new Date(fechaInicioStr);
+    const fin    = new Date(inicio);
+    fin.setMonth(fin.getMonth() + parseInt(plazo));
+    const hoy    = new Date();
+    const diff   = (fin.getFullYear() - hoy.getFullYear()) * 12 + (fin.getMonth() - hoy.getMonth());
+    return diff;
+  };
+
+  // Tarjeta contabilidad por persona
+  const porPersona = {};
+  gestionados.forEach(t => {
+    const p = t.ejecutado_por || 'Sin asignar';
+    if (!porPersona[p]) porPersona[p] = { count: 0, siesas: [], fechas: [] };
+    porPersona[p].count++;
+    if (t.consecutivo_siesa) porPersona[p].siesas.push(t.consecutivo_siesa);
+    if (t.ejecutado_at) porPersona[p].fechas.push(new Date(t.ejecutado_at).toLocaleDateString('es-CO'));
+  });
+
+  const periodoBtns = [
+    { k:'todo', l:'Todo' }, { k:'mes', l:'Este mes' },
+    { k:'q1', l:'Q1' }, { k:'q2', l:'Q2' }, { k:'q3', l:'Q3' }, { k:'q4', l:'Q4' },
+    { k:'año', l:'Año' },
+  ].map(b => `<button onclick="trasIndSetFiltro('periodo','${b.k}')"
+    style="font-family:inherit;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;cursor:pointer;
+      border:1.5px solid ${_trasIndFiltros.periodo===b.k?'#19428C':'#DDE3EE'};
+      background:${_trasIndFiltros.periodo===b.k?'#19428C':'white'};
+      color:${_trasIndFiltros.periodo===b.k?'white':'#6B7A99'};">${b.l}</button>`).join('');
+
+  const plazoBtns = [
+    { k:'todo', l:'Todos' }, { k:'12', l:'12 m.' }, { k:'24', l:'24 m.' }, { k:'36', l:'36 m.' },
+  ].map(b => `<button onclick="trasIndSetFiltro('plazo','${b.k}')"
+    style="font-family:inherit;font-size:11px;font-weight:600;padding:4px 12px;border-radius:20px;cursor:pointer;
+      border:1.5px solid ${_trasIndFiltros.plazo===b.k?'#534AB7':'#DDE3EE'};
+      background:${_trasIndFiltros.plazo===b.k?'#534AB7':'white'};
+      color:${_trasIndFiltros.plazo===b.k?'white':'#6B7A99'};">${b.l}</button>`).join('');
+
+  const clienteOpts = `<option value="todo">Todos los clientes</option>` +
+    clientes.map(c => `<option value="${c.nit}" ${_trasIndFiltros.cliente===c.nit?'selected':''}>${c.empresa}</option>`).join('');
+
   el.innerHTML = `
-    <!-- Tarjetas resumen -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">
+    <!-- Filtros -->
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:14px 18px;margin-bottom:20px;">
+      <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;">
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Período</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap;">${periodoBtns}</div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Plazo comodato</div>
+          <div style="display:flex;gap:4px;">${plazoBtns}</div>
+        </div>
+        <div style="flex:1;min-width:200px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Cliente</div>
+          <select onchange="trasIndSetFiltro('cliente',this.value)"
+            style="width:100%;padding:6px 10px;border:1.5px solid #DDE3EE;border-radius:8px;font-size:12px;font-family:inherit;">
+            ${clienteOpts}
+          </select>
+        </div>
+        <div style="margin-top:16px;">
+          <button onclick="trasIndicadoresExcel()"
+            style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">
+            ⬇ Excel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tarjetas métricas -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;">
       ${[
         { lbl:'Clientes con comodato', val: totalClientes, color:'#19428C', icon:'🏢' },
         { lbl:'Unidades en comodato',  val: totalUnidades, color:'#0F6E56', icon:'📦' },
-        { lbl:'Valor total comodatos', val: '$ '+Math.round(totalValor).toLocaleString('es-CO'), color:'#534AB7', icon:'💰' },
+        { lbl:'Valor total',           val: '$ '+Math.round(totalValor).toLocaleString('es-CO'), color:'#534AB7', icon:'💰' },
         { lbl:'Traslados activos',     val: totalPendientes, color: totalPendientes > 0 ? '#A32D2D':'#0F6E56', icon:'⏳' },
       ].map(m => `
-        <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid ${m.color};border-radius:10px;padding:16px;">
+        <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid ${m.color};border-radius:10px;padding:14px 16px;">
           <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#9AAABF;margin-bottom:6px;">${m.icon} ${m.lbl}</div>
-          <div style="font-size:26px;font-weight:300;color:${m.color};">${m.val}</div>
+          <div style="font-size:24px;font-weight:300;color:${m.color};line-height:1;">${m.val}</div>
         </div>`).join('')}
     </div>
 
-    <!-- Botón exportar -->
-    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
-      <button onclick="trasIndicadoresExcel()"
-        style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">
-        ⬇ Exportar Excel
-      </button>
+    <!-- Tarjetas por persona de contabilidad -->
+    <div style="margin-bottom:20px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#9AAABF;margin-bottom:10px;">Gestión por persona</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">
+        ${Object.entries(porPersona).map(([nombre, d]) => `
+          <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+              <div style="width:36px;height:36px;border-radius:50%;background:#E8EEF8;color:#19428C;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;">
+                ${nombre.split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase()}
+              </div>
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#0d1b3e;">${nombre}</div>
+                <div style="font-size:11px;color:#9AAABF;">${d.count} traslado${d.count!==1?'s':''} gestionado${d.count!==1?'s':''}</div>
+              </div>
+            </div>
+            <details style="font-size:11px;color:#6B7A99;">
+              <summary style="cursor:pointer;font-weight:600;color:#19428C;margin-bottom:6px;">Ver consecutivos SIESA</summary>
+              <div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;">
+                ${d.siesas.map((s,i) => `
+                  <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #EEF1F8;">
+                    <span style="font-family:monospace;font-weight:600;">${s}</span>
+                    <span style="color:#9AAABF;">${d.fechas[i]||'—'}</span>
+                  </div>`).join('')}
+              </div>
+            </details>
+          </div>`).join('')}
+      </div>
     </div>
 
-    <!-- Tabla detalle -->
+    <!-- Tabla comodatos activos con meses restantes -->
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#9AAABF;margin-bottom:10px;">
+      Detalle de comodatos — ${filasFiltradas.length} registro${filasFiltradas.length!==1?'s':''}
+    </div>
     <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;overflow-x:auto;box-shadow:0 1px 4px rgba(25,66,140,.06);">
-      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1000px;">
         <thead>
           <tr style="background:#F4F6FA;">
-            ${['Consecutivo','Cliente','NIT','Ítem','Descripción','Cant.','V. Unit.','Valor Total','Plazo','Ejecutivo Comercial','Trasladado por','Fecha Traslado','SIESA'].map(h =>
-              `<th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">${h}</th>`
+            ${['N° Solicitud','Cliente','NIT','Ítem','Descripción','Cant.','V. Unit.','Valor Total','Plazo','Inicio','Meses restantes','Ejecutivo','Trasladado por','Fecha traslado','SIESA'].map(h =>
+              `<th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;">${h}</th>`
             ).join('')}
           </tr>
         </thead>
         <tbody>
-          ${filas.map((f, i) => `
-            <tr style="border-bottom:1px solid #EEF1F8;background:${i%2===0?'white':'#FAFBFD'};">
-              <td style="padding:8px 12px;font-weight:700;color:#19428C;">${f.consecutivo}</td>
-              <td style="padding:8px 12px;font-weight:500;">${f.empresa}</td>
-              <td style="padding:8px 12px;color:#6B7A99;">${f.nit}</td>
-              <td style="padding:8px 12px;font-weight:600;">${f.item}</td>
-              <td style="padding:8px 12px;">${f.descripcion}</td>
-              <td style="padding:8px 12px;text-align:right;">${f.cantidad}</td>
-              <td style="padding:8px 12px;text-align:right;">$ ${Math.round(f.valor_unitario).toLocaleString('es-CO')}</td>
-              <td style="padding:8px 12px;text-align:right;font-weight:600;">$ ${Math.round(f.valor_total).toLocaleString('es-CO')}</td>
-              <td style="padding:8px 12px;text-align:center;">${f.plazo_comodato}${f.plazo_comodato !== '—' ? ' m.' : ''}</td>
-              <td style="padding:8px 12px;color:#6B7A99;">${f.ejecutivo}</td>
-              <td style="padding:8px 12px;color:#6B7A99;">${f.trasladado_por}</td>
-              <td style="padding:8px 12px;white-space:nowrap;">${f.fecha_traslado}</td>
-              <td style="padding:8px 12px;font-family:monospace;font-size:11px;">${f.siesa}</td>
-            </tr>`).join('')}
+          ${filasFiltradas.length === 0
+            ? `<tr><td colspan="15" style="text-align:center;padding:32px;color:#9AAABF;font-style:italic;">Sin registros para los filtros seleccionados.</td></tr>`
+            : filasFiltradas.map((f, i) => {
+                const meses = mesesRestantes(f.fecha_inicio, f.plazo_comodato);
+                const mesesTxt = meses === null ? '—'
+                  : meses <= 0  ? `<span style="color:#A32D2D;font-weight:700;">Vencido</span>`
+                  : meses <= 3  ? `<span style="color:#E8A020;font-weight:700;">${meses} m. ⚠</span>`
+                  : `<span style="color:#0F6E56;font-weight:600;">${meses} m.</span>`;
+                return `
+                  <tr style="border-bottom:1px solid #EEF1F8;background:${i%2===0?'white':'#FAFBFD'};">
+                    <td style="padding:8px 12px;font-weight:700;color:#19428C;">${f.consecutivo}</td>
+                    <td style="padding:8px 12px;font-weight:500;max-width:160px;">${f.empresa}</td>
+                    <td style="padding:8px 12px;color:#6B7A99;">${f.nit}</td>
+                    <td style="padding:8px 12px;font-weight:600;">${f.item}</td>
+                    <td style="padding:8px 12px;max-width:180px;">${f.descripcion}</td>
+                    <td style="padding:8px 12px;text-align:right;">${f.cantidad}</td>
+                    <td style="padding:8px 12px;text-align:right;">$ ${Math.round(f.valor_unitario).toLocaleString('es-CO')}</td>
+                    <td style="padding:8px 12px;text-align:right;font-weight:600;">$ ${Math.round(f.valor_total).toLocaleString('es-CO')}</td>
+                    <td style="padding:8px 12px;text-align:center;">${f.plazo_comodato ? f.plazo_comodato+' m.' : '—'}</td>
+                    <td style="padding:8px 12px;white-space:nowrap;">${f.fecha_inicio || '—'}</td>
+                    <td style="padding:8px 12px;text-align:center;">${mesesTxt}</td>
+                    <td style="padding:8px 12px;color:#6B7A99;white-space:nowrap;">${f.ejecutivo}</td>
+                    <td style="padding:8px 12px;color:#6B7A99;white-space:nowrap;">${f.trasladado_por}</td>
+                    <td style="padding:8px 12px;white-space:nowrap;">${f.fecha_traslado}</td>
+                    <td style="padding:8px 12px;font-family:monospace;font-size:11px;">${f.siesa}</td>
+                  </tr>`;
+              }).join('')}
         </tbody>
       </table>
     </div>`;
 
-  // Guardar filas para exportar
-  window._trasFilasIndicadores = filas;
+  window._trasFilasIndicadores = filasFiltradas;
+}
+
+function trasIndSetFiltro(campo, valor) {
+  _trasIndFiltros[campo] = valor;
+  renderTrasIndicadores();
 }
 
 function trasIndicadoresExcel() {
   const filas = window._trasFilasIndicadores || [];
-  if (!filas.length) return;
+  if (!filas.length) { showAlert('danger', 'No hay datos para exportar.'); return; }
+
+  const mesesRestantesVal = (fechaInicioStr, plazo) => {
+    if (!fechaInicioStr || !plazo) return '—';
+    const inicio = new Date(fechaInicioStr);
+    const fin    = new Date(inicio);
+    fin.setMonth(fin.getMonth() + parseInt(plazo));
+    const diff = (fin.getFullYear() - new Date().getFullYear()) * 12 + (fin.getMonth() - new Date().getMonth());
+    return diff <= 0 ? 'Vencido' : diff;
+  };
+
   const wb = XLSX.utils.book_new();
-  const header = ['Consecutivo','Cliente','NIT','Ítem','Descripción','Cantidad','Valor Unitario','Valor Total','Plazo (meses)','Ejecutivo Comercial','Trasladado por','Fecha Traslado','Consecutivo SIESA'];
-  const rows = filas.map(f => [f.consecutivo, f.empresa, f.nit, f.item, f.descripcion, f.cantidad, f.valor_unitario, f.valor_total, f.plazo_comodato, f.ejecutivo, f.trasladado_por, f.fecha_traslado, f.siesa]);
+  const header = ['N° Solicitud','Cliente','NIT','Ítem','Descripción','Cantidad','Valor Unitario','Valor Total','Plazo (meses)','Fecha Inicio','Meses Restantes','Ejecutivo Comercial','Trasladado por','Fecha Traslado','Consecutivo SIESA'];
+  const rows = filas.map(f => [
+    f.consecutivo, f.empresa, f.nit, f.item, f.descripcion,
+    f.cantidad, f.valor_unitario, f.valor_total,
+    f.plazo_comodato || '—', f.fecha_inicio || '—',
+    mesesRestantesVal(f.fecha_inicio, f.plazo_comodato),
+    f.ejecutivo, f.trasladado_por, f.fecha_traslado, f.siesa
+  ]);
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-  ws['!cols'] = [{wch:12},{wch:35},{wch:14},{wch:8},{wch:45},{wch:8},{wch:16},{wch:16},{wch:10},{wch:22},{wch:22},{wch:16},{wch:18}];
+  ws['!cols'] = [{wch:12},{wch:35},{wch:14},{wch:8},{wch:42},{wch:8},{wch:16},{wch:16},{wch:10},{wch:14},{wch:14},{wch:22},{wch:22},{wch:16},{wch:18}];
   XLSX.utils.book_append_sheet(wb, ws, 'Comodatos');
   XLSX.writeFile(wb, `Comodatos_Activos_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.xlsx`);
   showAlert('success', 'Excel de indicadores generado.');
