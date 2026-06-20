@@ -9264,6 +9264,11 @@ function formatCOP(v) {
 }
 
 function pfac_renderOrdenesDia(iso) {
+  const titleEl = document.getElementById('pfac-day-title');
+  const countEl = document.getElementById('pfac-day-count');
+  const containerEl = document.getElementById('pfac-ordenes-container');
+  if (!titleEl || !countEl || !containerEl) return; // DOM aún no montado
+
   const [y, m, d] = iso.split('-');
   const fecha = new Date(parseInt(y), parseInt(m)-1, parseInt(d));
   const label = fecha.toLocaleDateString('es-CO', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
@@ -9272,12 +9277,12 @@ function pfac_renderOrdenesDia(iso) {
   if (pfac_filtroModalidad !== 'Todos') filtradas = filtradas.filter(o => o.modalidad === pfac_filtroModalidad);
 
   const pending = filtradas.filter(o => o.estado === 'Pendiente').length;
-  document.getElementById('pfac-day-title').textContent = label.charAt(0).toUpperCase() + label.slice(1);
-  document.getElementById('pfac-day-count').textContent = filtradas.length === 0
+  titleEl.textContent = label.charAt(0).toUpperCase() + label.slice(1);
+  countEl.textContent = filtradas.length === 0
     ? 'Sin órdenes'
     : `${filtradas.length} orden(es) de facturación · ${pending} pendiente(s)`;
 
-  const container = document.getElementById('pfac-ordenes-container');
+  const container = containerEl;
   if (filtradas.length === 0) {
     container.innerHTML = `
       <div class="pfac-empty-day">
@@ -9479,7 +9484,7 @@ function pfac_buscarOrdenes(query) {
   if (count) count.textContent = `${resultados.length} orden(es) encontrada(s)`;
 
   // Renderizar usando la misma lógica de tarjetas pero con los resultados filtrados
-  const container = document.getElementById('pfac-ordenes-container');
+  const container = containerEl;
   if (!container) return;
 
   if (resultados.length === 0) {
@@ -10436,7 +10441,7 @@ function renderPortalFacturacion(container){
 
     </main>
   </div></div>`;
-  setTimeout(() => pfac_inicializarPortal(), 60);
+  setTimeout(() => pfac_inicializarPortal(), 200);
 }
 
 async function pfac_inicializarPortal(){
