@@ -8613,14 +8613,15 @@ function exportarPDF() {
     bodyStyles: { fontSize: 7.5, textColor: [30, 37, 64] },
     alternateRowStyles: { fillColor: [248, 250, 254] },
     columnStyles: {
-      0: { cellWidth: 14 },
-      1: { cellWidth: 58 },
-      2: { cellWidth: 20 },
+      0: { cellWidth: 12 },
+      1: { cellWidth: 52 },
+      2: { cellWidth: 18 },
       3: { cellWidth: 18 },
-      4: { cellWidth: 10, halign: 'center' },
-      5: { cellWidth: 9,  halign: 'right' },
-      6: { cellWidth: 24, halign: 'right' },
-      7: { cellWidth: 24, halign: 'right' },
+      4: { cellWidth: 16, halign: 'center' },
+      5: { cellWidth: 12, halign: 'center' },
+      6: { cellWidth: 10, halign: 'right' },
+      7: { cellWidth: 30, halign: 'right' },
+      8: { cellWidth: 28, halign: 'right' },
     },
     margin: { left: 10, right: 10 },
   });
@@ -10738,6 +10739,7 @@ function getCatalogoLinea(linea) {
    MÓDULO TRASLADOS — Contabilidad (traslado de bodega para comodatos)
    ═══════════════════════════════════════════════════════════════ */
 let trasladosData = [];
+let _trasSubtab = 'gestion'; // 'gestion' | 'indicadores'
 
 async function renderTraslados(container){
   container.innerHTML = '<div class="loading">Cargando traslados...</div>';
@@ -10767,116 +10769,144 @@ async function renderTraslados(container){
 
     container.innerHTML = `
       <div style="max-width:1100px;margin:0 auto;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+
+        <!-- Header -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
           <div>
             <h2 style="font-size:18px;font-weight:700;color:#19428C;margin:0;">📦 Traslados de bodega</h2>
-            <p style="font-size:12px;color:#6B7A99;margin:4px 0 0;">Comodatos pendientes de traslado de inventario a bodega virtual</p>
+            <p style="font-size:12px;color:#6B7A99;margin:4px 0 0;">Comodatos — traslado de inventario a bodega virtual</p>
           </div>
         </div>
 
-        <div style="display:flex;gap:8px;margin-bottom:16px;">
-          <input type="text" id="tras-search" placeholder="Buscar por cliente, NIT o consecutivo..."
-            oninput="renderTrasladosTabla()"
-            style="flex:1;padding:9px 14px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;">
-          <select id="tras-filtro-estado" onchange="renderTrasladosTabla()"
-            style="padding:9px 14px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;background:white;">
-            <option value="">Todos los estados</option>
-            <option value="Pendiente">Pendientes</option>
-            <option value="Gestionado">Gestionados</option>
-            <option value="Corregir en SIESA">⚠ Corregir en SIESA</option>
-          </select>
+        <!-- Subpestañas -->
+        <div style="display:flex;gap:2px;border-bottom:2px solid #DDE3EE;margin-bottom:20px;">
+          <button id="tras-tab-gestion" onclick="trasSwitchTab('gestion')"
+            style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 18px;border:none;border-bottom:2px solid #19428C;background:none;color:#19428C;cursor:pointer;margin-bottom:-2px;">
+            📋 Gestión
+          </button>
+          <button id="tras-tab-indicadores" onclick="trasSwitchTab('indicadores')"
+            style="font-family:inherit;font-size:12px;font-weight:500;padding:8px 18px;border:none;border-bottom:2px solid transparent;background:none;color:#6B7A99;cursor:pointer;margin-bottom:-2px;">
+            📊 Indicadores
+          </button>
         </div>
 
-        <div id="tras-tabla-wrap" style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);">
-          <table style="width:100%;border-collapse:collapse;font-size:13px;">
-            <thead>
-              <tr style="background:#F4F6FA;">
-                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Consecutivo</th>
-                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Cliente</th>
-                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">NIT</th>
-                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Fecha</th>
-                <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Ejecutivo</th>
-                <th style="padding:10px 14px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Ítems</th>
-                <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Estado</th>
-                <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Acciones</th>
-              </tr>
-            </thead>
-            <tbody id="tras-tabla-body"></tbody>
-          </table>
-        </div>
-      </div>
+        <!-- Panel Gestión -->
+        <div id="tras-panel-gestion">
+          <div style="display:flex;gap:8px;margin-bottom:16px;">
+            <input type="text" id="tras-search" placeholder="Buscar por cliente, NIT o consecutivo..."
+              oninput="renderTrasladosTabla()"
+              style="flex:1;padding:9px 14px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;">
+            <select id="tras-filtro-estado" onchange="renderTrasladosTabla()"
+              style="padding:9px 14px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;background:white;">
+              <option value="">Todos los estados</option>
+              <option value="Pendiente">Pendientes</option>
+              <option value="Corregir en SIESA">⚠ Corregir en SIESA</option>
+              <option value="Gestionado">Gestionados</option>
+            </select>
+          </div>
 
-      <!-- Modal detalle de traslado -->
-      <div class="pfac-modal-backdrop" id="modal-tras-detalle">
-        <div class="pfac-modal-box" style="max-width:680px;">
-          <div class="pfac-modal-title" id="tras-det-titulo">Traslado de bodega</div>
-          <div class="pfac-modal-body">
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;font-size:13px;">
-              <div><strong>Consecutivo:</strong> <span id="tras-det-consec"></span></div>
-              <div><strong>Fecha:</strong> <span id="tras-det-fecha"></span></div>
-              <div><strong>Cliente:</strong> <span id="tras-det-empresa"></span></div>
-              <div><strong>NIT:</strong> <span id="tras-det-nit"></span></div>
-              <div><strong>Contacto:</strong> <span id="tras-det-contacto"></span></div>
-              <div><strong>Teléfono:</strong> <span id="tras-det-telefono"></span></div>
-              <div><strong>Ejecutivo:</strong> <span id="tras-det-ejecutivo"></span></div>
-              <div><strong>Estado:</strong> <span id="tras-det-estado"></span></div>
-            </div>
-            <div id="tras-det-obs-wrap" style="display:none;margin-bottom:14px;padding:8px 12px;background:#FDF6E3;border-radius:6px;border-left:3px solid #E8A020;font-size:12px;color:#7A5A0F;">
-              <strong>Observaciones:</strong> <span id="tras-det-obs"></span>
-            </div>
-            <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
-              <thead><tr style="background:#F4F6FA;">
-                <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Ítem</th>
-                <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Descripción</th>
-                <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">Cant.</th>
-                <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">V. Unit.</th>
-                <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">Subtotal</th>
-              </tr></thead>
-              <tbody id="tras-det-items"></tbody>
+          <div id="tras-tabla-wrap" style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;">
+              <thead>
+                <tr style="background:#F4F6FA;">
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Consecutivo</th>
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Cliente</th>
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">NIT</th>
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Fecha</th>
+                  <th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Ejecutivo</th>
+                  <th style="padding:10px 14px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Ítems</th>
+                  <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Estado</th>
+                  <th style="padding:10px 14px;text-align:center;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tras-tabla-body"></tbody>
             </table>
-            <div id="tras-det-correccion-wrap" style="display:none;padding:12px 16px;background:#FDF6E3;border-radius:8px;border:1px solid #E8C96B;border-left:4px solid #E8A020;font-size:12px;color:#7A5A0F;margin-bottom:8px;">
-              <div style="font-weight:700;font-size:13px;margin-bottom:4px;">⚠ Este traslado ya fue ejecutado en SIESA y requiere corrección</div>
-              <div>El ejecutivo modificó la factura después de que contabilidad registró el traslado. Por favor corrija el consecutivo <strong><span id="tras-det-siesa-corr"></span></strong> en SIESA para que coincida con los nuevos ítems.</div>
-            </div>
-            <div id="tras-det-gestion-wrap" style="display:none;padding:10px 14px;background:#E1F5EE;border-radius:8px;border:1px solid #9FE1CB;font-size:12px;color:#1B7A4A;">
-              <div><strong>Consecutivo SIESA:</strong> <span id="tras-det-siesa"></span></div>
-              <div><strong>Ejecutado por:</strong> <span id="tras-det-ejecpor"></span> el <span id="tras-det-ejecat"></span></div>
-            </div>
-          </div>
-          <div class="pfac-modal-actions" style="flex-wrap:wrap;gap:8px;">
-            <button class="pfac-btn-sm pfac-btn-omitir" onclick="cerrarModalTrasDetalle()">Cerrar</button>
-            <button class="pfac-btn-sm" onclick="trasExportarExcel(window._trasActivoId)"
-              style="background:#1D6F42;color:white;border:none;">Excel</button>
-            <button class="pfac-btn-sm" onclick="trasExportarPDF(window._trasActivoId)"
-              style="background:#C0392B;color:white;border:none;">PDF</button>
-            <button class="pfac-btn-sm pfac-btn-facturar" id="tras-btn-ejecutado" onclick="abrirModalTrasEjecutado(window._trasActivoId)">
-              ✓ Traslado ejecutado
-            </button>
           </div>
         </div>
-      </div>
 
-      <!-- Modal confirmar ejecución -->
-      <div class="pfac-modal-backdrop" id="modal-tras-ejecutado">
-        <div class="pfac-modal-box">
-          <div class="pfac-modal-title">Confirmar traslado ejecutado</div>
-          <div class="pfac-modal-body">
-            <p style="font-size:13px;color:#3d5080;margin-bottom:12px;">Ingrese el número de consecutivo asignado en SIESA para este traslado.</p>
-            <label style="font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.04em;">Número de consecutivo en SIESA <span style="color:#A32D2D">*</span></label>
-            <input type="text" id="tras-input-siesa" placeholder="Ej: TR-2026-00123"
-              style="width:100%;padding:9px 12px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;margin-top:6px;"
-              oninput="document.getElementById('err-tras-siesa').style.display='none'">
-            <div id="err-tras-siesa" style="display:none;font-size:11px;color:#A32D2D;margin-top:4px;">El consecutivo SIESA es obligatorio.</div>
-          </div>
-          <div class="pfac-modal-actions">
-            <button class="pfac-btn-sm pfac-btn-omitir" onclick="cerrarModalTrasEjecutado()">Cancelar</button>
-            <button class="pfac-btn-sm pfac-btn-facturar" onclick="confirmarTrasEjecutado()">✓ Confirmar ejecutado</button>
+        <!-- Panel Indicadores -->
+        <div id="tras-panel-indicadores" style="display:none;">
+          <div id="tras-ind-content">Cargando indicadores...</div>
+        </div>
+
+        <!-- Modal detalle -->
+        <div class="pfac-modal-backdrop" id="modal-tras-detalle">
+          <div class="pfac-modal-box" style="max-width:680px;">
+            <div class="pfac-modal-title" id="tras-det-titulo">Traslado de bodega</div>
+            <div class="pfac-modal-body">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;font-size:13px;">
+                <div><strong>Consecutivo:</strong> <span id="tras-det-consec"></span></div>
+                <div><strong>Fecha:</strong> <span id="tras-det-fecha"></span></div>
+                <div><strong>Cliente:</strong> <span id="tras-det-empresa"></span></div>
+                <div><strong>NIT:</strong> <span id="tras-det-nit"></span></div>
+                <div><strong>Contacto:</strong> <span id="tras-det-contacto"></span></div>
+                <div><strong>Teléfono:</strong> <span id="tras-det-telefono"></span></div>
+                <div><strong>Ejecutivo:</strong> <span id="tras-det-ejecutivo"></span></div>
+                <div><strong>Estado:</strong> <span id="tras-det-estado"></span></div>
+              </div>
+              <div id="tras-det-obs-wrap" style="display:none;margin-bottom:14px;padding:8px 12px;background:#FDF6E3;border-radius:6px;border-left:3px solid #E8A020;font-size:12px;color:#7A5A0F;">
+                <strong>Observaciones:</strong> <span id="tras-det-obs"></span>
+              </div>
+              <!-- Alerta corrección SIESA -->
+              <div id="tras-det-correccion-wrap" style="display:none;padding:12px 16px;background:#FDF6E3;border-radius:8px;border:1px solid #E8C96B;border-left:4px solid #E8A020;font-size:12px;color:#7A5A0F;margin-bottom:10px;">
+                <div style="font-weight:700;font-size:13px;margin-bottom:4px;">⚠ Este traslado ya fue ejecutado en SIESA y requiere corrección</div>
+                <div>El ejecutivo modificó la factura. Corrija el consecutivo <strong><span id="tras-det-siesa-corr"></span></strong> en SIESA para que coincida con los nuevos ítems, luego confirme.</div>
+              </div>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;">
+                <thead><tr style="background:#F4F6FA;">
+                  <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Ítem</th>
+                  <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Descripción</th>
+                  <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">Cant.</th>
+                  <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">V. Unit.</th>
+                  <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">Subtotal</th>
+                </tr></thead>
+                <tbody id="tras-det-items"></tbody>
+              </table>
+              <div id="tras-det-gestion-wrap" style="display:none;padding:10px 14px;background:#E1F5EE;border-radius:8px;border:1px solid #9FE1CB;font-size:12px;color:#1B7A4A;">
+                <div><strong>Consecutivo SIESA:</strong> <span id="tras-det-siesa"></span></div>
+                <div><strong>Ejecutado por:</strong> <span id="tras-det-ejecpor"></span> el <span id="tras-det-ejecat"></span></div>
+              </div>
+            </div>
+            <div class="pfac-modal-actions" style="flex-wrap:wrap;gap:8px;">
+              <button class="pfac-btn-sm pfac-btn-omitir" onclick="cerrarModalTrasDetalle()">Cerrar</button>
+              <button class="pfac-btn-sm" onclick="trasExportarExcel(window._trasActivoId)"
+                style="background:#1D6F42;color:white;border:none;">Excel</button>
+              <button class="pfac-btn-sm" onclick="trasExportarPDF(window._trasActivoId)"
+                style="background:#C0392B;color:white;border:none;">PDF</button>
+              <button class="pfac-btn-sm pfac-btn-facturar" id="tras-btn-ejecutado" onclick="abrirModalTrasEjecutado(window._trasActivoId, false)">
+                ✓ Traslado ejecutado
+              </button>
+              <button class="pfac-btn-sm" id="tras-btn-correccion"
+                style="display:none;background:#E8A020;color:white;border:none;font-weight:700;"
+                onclick="abrirModalTrasEjecutado(window._trasActivoId, true)">
+                ✓ Corrección aplicada en SIESA
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    `;
 
-    renderTrasladosTabla();
+        <!-- Modal ejecutado / corrección -->
+        <div class="pfac-modal-backdrop" id="modal-tras-ejecutado">
+          <div class="pfac-modal-box">
+            <div class="pfac-modal-title" id="tras-modal-ejec-titulo">Confirmar traslado ejecutado</div>
+            <div class="pfac-modal-body">
+              <p id="tras-modal-ejec-desc" style="font-size:13px;color:#3d5080;margin-bottom:12px;">Ingrese el número de consecutivo asignado en SIESA para este traslado.</p>
+              <label style="font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.04em;">Consecutivo SIESA <span style="color:#A32D2D">*</span></label>
+              <input type="text" id="tras-input-siesa" placeholder="Ej: TR-2026-00123"
+                style="width:100%;padding:9px 12px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;margin-top:6px;"
+                oninput="document.getElementById('err-tras-siesa').style.display='none'">
+              <div id="err-tras-siesa" style="display:none;font-size:11px;color:#A32D2D;margin-top:4px;">El consecutivo SIESA es obligatorio.</div>
+            </div>
+            <div class="pfac-modal-actions">
+              <button class="pfac-btn-sm pfac-btn-omitir" onclick="cerrarModalTrasEjecutado()">Cancelar</button>
+              <button class="pfac-btn-sm pfac-btn-facturar" onclick="confirmarTrasEjecutado()">✓ Confirmar</button>
+            </div>
+          </div>
+        </div>
+
+      </div>`;
+
+    trasSwitchTab('gestion');
 
   } catch(e) {
     console.error('Error cargando traslados:', e);
@@ -10884,6 +10914,135 @@ async function renderTraslados(container){
   }
 }
 
+/* ── Subtabs ── */
+function trasSwitchTab(tab) {
+  _trasSubtab = tab;
+  const tabs = ['gestion','indicadores'];
+  tabs.forEach(t => {
+    const btn = document.getElementById(`tras-tab-${t}`);
+    const panel = document.getElementById(`tras-panel-${t}`);
+    if (!btn || !panel) return;
+    const active = t === tab;
+    btn.style.borderBottomColor  = active ? '#19428C' : 'transparent';
+    btn.style.color               = active ? '#19428C' : '#6B7A99';
+    btn.style.fontWeight          = active ? '600' : '500';
+    panel.style.display           = active ? 'block' : 'none';
+  });
+  if (tab === 'indicadores') renderTrasIndicadores();
+  else renderTrasladosTabla();
+}
+
+/* ── Indicadores de comodatos ── */
+function renderTrasIndicadores() {
+  const el = document.getElementById('tras-ind-content');
+  if (!el) return;
+
+  // Solo traslados Gestionados
+  const gestionados = trasladosData.filter(t => t.estado === 'Gestionado');
+
+  if (gestionados.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:48px;color:#9AAABF;font-size:13px;">No hay traslados gestionados aún.</div>`;
+    return;
+  }
+
+  // Expandir ítems — una fila por ítem por traslado
+  const filas = [];
+  gestionados.forEach(t => {
+    (t.items_detalle || []).forEach(it => {
+      filas.push({
+        consecutivo:      t.consecutivo,
+        empresa:          t.empresa,
+        nit:              t.nit,
+        ejecutivo:        t.ejecutivo,
+        item:             it.item,
+        descripcion:      it.descripcion,
+        cantidad:         it.cantidad || 0,
+        valor_unitario:   it.valor_unitario || 0,
+        valor_total:      it.subtotal || (it.cantidad * it.valor_unitario) || 0,
+        plazo_comodato:   it.plazo_comodato || '—',
+        trasladado_por:   t.ejecutado_por || '—',
+        fecha_traslado:   t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleDateString('es-CO') : '—',
+        siesa:            t.consecutivo_siesa || '—',
+      });
+    });
+  });
+
+  // Métricas resumen
+  const totalClientes  = new Set(gestionados.map(t => t.nit)).size;
+  const totalUnidades  = filas.reduce((a, f) => a + (f.cantidad || 0), 0);
+  const totalValor     = filas.reduce((a, f) => a + (f.valor_total || 0), 0);
+  const totalPendientes = trasladosData.filter(t => t.estado === 'Pendiente' || t.estado === 'Corregir en SIESA').length;
+
+  el.innerHTML = `
+    <!-- Tarjetas resumen -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:24px;">
+      ${[
+        { lbl:'Clientes con comodato', val: totalClientes, color:'#19428C', icon:'🏢' },
+        { lbl:'Unidades en comodato',  val: totalUnidades, color:'#0F6E56', icon:'📦' },
+        { lbl:'Valor total comodatos', val: '$ '+Math.round(totalValor).toLocaleString('es-CO'), color:'#534AB7', icon:'💰' },
+        { lbl:'Traslados activos',     val: totalPendientes, color: totalPendientes > 0 ? '#A32D2D':'#0F6E56', icon:'⏳' },
+      ].map(m => `
+        <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid ${m.color};border-radius:10px;padding:16px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#9AAABF;margin-bottom:6px;">${m.icon} ${m.lbl}</div>
+          <div style="font-size:26px;font-weight:300;color:${m.color};">${m.val}</div>
+        </div>`).join('')}
+    </div>
+
+    <!-- Botón exportar -->
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <button onclick="trasIndicadoresExcel()"
+        style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">
+        ⬇ Exportar Excel
+      </button>
+    </div>
+
+    <!-- Tabla detalle -->
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;overflow-x:auto;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:900px;">
+        <thead>
+          <tr style="background:#F4F6FA;">
+            ${['Consecutivo','Cliente','NIT','Ítem','Descripción','Cant.','V. Unit.','Valor Total','Plazo','Ejecutivo Comercial','Trasladado por','Fecha Traslado','SIESA'].map(h =>
+              `<th style="padding:9px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;">${h}</th>`
+            ).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${filas.map((f, i) => `
+            <tr style="border-bottom:1px solid #EEF1F8;background:${i%2===0?'white':'#FAFBFD'};">
+              <td style="padding:8px 12px;font-weight:700;color:#19428C;">${f.consecutivo}</td>
+              <td style="padding:8px 12px;font-weight:500;">${f.empresa}</td>
+              <td style="padding:8px 12px;color:#6B7A99;">${f.nit}</td>
+              <td style="padding:8px 12px;font-weight:600;">${f.item}</td>
+              <td style="padding:8px 12px;">${f.descripcion}</td>
+              <td style="padding:8px 12px;text-align:right;">${f.cantidad}</td>
+              <td style="padding:8px 12px;text-align:right;">$ ${Math.round(f.valor_unitario).toLocaleString('es-CO')}</td>
+              <td style="padding:8px 12px;text-align:right;font-weight:600;">$ ${Math.round(f.valor_total).toLocaleString('es-CO')}</td>
+              <td style="padding:8px 12px;text-align:center;">${f.plazo_comodato}${f.plazo_comodato !== '—' ? ' m.' : ''}</td>
+              <td style="padding:8px 12px;color:#6B7A99;">${f.ejecutivo}</td>
+              <td style="padding:8px 12px;color:#6B7A99;">${f.trasladado_por}</td>
+              <td style="padding:8px 12px;white-space:nowrap;">${f.fecha_traslado}</td>
+              <td style="padding:8px 12px;font-family:monospace;font-size:11px;">${f.siesa}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  // Guardar filas para exportar
+  window._trasFilasIndicadores = filas;
+}
+
+function trasIndicadoresExcel() {
+  const filas = window._trasFilasIndicadores || [];
+  if (!filas.length) return;
+  const wb = XLSX.utils.book_new();
+  const header = ['Consecutivo','Cliente','NIT','Ítem','Descripción','Cantidad','Valor Unitario','Valor Total','Plazo (meses)','Ejecutivo Comercial','Trasladado por','Fecha Traslado','Consecutivo SIESA'];
+  const rows = filas.map(f => [f.consecutivo, f.empresa, f.nit, f.item, f.descripcion, f.cantidad, f.valor_unitario, f.valor_total, f.plazo_comodato, f.ejecutivo, f.trasladado_por, f.fecha_traslado, f.siesa]);
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{wch:12},{wch:35},{wch:14},{wch:8},{wch:45},{wch:8},{wch:16},{wch:16},{wch:10},{wch:22},{wch:22},{wch:16},{wch:18}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Comodatos');
+  XLSX.writeFile(wb, `Comodatos_Activos_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.xlsx`);
+  showAlert('success', 'Excel de indicadores generado.');
+}
 function renderTrasladosTabla(){
   const body = document.getElementById('tras-tabla-body');
   if (!body) return;
@@ -10901,23 +11060,52 @@ function renderTrasladosTabla(){
     return;
   }
 
-  body.innerHTML = filtrados.map(t => {
+  // Orden: Pendiente y Corregir en SIESA arriba, Gestionado abajo
+  const orden = { 'Corregir en SIESA': 0, 'Pendiente': 1, 'Gestionado': 2 };
+  filtrados = [...filtrados].sort((a, b) => {
+    const oa = orden[a.estado] ?? 1;
+    const ob = orden[b.estado] ?? 1;
+    if (oa !== ob) return oa - ob;
+    // Dentro del mismo estado: más reciente primero
+    return new Date(b.fecha) - new Date(a.fecha);
+  });
+
+  const estadoBadge = (estado) => {
+    if (estado === 'Gestionado')
+      return `<span style="display:inline-flex;align-items:center;gap:5px;background:#E1F5EE;color:#1B7A4A;border:1px solid #9FE1CB;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"><span style="width:7px;height:7px;border-radius:50%;background:#1B7A4A;flex-shrink:0;"></span>Ejecutado</span>`;
+    if (estado === 'Corregir en SIESA')
+      return `<span style="display:inline-flex;align-items:center;gap:5px;background:#FDF6E3;color:#7A5A0F;border:1px solid #E8C96B;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"><span style="width:7px;height:7px;border-radius:50%;background:#E8A020;flex-shrink:0;"></span>Corregir SIESA</span>`;
+    return `<span style="display:inline-flex;align-items:center;gap:5px;background:#FCEBEB;color:#A32D2D;border:1px solid #F5BABA;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"><span style="width:7px;height:7px;border-radius:50%;background:#A32D2D;flex-shrink:0;"></span>Pendiente</span>`;
+  };
+
+  // Separador visual entre activos y gestionados
+  let separadorInsertado = false;
+  body.innerHTML = filtrados.map((t, idx) => {
     const fecha = t.fecha ? new Date(t.fecha).toLocaleDateString('es-CO') : '—';
     const totalItems = (t.items_detalle || []).length;
-    const semaforo = t.estado === 'Gestionado'
-      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#E1F5EE;color:#1B7A4A;border:1px solid #9FE1CB;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"><span style="width:7px;height:7px;border-radius:50%;background:#1B7A4A;flex-shrink:0;"></span>Ejecutado</span>`
+    const esGestionado = t.estado === 'Gestionado';
+
+    let separador = '';
+    if (!separadorInsertado && esGestionado && filtrados.some(x => x.estado !== 'Gestionado')) {
+      separadorInsertado = true;
+      separador = `<tr><td colspan="8" style="padding:6px 14px;background:#F4F6FA;font-size:10px;font-weight:700;color:#9AAABF;text-transform:uppercase;letter-spacing:.06em;border-top:2px solid #DDE3EE;">— Gestionados —</td></tr>`;
+    }
+
+    const rowStyle = esGestionado
+      ? 'border-bottom:1px solid #EEF1F8;opacity:0.75;'
       : t.estado === 'Corregir en SIESA'
-      ? `<span style="display:inline-flex;align-items:center;gap:5px;background:#FDF6E3;color:#7A5A0F;border:1px solid #E8C96B;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"><span style="width:7px;height:7px;border-radius:50%;background:#E8A020;flex-shrink:0;"></span>Corregir SIESA</span>`
-      : `<span style="display:inline-flex;align-items:center;gap:5px;background:#FCEBEB;color:#A32D2D;border:1px solid #F5BABA;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;"><span style="width:7px;height:7px;border-radius:50%;background:#A32D2D;flex-shrink:0;"></span>Pendiente</span>`;
-    return `
-      <tr style="border-bottom:1px solid #EEF1F8;">
+      ? 'border-bottom:1px solid #EEF1F8;background:#FFFBF0;'
+      : 'border-bottom:1px solid #EEF1F8;';
+
+    return separador + `
+      <tr style="${rowStyle}">
         <td style="padding:9px 14px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;">${t.consecutivo}</td>
         <td style="padding:9px 14px;font-weight:500;">${t.empresa}</td>
         <td style="padding:9px 14px;color:#6B7A99;font-variant-numeric:tabular-nums;">${t.nit}</td>
         <td style="padding:9px 14px;white-space:nowrap;">${fecha}</td>
         <td style="padding:9px 14px;color:#6B7A99;">${t.ejecutivo}</td>
         <td style="padding:9px 14px;text-align:right;">${totalItems}</td>
-        <td style="padding:9px 14px;text-align:center;">${semaforo}</td>
+        <td style="padding:9px 14px;text-align:center;">${estadoBadge(t.estado)}</td>
         <td style="padding:9px 14px;text-align:center;">
           <button onclick="abrirModalTrasDetalle('${t.id}')"
             style="background:#E8EEF8;color:#19428C;border:1px solid #B5D4F4;padding:4px 12px;font-size:12px;font-weight:600;border-radius:6px;cursor:pointer;font-family:inherit;">
@@ -10967,25 +11155,31 @@ function abrirModalTrasDetalle(id){
   const gestionWrap    = document.getElementById('tras-det-gestion-wrap');
   const correccionWrap = document.getElementById('tras-det-correccion-wrap');
   const btnEjecutado   = document.getElementById('tras-btn-ejecutado');
+  const btnCorreccion  = document.getElementById('tras-btn-correccion');
 
-  // Resetear visibilidad
+  // Resetear todo
   gestionWrap.style.display    = 'none';
   correccionWrap.style.display = 'none';
   btnEjecutado.style.display   = 'none';
+  if (btnCorreccion) btnCorreccion.style.display = 'none';
 
   if (t.estado === 'Gestionado') {
     gestionWrap.style.display = 'block';
     document.getElementById('tras-det-siesa').textContent   = t.consecutivo_siesa || '—';
     document.getElementById('tras-det-ejecpor').textContent = t.ejecutado_por || '—';
     document.getElementById('tras-det-ejecat').textContent  = t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleString('es-CO') : '—';
+    // Sin botones de acción — ya cerrado
+
   } else if (t.estado === 'Corregir en SIESA') {
     correccionWrap.style.display = 'block';
     document.getElementById('tras-det-siesa-corr').textContent = t.consecutivo_siesa || '—';
-    // Mostrar también los datos de la ejecución original como referencia
+    // Mostrar info de ejecución anterior como referencia
     gestionWrap.style.display = 'block';
     document.getElementById('tras-det-siesa').textContent   = t.consecutivo_siesa || '—';
     document.getElementById('tras-det-ejecpor').textContent = t.ejecutado_por || '—';
     document.getElementById('tras-det-ejecat').textContent  = t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleString('es-CO') : '—';
+    if (btnCorreccion) btnCorreccion.style.display = 'inline-block';
+
   } else {
     // Pendiente
     btnEjecutado.style.display = 'inline-block';
@@ -10998,10 +11192,22 @@ function cerrarModalTrasDetalle(){
   document.getElementById('modal-tras-detalle').classList.remove('show');
 }
 
-function abrirModalTrasEjecutado(id){
-  window._trasActivoId = id;
-  document.getElementById('tras-input-siesa').value = '';
+window._trasEsCorreccion = false;
+function abrirModalTrasEjecutado(id, esCorreccion){
+  window._trasActivoId   = id;
+  window._trasEsCorreccion = !!esCorreccion;
+  const t = trasladosData.find(x => x.id === id);
+  document.getElementById('tras-input-siesa').value = t?.consecutivo_siesa || '';
   document.getElementById('err-tras-siesa').style.display = 'none';
+  const titulo = document.getElementById('tras-modal-ejec-titulo');
+  const desc   = document.getElementById('tras-modal-ejec-desc');
+  if (esCorreccion) {
+    if (titulo) titulo.textContent = 'Confirmar corrección en SIESA';
+    if (desc)   desc.textContent   = `Confirme o actualice el consecutivo SIESA corregido (referencia anterior: ${t?.consecutivo_siesa || '—'}).`;
+  } else {
+    if (titulo) titulo.textContent = 'Confirmar traslado ejecutado';
+    if (desc)   desc.textContent   = 'Ingrese el número de consecutivo asignado en SIESA para este traslado.';
+  }
   document.getElementById('modal-tras-ejecutado').classList.add('show');
 }
 
@@ -11015,28 +11221,32 @@ async function confirmarTrasEjecutado(){
     document.getElementById('err-tras-siesa').style.display = 'block';
     return;
   }
-  const id = window._trasActivoId;
-  const t = trasladosData.find(x => x.id === id);
+  const id  = window._trasActivoId;
+  const esCorreccion = window._trasEsCorreccion || false;
+  const t   = trasladosData.find(x => x.id === id);
   if (!t) return;
 
   try {
     const { error } = await sb.from('traslados_bodega').update({
       estado:            'Gestionado',
       consecutivo_siesa: siesa,
-      ejecutado_por:      PERFIL?.nombre || '',
-      ejecutado_at:       new Date().toISOString(),
+      ejecutado_por:     PERFIL?.nombre || '',
+      ejecutado_at:      new Date().toISOString(),
     }).eq('id', id);
     if (error) throw error;
 
     t.estado            = 'Gestionado';
     t.consecutivo_siesa = siesa;
-    t.ejecutado_por      = PERFIL?.nombre || '';
-    t.ejecutado_at        = new Date().toISOString();
+    t.ejecutado_por     = PERFIL?.nombre || '';
+    t.ejecutado_at      = new Date().toISOString();
 
     cerrarModalTrasEjecutado();
     cerrarModalTrasDetalle();
     renderTrasladosTabla();
-    showAlert('success', `Traslado ${t.consecutivo} marcado como gestionado.`);
+    const msg = esCorreccion
+      ? `Corrección SIESA aplicada en traslado ${t.consecutivo}.`
+      : `Traslado ${t.consecutivo} marcado como ejecutado.`;
+    showAlert('success', msg);
   } catch(e) {
     console.error('Error confirmando traslado:', e);
     showAlert('danger', `Error: ${e.message}`);
