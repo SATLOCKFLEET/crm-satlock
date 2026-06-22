@@ -1558,6 +1558,116 @@ function renderOpRows(rows, filtro, q){
   let data = [...rows];
   if(filtro!=='todos') data=data.filter(r=>r.estado===filtro);
   if(q){const ql=q.toLowerCase();data=data.filter(r=>r.empresa.toLowerCase().includes(ql)||r.contacto.toLowerCase().includes(ql)||(r.producto||'').toLowerCase().includes(ql));}
+
+  // ── Dividir en vencidos y vigentes ──
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const vencidos = data.filter(r => {
+    if(!r.fecha_proxima_accion) return true; // sin fecha = vencido
+    return new Date(r.fecha_proxima_accion) < hoy;
+  }).sort((a,b) => {
+    // Más vencido primero (fecha más antigua primero)
+    const fa = a.fecha_proxima_accion ? new Date(a.fecha_proxima_accion) : new Date('2000-01-01');
+    const fb = b.fecha_proxima_accion ? new Date(b.fecha_proxima_accion) : new Date('2000-01-01');
+    return fa - fb;
+  });
+  const vigentes = data.filter(r => {
+    if(!r.fecha_proxima_accion) return false;
+    return new Date(r.fecha_proxima_accion) >= hoy;
+  }).sort((a,b) => {
+    // Próximo a vencer primero (fecha más cercana primero)
+    return new Date(a.fecha_proxima_accion) - new Date(b.fecha_proxima_accion);
+  });
+
+  // Usar contenedor de dos columnas en lugar de tabla
+  const wrap = document.querySelector('.table-wrap');
+  if(!wrap) return;
+
+  if(!data.length){
+    wrap.innerHTML=`<div class="empty" style="padding:32px;text-align:center;">Sin registros para este filtro</div>`;
+    return;
+  }
+
+  const diasVencido = (fechaStr) => {
+    if(!fechaStr) return null;
+    const diff = Math.floor((hoy - new Date(fechaStr)) / 86400000);
+    return diff;
+  };
+
+  const cardHTML = (r) => {
+    const cfg = ESTADOS[r.estado]||ESTADOS['sin_gestion'];
+    const fd = r.fecha?r.fecha.split('-').reverse().join('/'):'—';
+    const esJefeOGerente=['jefe_fleet','jefe_proyectos','gerencia','alta_gerencia'].includes(PERFIL.rol);
+    const esPropio = r.usuario_id === USER.id;
+    const tienePropuesta = !!(r.num_propuesta && r.num_propuesta.trim());
+    const dias = diasVencido(r.fecha_proxima_accion);
+    const diasBadge = dias !== null && dias > 0
+      ? `<span style="font-size:10px;font-weight:700;color:#A32D2D;background:#FCEBEB;border:1px solid #F5BABA;padding:2px 7px;border-radius:10px;">${dias}d vencido</span>`
+      : '';
+    const acciones = esJefeOGerente
+      ? `<button class="icon-btn" onclick="abrirEditar('${r.id}')" title="Editar">✎</button>`
+        + (tienePropuesta?'':` <button class="icon-btn" onclick="confirmarBorrar('${r.id}','${(r.empresa||'').replace(/'/g,"\'")}')" title="Eliminar" style="color:var(--red)">✕</button>`)
+      : esPropio
+      ? `<button class="icon-btn" onclick="abrirEditar('${r.id}')" title="Editar">✎</button>`
+        + (tienePropuesta?`<span title="No se puede eliminar: ya tiene propuesta generada" style="font-size:10px;color:var(--text3);cursor:default;padding:0 4px">🔒</span>`:` <button class="icon-btn" onclick="confirmarBorrar('${r.id}','${(r.empresa||'').replace(/'/g,"\'")}')" title="Eliminar" style="color:var(--red)">✕</button>`)
+      : `<button class="btn-sec" onclick="abrirEditar('${r.id}')" style="font-size:11px;color:var(--sat-blue);border-color:var(--sat-blue);background:var(--sat-blue-light)">Ver</button>`;
+
+    return `
+      <div style="background:white;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+          <div>
+            <div style="font-weight:600;font-size:13px;color:var(--text);">${r.empresa}</div>
+            <div style="font-size:11px;color:var(--text3);">${r.contacto}${r.cargo_contacto?` · ${r.cargo_contacto}`:''}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;">
+            ${diasBadge}
+            <span class="pill ${cfg.cls}" style="font-size:10px;"><span class="dot"></span>${cfg.label}</span>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <div style="flex:1;">
+            <div style="font-size:11px;color:var(--text3);">${r.producto||'—'}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+              <div class="bar-bg" style="flex:1;height:5px;"><div class="bar-fill" style="width:${r.avance||0}%;background:${cfg.color};height:5px;"></div></div>
+              <span style="font-size:10px;color:var(--text3);">${r.avance||0}%</span>
+            </div>
+          </div>
+          <div style="text-align:right;min-width:80px;">
+            ${badgeProximaAccion(r.fecha_proxima_accion)}
+            ${['gerencia','jefe_fleet'].includes(PERFIL.rol)?`<div style="font-size:10px;color:var(--text3);margin-top:2px;">${r.usuarios?.nombre||''}</div>`:''}
+          </div>
+          <div>${acciones}</div>
+        </div>
+      </div>`;
+  };
+
+  wrap.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;">
+      <!-- Columna izquierda: Vencidos -->
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#FCEBEB;border-radius:8px;border-left:3px solid #A32D2D;">
+          <span style="font-size:12px;font-weight:700;color:#A32D2D;">Vencidos</span>
+          <span style="font-size:11px;background:#A32D2D;color:white;padding:1px 7px;border-radius:10px;font-weight:600;">${vencidos.length}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${vencidos.length === 0
+            ? `<div style="text-align:center;padding:24px;color:var(--text3);font-size:12px;background:white;border:1px solid var(--border);border-radius:8px;">Sin vencidos</div>`
+            : vencidos.map(cardHTML).join('')}
+        </div>
+      </div>
+      <!-- Columna derecha: Vigentes -->
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#E1F5EE;border-radius:8px;border-left:3px solid #1B7A4A;">
+          <span style="font-size:12px;font-weight:700;color:#1B7A4A;">Gestionados y vigentes</span>
+          <span style="font-size:11px;background:#1B7A4A;color:white;padding:1px 7px;border-radius:10px;font-weight:600;">${vigentes.length}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${vigentes.length === 0
+            ? `<div style="text-align:center;padding:24px;color:var(--text3);font-size:12px;background:white;border:1px solid var(--border);border-radius:8px;">Sin gestiones vigentes</div>`
+            : vigentes.map(cardHTML).join('')}
+        </div>
+      </div>
+    </div>`;
+  return; // skip old tbody logic
   const tbody = document.getElementById('op-tbody');
   if(!tbody)return;
   const esJefe = ['gerencia','jefe_fleet'].includes(PERFIL.rol);
@@ -2747,12 +2857,12 @@ async function abrirEditar(id){
               <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Hora</div>
               <input class="finput" type="time" id="f-gest-hora" style="font-size:12px;padding:7px 10px"/>
             </div>
-            <div>
-              <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Nota</div>
-              <textarea class="ftxt" id="f-gest-nota" placeholder="Resultado de la gestión, acuerdo, próximo paso..." style="min-height:40px;font-size:12px;resize:vertical"></textarea>
-            </div>
           </div>
-          <div style="display:flex;justify-content:flex-end">
+          <div style="margin-top:8px;">
+            <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Nota <span style="color:var(--sat-orange)">*</span></div>
+            <textarea class="ftxt" id="f-gest-nota" placeholder="Resultado de la gestión, acuerdo, próximo paso..." style="width:100%;min-height:80px;font-size:12px;resize:vertical;box-sizing:border-box;"></textarea>
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:8px;">
             <button class="btn-pri" onclick="guardarGestionDesdeFicha('${r.id}')" style="font-size:11px;padding:6px 14px">Guardar gestión</button>
           </div>
         </div>
@@ -2941,7 +3051,18 @@ async function guardarGestionDesdeFicha(opId){
   const fecha=document.getElementById('f-gest-fecha')?.value||fechaHoyLocal();
   const proxGest=document.getElementById('f-gest-prox')?.value||null;
   const tipo=window._fichaTipo||'llamada';
-  if(!nota){alert('Escriba una nota de la gestión.');return;}
+  if(!nota){
+    document.getElementById('f-gest-nota').style.borderColor='var(--sat-orange)';
+    document.getElementById('f-gest-nota').focus();
+    showAlert('danger','Escriba una nota de la gestión antes de guardar.');
+    return;
+  }
+  if(!proxGest){
+    document.getElementById('f-gest-prox').style.borderColor='var(--sat-orange)';
+    document.getElementById('f-gest-prox').focus();
+    showAlert('danger','Indique la fecha de próxima gestión antes de guardar.');
+    return;
+  }
   const {data,error}=await sb.from('gestiones').insert({
     oportunidad_id:opId, usuario_id:USER.id, fecha, tipo, nota,
     proxima_gestion:proxGest||null
@@ -2970,11 +3091,11 @@ async function guardarGestionDesdeFicha(opId){
   // Actualizar diario en memoria
   if(!window._diarioGestiones) window._diarioGestiones=[];
   window._diarioGestiones.unshift(data);
-  // Reabrir la ficha para reflejar la nueva gestión
+  // Cerrar la tarjeta y refrescar la lista de seguimiento
   document.getElementById('modal-editar')?.remove();
-  abrirEditar(opId);
+  showAlert('success', 'Gestión guardada correctamente.');
 
-  // Refrescar el seguimiento si está visible para que deje de mostrar como vencida
+  // Refrescar el seguimiento para reflejar nueva fecha
   const mainContent = document.getElementById('main-content');
   if (mainContent) renderSeguimiento(mainContent);
   // Refrescar MI DÍA
