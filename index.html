@@ -10961,42 +10961,44 @@ function renderTrasIndicadores() {
 
   const gestionados = trasladosData.filter(t => t.estado === 'Gestionado');
 
+  if (gestionados.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:48px;color:#9AAABF;font-size:13px;">No hay traslados gestionados aún.</div>`;
+    return;
+  }
+
   // Expandir filas
   const todasFilas = [];
   gestionados.forEach(t => {
     (t.items_detalle || []).forEach(it => {
       todasFilas.push({
-        consecutivo:    t.consecutivo,
-        empresa:        t.empresa,
-        nit:            t.nit,
-        ejecutivo:      t.ejecutivo,
-        item:           it.item,
-        descripcion:    it.descripcion,
-        cantidad:       it.cantidad || 0,
-        valor_unitario: it.valor_unitario || 0,
-        valor_total:    it.subtotal || (it.cantidad * it.valor_unitario) || 0,
-        plazo_comodato: it.plazo_comodato || null,
-        fecha_inicio:   it.fecha_inicio || null,
-        trasladado_por: t.ejecutado_por || '—',
+        consecutivo:        t.consecutivo,
+        empresa:            t.empresa,
+        nit:                t.nit,
+        ejecutivo:          t.ejecutivo,
+        item:               it.item,
+        descripcion:        it.descripcion,
+        cantidad:           it.cantidad || 0,
+        valor_unitario:     it.valor_unitario || 0,
+        valor_total:        it.subtotal || (it.cantidad * it.valor_unitario) || 0,
+        plazo_comodato:     it.plazo_comodato || null,
+        fecha_inicio:       it.fecha_inicio || null,
+        trasladado_por:     t.ejecutado_por || '—',
         fecha_traslado_iso: t.ejecutado_at || null,
-        fecha_traslado: t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleDateString('es-CO') : '—',
-        siesa:          t.consecutivo_siesa || '—',
-        _tid:           t.id,
+        fecha_traslado:     t.ejecutado_at ? new Date(t.ejecutado_at).toLocaleDateString('es-CO') : '—',
+        siesa:              t.consecutivo_siesa || '—',
+        _tid:               t.id,
       });
     });
   });
 
-  // Clientes únicos para selector
   const clientes = [...new Map(todasFilas.map(f => [f.nit, f.empresa])).entries()]
     .map(([nit, empresa]) => ({ nit, empresa }))
     .sort((a,b) => a.empresa.localeCompare(b.empresa));
 
-  // Helper: filtrar por periodo
   const filtroPeriodo = (filas) => {
     const p = _trasIndFiltros.periodo;
     if (p === 'todo') return filas;
-    const now = new Date();
-    const year = now.getFullYear();
+    const now = new Date(); const year = now.getFullYear();
     return filas.filter(f => {
       if (!f.fecha_traslado_iso) return false;
       const d = new Date(f.fecha_traslado_iso);
@@ -11019,33 +11021,64 @@ function renderTrasIndicadores() {
 
   const filasFiltradas = filtrarFilas(todasFilas);
 
-  // Métricas
-  const totalClientes  = new Set(filtrarFilas(todasFilas).map(f => f.nit)).size;
+  // ── KPI 1: Inventario por producto ──
+  const porProducto = {};
+  filasFiltradas.forEach(f => {
+    const key = f.item + '|' + f.descripcion;
+    if (!porProducto[key]) porProducto[key] = { item: f.item, descripcion: f.descripcion, total: 0, valor: 0, p12: 0, p24: 0, p36: 0, pOtro: 0 };
+    porProducto[key].total += f.cantidad;
+    porProducto[key].valor += f.valor_total;
+    if (f.plazo_comodato == 12) porProducto[key].p12 += f.cantidad;
+    else if (f.plazo_comodato == 24) porProducto[key].p24 += f.cantidad;
+    else if (f.plazo_comodato == 36) porProducto[key].p36 += f.cantidad;
+    else porProducto[key].pOtro += f.cantidad;
+  });
+  const productosArr = Object.values(porProducto).sort((a,b) => b.total - a.total);
+  const maxUnidades = Math.max(...productosArr.map(p => p.total), 1);
+
+  // ── KPI 2: Clientes con comodato ──
+  const porCliente = {};
+  filasFiltradas.forEach(f => {
+    if (!porCliente[f.nit]) porCliente[f.nit] = { empresa: f.empresa, nit: f.nit, unidades: 0, productos: new Set(), valor: 0 };
+    porCliente[f.nit].unidades += f.cantidad;
+    porCliente[f.nit].productos.add(f.descripcion);
+    porCliente[f.nit].valor += f.valor_total;
+  });
+  const clientesArr = Object.values(porCliente).sort((a,b) => b.unidades - a.unidades);
+
+  // ── KPI 3: Mapa de calor por plazo ──
+  const porPlazo = { 12: { clientes: new Set(), unidades: 0, valor: 0 }, 24: { clientes: new Set(), unidades: 0, valor: 0 }, 36: { clientes: new Set(), unidades: 0, valor: 0 } };
+  filasFiltradas.forEach(f => {
+    const p = f.plazo_comodato;
+    if (porPlazo[p]) {
+      porPlazo[p].clientes.add(f.nit);
+      porPlazo[p].unidades += f.cantidad;
+      porPlazo[p].valor += f.valor_total;
+    }
+  });
+
+  // ── Métricas generales ──
+  const totalClientes  = new Set(filasFiltradas.map(f => f.nit)).size;
   const totalUnidades  = filasFiltradas.reduce((a, f) => a + f.cantidad, 0);
   const totalValor     = filasFiltradas.reduce((a, f) => a + f.valor_total, 0);
   const totalPendientes = trasladosData.filter(t => t.estado === 'Pendiente' || t.estado === 'Corregir en SIESA').length;
 
-  // Meses restantes
   const mesesRestantes = (fechaInicioStr, plazo) => {
     if (!fechaInicioStr || !plazo) return null;
-    const inicio = new Date(fechaInicioStr);
-    const fin    = new Date(inicio);
+    const fin = new Date(fechaInicioStr);
     fin.setMonth(fin.getMonth() + parseInt(plazo));
-    const hoy    = new Date();
-    const diff   = (fin.getFullYear() - hoy.getFullYear()) * 12 + (fin.getMonth() - hoy.getMonth());
+    const diff = (fin.getFullYear() - new Date().getFullYear()) * 12 + (fin.getMonth() - new Date().getMonth());
     return diff;
   };
 
-  // Tarjeta contabilidad por persona
-  const porPersona = {};
-  gestionados.forEach(t => {
-    const p = t.ejecutado_por || 'Sin asignar';
-    if (!porPersona[p]) porPersona[p] = { count: 0, siesas: [], fechas: [] };
-    porPersona[p].count++;
-    if (t.consecutivo_siesa) porPersona[p].siesas.push(t.consecutivo_siesa);
-    if (t.ejecutado_at) porPersona[p].fechas.push(new Date(t.ejecutado_at).toLocaleDateString('es-CO'));
-  });
+  // ── Colores plazo ──
+  const plazoCfg = {
+    12: { label:'12 meses', bg:'#FFF4E5', border:'#F5A623', color:'#7A4D00', dot:'#F5A623' },
+    24: { label:'24 meses', bg:'#EEF4FF', border:'#6B8FE8', color:'#1A3A8F', dot:'#6B8FE8' },
+    36: { label:'36 meses', bg:'#E8F5EF', border:'#34A368', color:'#0F4D2A', dot:'#34A368' },
+  };
 
+  // ── Filtros ──
   const periodoBtns = [
     { k:'todo', l:'Todo' }, { k:'mes', l:'Este mes' },
     { k:'q1', l:'Q1' }, { k:'q2', l:'Q2' }, { k:'q3', l:'Q3' }, { k:'q4', l:'Q4' },
@@ -11066,6 +11099,16 @@ function renderTrasIndicadores() {
 
   const clienteOpts = `<option value="todo">Todos los clientes</option>` +
     clientes.map(c => `<option value="${c.nit}" ${_trasIndFiltros.cliente===c.nit?'selected':''}>${c.empresa}</option>`).join('');
+
+  // ── Tarjeta personas contabilidad ──
+  const porPersona = {};
+  gestionados.forEach(t => {
+    const p = t.ejecutado_por || 'Sin asignar';
+    if (!porPersona[p]) porPersona[p] = { count: 0, siesas: [], fechas: [] };
+    porPersona[p].count++;
+    if (t.consecutivo_siesa) porPersona[p].siesas.push(t.consecutivo_siesa);
+    if (t.ejecutado_at) porPersona[p].fechas.push(new Date(t.ejecutado_at).toLocaleDateString('es-CO'));
+  });
 
   el.innerHTML = `
     <!-- Filtros -->
@@ -11089,18 +11132,18 @@ function renderTrasIndicadores() {
         <div style="margin-top:16px;">
           <button onclick="trasIndicadoresExcel()"
             style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">
-            ⬇ Excel
+            Exportar Excel
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Tarjetas métricas -->
+    <!-- Métricas generales -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;">
       ${[
         { lbl:'Clientes con comodato', val: totalClientes, color:'#19428C', icon:'🏢' },
-        { lbl:'Unidades en comodato',  val: totalUnidades, color:'#0F6E56', icon:'📦' },
-        { lbl:'Valor total',           val: '$ '+Math.round(totalValor).toLocaleString('es-CO'), color:'#534AB7', icon:'💰' },
+        { lbl:'Unidades en campo',     val: totalUnidades, color:'#0F6E56', icon:'📦' },
+        { lbl:'Valor total comodatos', val: '$ '+Math.round(totalValor).toLocaleString('es-CO'), color:'#534AB7', icon:'💰' },
         { lbl:'Traslados activos',     val: totalPendientes, color: totalPendientes > 0 ? '#A32D2D':'#0F6E56', icon:'⏳' },
       ].map(m => `
         <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid ${m.color};border-radius:10px;padding:14px 16px;">
@@ -11109,7 +11152,104 @@ function renderTrasIndicadores() {
         </div>`).join('')}
     </div>
 
-    <!-- Tarjetas por persona de contabilidad -->
+    <!-- Fila KPIs: Inventario + Clientes + Plazo -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">
+
+      <!-- KPI 1: Inventario por producto -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:14px 16px;border-bottom:1px solid #EEF1F8;display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:12px;font-weight:700;color:#19428C;">Inventario en comodato</div>
+          <div style="font-size:10px;color:#9AAABF;">${productosArr.length} referencias</div>
+        </div>
+        <div style="padding:12px 16px;display:flex;flex-direction:column;gap:10px;max-height:320px;overflow-y:auto;">
+          ${productosArr.length === 0
+            ? `<div style="text-align:center;padding:24px;color:#9AAABF;font-size:12px;">Sin datos</div>`
+            : productosArr.map(p => {
+                const pct = Math.round((p.total / maxUnidades) * 100);
+                const barras = [
+                  p.p12 ? `<span style="display:inline-block;width:${Math.round(p.p12/p.total*60)}px;height:6px;background:#F5A623;border-radius:2px;" title="12m: ${p.p12}u"></span>` : '',
+                  p.p24 ? `<span style="display:inline-block;width:${Math.round(p.p24/p.total*60)}px;height:6px;background:#6B8FE8;border-radius:2px;" title="24m: ${p.p24}u"></span>` : '',
+                  p.p36 ? `<span style="display:inline-block;width:${Math.round(p.p36/p.total*60)}px;height:6px;background:#34A368;border-radius:2px;" title="36m: ${p.p36}u"></span>` : '',
+                ].join('');
+                return `
+                  <div>
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+                      <span style="font-size:11px;color:#3d5080;font-weight:500;">${p.descripcion}</span>
+                      <span style="font-size:12px;font-weight:700;color:#19428C;">${p.total} u.</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <div style="flex:1;height:6px;background:#EEF1F8;border-radius:3px;overflow:hidden;">
+                        <div style="width:${pct}%;height:100%;background:#19428C;border-radius:3px;"></div>
+                      </div>
+                      <div style="display:flex;gap:2px;">${barras}</div>
+                    </div>
+                    <div style="font-size:10px;color:#9AAABF;margin-top:2px;">
+                      $ ${Math.round(p.valor).toLocaleString('es-CO')}
+                      ${p.p12?`<span style="color:#F5A623;margin-left:4px;">12m:${p.p12}</span>`:''}
+                      ${p.p24?`<span style="color:#6B8FE8;margin-left:4px;">24m:${p.p24}</span>`:''}
+                      ${p.p36?`<span style="color:#34A368;margin-left:4px;">36m:${p.p36}</span>`:''}
+                    </div>
+                  </div>`;
+              }).join('')}
+        </div>
+      </div>
+
+      <!-- KPI 2: Clientes con comodato -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:14px 16px;border-bottom:1px solid #EEF1F8;display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:12px;font-weight:700;color:#19428C;">Clientes con comodato</div>
+          <div style="font-size:10px;color:#9AAABF;">${clientesArr.length} clientes</div>
+        </div>
+        <div style="padding:8px;display:flex;flex-direction:column;gap:4px;max-height:320px;overflow-y:auto;">
+          ${clientesArr.length === 0
+            ? `<div style="text-align:center;padding:24px;color:#9AAABF;font-size:12px;">Sin datos</div>`
+            : clientesArr.map(c => `
+                <div onclick="trasIndSetFiltro('cliente','${c.nit === _trasIndFiltros.cliente ? 'todo' : c.nit}')"
+                  style="padding:8px 10px;border-radius:7px;cursor:pointer;
+                    background:${c.nit === _trasIndFiltros.cliente ? '#E8EEF8' : 'transparent'};
+                    border:1px solid ${c.nit === _trasIndFiltros.cliente ? '#B5D4F4' : 'transparent'};">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:11px;font-weight:600;color:#0d1b3e;">${c.empresa}</span>
+                    <span style="font-size:11px;font-weight:700;color:#19428C;background:#E8EEF8;padding:2px 7px;border-radius:10px;">${c.unidades} u.</span>
+                  </div>
+                  <div style="font-size:10px;color:#9AAABF;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    ${[...c.productos].join(' · ')}
+                  </div>
+                </div>`).join('')}
+        </div>
+      </div>
+
+      <!-- KPI 3: Mapa de calor por plazo -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:14px 16px;border-bottom:1px solid #EEF1F8;">
+          <div style="font-size:12px;font-weight:700;color:#19428C;">Distribución por plazo</div>
+        </div>
+        <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;">
+          ${[12,24,36].map(p => {
+            const cfg = plazoCfg[p];
+            const d = porPlazo[p];
+            const pct = totalUnidades > 0 ? Math.round((d.unidades / totalUnidades) * 100) : 0;
+            return `
+              <div style="background:${cfg.bg};border:1px solid ${cfg.border};border-radius:8px;padding:12px 14px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                  <span style="font-size:13px;font-weight:700;color:${cfg.color};">${cfg.label}</span>
+                  <span style="font-size:11px;color:${cfg.color};font-weight:600;">${pct}%</span>
+                </div>
+                <div style="height:6px;background:rgba(0,0,0,.08);border-radius:3px;margin-bottom:8px;">
+                  <div style="width:${pct}%;height:100%;background:${cfg.dot};border-radius:3px;"></div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:10px;color:${cfg.color};">
+                  <div><div style="font-weight:700;font-size:16px;">${d.clientes.size}</div>clientes</div>
+                  <div><div style="font-weight:700;font-size:16px;">${d.unidades}</div>unidades</div>
+                  <div><div style="font-weight:700;font-size:13px;">$${Math.round(d.valor/1000).toLocaleString('es-CO')}K</div>valor</div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+
+    <!-- Tarjetas contabilidad -->
     <div style="margin-bottom:20px;">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#9AAABF;margin-bottom:10px;">Gestión por persona</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">
@@ -11138,11 +11278,11 @@ function renderTrasIndicadores() {
       </div>
     </div>
 
-    <!-- Tabla comodatos activos con meses restantes -->
+    <!-- Tabla detalle -->
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#9AAABF;margin-bottom:10px;">
-      Detalle de comodatos — ${filasFiltradas.length} registro${filasFiltradas.length!==1?'s':''}
+      Detalle — ${filasFiltradas.length} registro${filasFiltradas.length!==1?'s':''}
     </div>
-    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;overflow-x:auto;box-shadow:0 1px 4px rgba(25,66,140,.06);">
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;overflow-x:auto;">
       <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:1000px;">
         <thead>
           <tr style="background:#F4F6FA;">
@@ -11153,7 +11293,7 @@ function renderTrasIndicadores() {
         </thead>
         <tbody>
           ${filasFiltradas.length === 0
-            ? `<tr><td colspan="15" style="text-align:center;padding:32px;color:#9AAABF;font-style:italic;">Sin registros para los filtros seleccionados.</td></tr>`
+            ? `<tr><td colspan="15" style="text-align:center;padding:32px;color:#9AAABF;font-style:italic;">Sin registros.</td></tr>`
             : filasFiltradas.map((f, i) => {
                 const meses = mesesRestantes(f.fecha_inicio, f.plazo_comodato);
                 const mesesTxt = meses === null ? '—'
@@ -11163,10 +11303,10 @@ function renderTrasIndicadores() {
                 return `
                   <tr style="border-bottom:1px solid #EEF1F8;background:${i%2===0?'white':'#FAFBFD'};">
                     <td style="padding:8px 12px;font-weight:700;color:#19428C;">${f.consecutivo}</td>
-                    <td style="padding:8px 12px;font-weight:500;max-width:160px;">${f.empresa}</td>
+                    <td style="padding:8px 12px;font-weight:500;">${f.empresa}</td>
                     <td style="padding:8px 12px;color:#6B7A99;">${f.nit}</td>
                     <td style="padding:8px 12px;font-weight:600;">${f.item}</td>
-                    <td style="padding:8px 12px;max-width:180px;">${f.descripcion}</td>
+                    <td style="padding:8px 12px;">${f.descripcion}</td>
                     <td style="padding:8px 12px;text-align:right;">${f.cantidad}</td>
                     <td style="padding:8px 12px;text-align:right;">$ ${Math.round(f.valor_unitario).toLocaleString('es-CO')}</td>
                     <td style="padding:8px 12px;text-align:right;font-weight:600;">$ ${Math.round(f.valor_total).toLocaleString('es-CO')}</td>
@@ -11185,7 +11325,6 @@ function renderTrasIndicadores() {
 
   window._trasFilasIndicadores = filasFiltradas;
 }
-
 function trasIndSetFiltro(campo, valor) {
   _trasIndFiltros[campo] = valor;
   renderTrasIndicadores();
