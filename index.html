@@ -1179,9 +1179,7 @@ try{
 }catch(e){console.error('Error Supabase:',e);}
 
 function proxGestionDefault(){
-  const d=new Date();
-  d.setDate(d.getDate()+30);
-  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return ''; // Sin fecha por defecto — el ejecutivo debe indicar su propia fecha
 }
 
 function fechaHoyLocal(){
@@ -1561,22 +1559,32 @@ function renderOpRows(rows, filtro, q){
 
   // ── Dividir en vencidos y vigentes ──
   const hoy = new Date(); hoy.setHours(0,0,0,0);
+  // Separar en 4 grupos
+  const estadosActivos = ['en_proceso','propuesta_enviada','sin_gestion'];
+  const estadosCerrados = ['cerrado'];
+  const estadosPerdidos = ['perdido'];
+
   const vencidos = data.filter(r => {
+    if(!estadosActivos.includes(r.estado)) return false;
     if(!r.fecha_proxima_accion) return true; // sin fecha = vencido
     return new Date(r.fecha_proxima_accion) < hoy;
   }).sort((a,b) => {
-    // Más vencido primero (fecha más antigua primero)
     const fa = a.fecha_proxima_accion ? new Date(a.fecha_proxima_accion) : new Date('2000-01-01');
     const fb = b.fecha_proxima_accion ? new Date(b.fecha_proxima_accion) : new Date('2000-01-01');
     return fa - fb;
   });
+
   const vigentes = data.filter(r => {
+    if(!estadosActivos.includes(r.estado)) return false;
     if(!r.fecha_proxima_accion) return false;
     return new Date(r.fecha_proxima_accion) >= hoy;
-  }).sort((a,b) => {
-    // Próximo a vencer primero (fecha más cercana primero)
-    return new Date(a.fecha_proxima_accion) - new Date(b.fecha_proxima_accion);
-  });
+  }).sort((a,b) => new Date(a.fecha_proxima_accion) - new Date(b.fecha_proxima_accion));
+
+  const cerrados = data.filter(r => estadosCerrados.includes(r.estado))
+    .sort((a,b) => new Date(b.fecha||0) - new Date(a.fecha||0));
+
+  const perdidos = data.filter(r => estadosPerdidos.includes(r.estado))
+    .sort((a,b) => new Date(b.fecha||0) - new Date(a.fecha||0));
 
   // Usar contenedor de dos columnas en lugar de tabla
   const wrap = document.querySelector('.table-wrap');
@@ -1654,17 +1662,84 @@ function renderOpRows(rows, filtro, q){
             : vencidos.map(cardHTML).join('')}
         </div>
       </div>
-      <!-- Columna derecha: Vigentes -->
-      <div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#E1F5EE;border-radius:8px;border-left:3px solid #1B7A4A;">
-          <span style="font-size:12px;font-weight:700;color:#1B7A4A;">Gestionados y vigentes</span>
-          <span style="font-size:11px;background:#1B7A4A;color:white;padding:1px 7px;border-radius:10px;font-weight:600;">${vigentes.length}</span>
+
+      <!-- Columna derecha: Vigentes + Cerrados + Perdidos -->
+      <div style="display:flex;flex-direction:column;gap:16px;">
+
+        <!-- Vigentes -->
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#E1F5EE;border-radius:8px;border-left:3px solid #1B7A4A;">
+            <span style="font-size:12px;font-weight:700;color:#1B7A4A;">Gestionados y vigentes</span>
+            <span style="font-size:11px;background:#1B7A4A;color:white;padding:1px 7px;border-radius:10px;font-weight:600;">${vigentes.length}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${vigentes.length === 0
+              ? `<div style="text-align:center;padding:24px;color:var(--text3);font-size:12px;background:white;border:1px solid var(--border);border-radius:8px;">Sin gestiones vigentes</div>`
+              : vigentes.map(cardHTML).join('')}
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          ${vigentes.length === 0
-            ? `<div style="text-align:center;padding:24px;color:var(--text3);font-size:12px;background:white;border:1px solid var(--border);border-radius:8px;">Sin gestiones vigentes</div>`
-            : vigentes.map(cardHTML).join('')}
-        </div>
+
+        <!-- Cerrados -->
+        ${cerrados.length > 0 ? `
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#EAF3DE;border-radius:8px;border-left:3px solid #639922;">
+            <span style="font-size:12px;font-weight:700;color:#639922;">Cerrados</span>
+            <span style="font-size:11px;background:#639922;color:white;padding:1px 7px;border-radius:10px;font-weight:600;">${cerrados.length}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${cerrados.map(r => {
+              const cfg = ESTADOS['cerrado'];
+              const esJefeOGerente=['jefe_fleet','jefe_proyectos','gerencia','alta_gerencia'].includes(PERFIL.rol);
+              const esPropio = r.usuario_id === USER.id;
+              const acciones = (esJefeOGerente||esPropio)
+                ? `<button class="icon-btn" onclick="abrirEditar('${r.id}')" title="Ver">✎</button>`
+                : `<button class="btn-sec" onclick="abrirEditar('${r.id}')" style="font-size:11px;">Ver</button>`;
+              return `<div style="background:#F7FCF2;border:1px solid #C5E2A0;border-left:3px solid #639922;border-radius:8px;padding:10px 12px;font-size:12px;opacity:0.85;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div>
+                    <div style="font-weight:600;font-size:13px;color:#3A5C18;">${r.empresa}</div>
+                    <div style="font-size:11px;color:#6B7A99;">${r.contacto} · ${r.producto||'—'}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:10px;font-weight:700;background:#639922;color:white;padding:2px 8px;border-radius:10px;">✓ Cerrado</span>
+                    ${acciones}
+                  </div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>` : ''}
+
+        <!-- Perdidos -->
+        ${perdidos.length > 0 ? `
+        <div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#FDF2F2;border-radius:8px;border-left:3px solid #E24B4A;">
+            <span style="font-size:12px;font-weight:700;color:#E24B4A;">Perdidos</span>
+            <span style="font-size:11px;background:#E24B4A;color:white;padding:1px 7px;border-radius:10px;font-weight:600;">${perdidos.length}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${perdidos.map(r => {
+              const esJefeOGerente=['jefe_fleet','jefe_proyectos','gerencia','alta_gerencia'].includes(PERFIL.rol);
+              const esPropio = r.usuario_id === USER.id;
+              const acciones = (esJefeOGerente||esPropio)
+                ? `<button class="icon-btn" onclick="abrirEditar('${r.id}')" title="Ver">✎</button>`
+                : `<button class="btn-sec" onclick="abrirEditar('${r.id}')" style="font-size:11px;">Ver</button>`;
+              return `<div style="background:#FDF2F2;border:1px solid #F5BABA;border-left:3px solid #E24B4A;border-radius:8px;padding:10px 12px;font-size:12px;opacity:0.8;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div>
+                    <div style="font-weight:600;font-size:13px;color:#7A1C1C;text-decoration:line-through;opacity:0.7;">${r.empresa}</div>
+                    <div style="font-size:11px;color:#9AAABF;">${r.contacto} · ${r.producto||'—'}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:10px;font-weight:700;background:#E24B4A;color:white;padding:2px 8px;border-radius:10px;">✗ Perdido</span>
+                    ${acciones}
+                  </div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>` : ''}
+
       </div>
     </div>`;
   return; // skip old tbody logic
