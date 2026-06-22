@@ -8007,6 +8007,8 @@ async function crearTrasladoYNotificar(solicitud, ccEjecutivo) {
           <td style="padding:6px 10px;border-bottom:1px solid #eee;">${i.item}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #eee;">${i.descripcion}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">${i.cantidad}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;font-weight:600;color:#534AB7;">${i.plazo_comodato ? i.plazo_comodato+' m.' : '—'}</td>
+          <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center;color:#666;">${i.fecha_inicio || '—'}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;">$ ${Math.round(i.valor_unitario).toLocaleString('es-CO')}</td>
           <td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:right;font-weight:600;">$ ${Math.round(i.subtotal).toLocaleString('es-CO')}</td>
         </tr>`).join('');
@@ -8035,6 +8037,8 @@ async function crearTrasladoYNotificar(solicitud, ccEjecutivo) {
                   <th style="padding:8px 10px;text-align:left;font-weight:600;">Ítem</th>
                   <th style="padding:8px 10px;text-align:left;font-weight:600;">Descripción</th>
                   <th style="padding:8px 10px;text-align:right;font-weight:600;">Cant.</th>
+                  <th style="padding:8px 10px;text-align:center;font-weight:600;">Plazo</th>
+                  <th style="padding:8px 10px;text-align:center;font-weight:600;">Inicio contrato</th>
                   <th style="padding:8px 10px;text-align:right;font-weight:600;">V. Unit.</th>
                   <th style="padding:8px 10px;text-align:right;font-weight:600;">Total</th>
                 </tr>
@@ -10871,6 +10875,8 @@ async function renderTraslados(container){
                   <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Ítem</th>
                   <th style="padding:6px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Descripción</th>
                   <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">Cant.</th>
+                  <th style="padding:6px 10px;text-align:center;font-size:10px;font-weight:700;color:#19428C;">Plazo</th>
+                  <th style="padding:6px 10px;text-align:center;font-size:10px;font-weight:700;color:#19428C;">Inicio contrato</th>
                   <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">V. Unit.</th>
                   <th style="padding:6px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">Subtotal</th>
                 </tr></thead>
@@ -11318,6 +11324,8 @@ function abrirModalTrasDetalle(id){
       <td style="padding:6px 10px;font-weight:600;">${i.item}</td>
       <td style="padding:6px 10px;color:#3d5080;">${i.descripcion}</td>
       <td style="padding:6px 10px;text-align:right;">${i.cantidad}</td>
+      <td style="padding:6px 10px;text-align:center;font-weight:600;color:#534AB7;">${i.plazo_comodato ? i.plazo_comodato+' m.' : '—'}</td>
+      <td style="padding:6px 10px;text-align:center;color:#6B7A99;">${i.fecha_inicio || '—'}</td>
       <td style="padding:6px 10px;text-align:right;">${formatCOP(i.valor_unitario)}</td>
       <td style="padding:6px 10px;text-align:right;font-weight:600;">${formatCOP(i.subtotal)}</td>
     </tr>`).join('');
