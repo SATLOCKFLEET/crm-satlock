@@ -8042,6 +8042,16 @@ async function confirmarEnvio() {
 
       // Notificación por Gmail a Tatiana y Jackeline
       const ccEjecutivo = USER?.email || ''; // definido aquí para que traslado también lo use
+      if (!gcalToken) {
+        // Mostrar alerta no bloqueante
+        const mGmail = document.createElement('div');
+        mGmail.style.cssText = 'position:fixed;bottom:80px;right:20px;z-index:3000;max-width:360px;background:white;border:1px solid #E8A020;border-left:4px solid #E8A020;border-radius:10px;padding:14px 16px;box-shadow:0 8px 24px rgba(0,0,0,.12);font-size:12px;';
+        mGmail.innerHTML = `<div style="font-weight:700;color:#7A5A0F;margin-bottom:6px;">⚠️ Gmail no conectado</div>
+          <div style="color:#555;">La solicitud <strong>${solicitud.consecutivo}</strong> fue enviada correctamente, pero el correo a facturación no se envió. Conecta Gmail en la pestaña <strong>Agenda</strong> para activar los correos automáticos.</div>
+          <button onclick="this.parentElement.remove()" style="margin-top:8px;font-family:inherit;font-size:11px;padding:4px 10px;background:#E8A020;color:white;border:none;border-radius:5px;cursor:pointer;">Entendido</button>`;
+        document.body.appendChild(mGmail);
+        setTimeout(() => mGmail.remove(), 12000);
+      }
       if (typeof enviarCorreoGmail === 'function' && gcalToken) {
         const destinatarios = 'Tatiana.mora@satlock.com, jackeline.varela@satlock.com, michel.villada@satlock.com, yesenia.gaez@satlock.com';
         const asunto = `Nueva solicitud de facturación — ${solicitud.consecutivo} | ${solicitud.empresa}`;
@@ -12562,6 +12572,7 @@ function supplyVerDetalle(id) {
       <div style="padding:14px 24px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
         <button onclick="document.getElementById('modal-supply-detalle').remove()"
           style="font-family:inherit;font-size:12px;padding:8px 16px;background:#F4F6FA;color:#6B7A99;border:1px solid #DDE3EE;border-radius:7px;cursor:pointer;">Cerrar</button>
+        ${s.estado === 'Pendiente' ? `<button onclick="supplyEnviarCorreoDesdeVer('${s.id}')" style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#E8A020;color:white;border:none;border-radius:7px;cursor:pointer;">📨 Enviar correo a Johan</button>` : ""}
         <button onclick="supplyExportarExcel('${s.id}')"
           style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">Excel</button>
         <button onclick="supplyExportarPDF('${s.id}')"
@@ -12719,12 +12730,14 @@ function supplyAbrirFormulario(editId = null) {
         </div>
       </div>
 
-      <div style="padding:14px 24px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;">
+      <div style="padding:14px 24px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
         <button onclick="document.getElementById('modal-supply-form').remove()"
           style="font-family:inherit;font-size:12px;padding:8px 16px;background:#F4F6FA;color:#6B7A99;border:1px solid #DDE3EE;border-radius:7px;cursor:pointer;">Cancelar</button>
-        <button onclick="supplyGuardar()"
+        ${!editId ? `<button onclick="supplyGuardar(false)"
+          style="font-family:inherit;font-size:12px;padding:8px 16px;background:white;color:#19428C;border:1.5px solid #19428C;border-radius:7px;cursor:pointer;">💾 Guardar sin enviar</button>` : ''}
+        <button onclick="supplyGuardar(${!editId ? 'true' : 'undefined'})"
           style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 20px;background:#19428C;color:white;border:none;border-radius:7px;cursor:pointer;">
-          ${editId ? 'Guardar cambios' : 'Crear solicitud'}
+          ${editId ? 'Guardar cambios' : '📨 Crear y enviar a Johan'}
         </button>
       </div>
     </div>`;
@@ -12820,7 +12833,7 @@ function supplyTablaItemsHTML() {
 }
 
 // ── Guardar ──────────────────────────────────────────────────────────
-async function supplyGuardar() {
+async function supplyGuardar(enviarCorreo = true) {
   const nombreCliente = document.getElementById('sf-nombre-cliente')?.value.trim();
   if (!nombreCliente) { alert('El nombre del cliente es obligatorio.'); return; }
   if (!_supplyItems.length) { alert('Debe agregar al menos un ítem.'); return; }
@@ -12898,33 +12911,39 @@ async function supplyGuardar() {
         );
       }
       // Enviar correo a Johan
-      if (typeof enviarCorreoGmail === 'function' && gcalToken) {
-        const itemsHtml = _supplyItems.map(it => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.item}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.descripcion}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${it.cantidad}</td></tr>`).join('');
-        await enviarCorreoGmail({
-          para: 'Johan.gomez@satlock.com',
-          cc: USER.email||'',
-          asunto: `OSI ${consecutivo} — ${nombreCliente} | ${caracter}`,
-          cuerpo: `<div style="font-family:Arial,sans-serif;max-width:600px;">
-            <div style="background:#19428C;color:white;padding:16px 20px;border-radius:8px 8px 0 0;">
-              <h2 style="margin:0;font-size:16px;">📦 Nueva Orden de Solicitud Interna</h2>
-            </div>
-            <div style="padding:16px 20px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;">
-              <table style="width:100%;margin-bottom:12px;font-size:13px;">
-                <tr><td style="color:#666;padding:3px 0;">Consecutivo</td><td style="font-weight:600;">${consecutivo}</td></tr>
-                <tr><td style="color:#666;padding:3px 0;">Cliente</td><td style="font-weight:600;">${nombreCliente}</td></tr>
-                <tr><td style="color:#666;padding:3px 0;">Solicitante</td><td>${PERFIL.nombre||''}</td></tr>
-                <tr><td style="color:#666;padding:3px 0;">Carácter</td><td style="font-weight:600;color:${caracter==='Urgente'?'#A32D2D':'#333'}">${caracter}</td></tr>
-              </table>
-              <table style="width:100%;border-collapse:collapse;font-size:12px;">
-                <thead><tr style="background:#F4F6FA;"><th style="padding:6px 8px;text-align:left;">Ítem</th><th style="padding:6px 8px;text-align:left;">Descripción</th><th style="padding:6px 8px;text-align:right;">Cant.</th></tr></thead>
-                <tbody>${itemsHtml}</tbody>
-              </table>
-              ${payload.observaciones ? `<p style="font-size:12px;color:#666;margin-top:12px;"><strong>Observaciones:</strong> ${payload.observaciones}</p>` : ''}
-            </div>
-          </div>`
-        });
+      if (enviarCorreo) {
+        if (!gcalToken) {
+          supplyAlertaGmailDesconectado(consecutivo);
+        } else {
+          const itemsHtml = _supplyItems.map(it => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.item}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.descripcion}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${it.cantidad}</td></tr>`).join('');
+          await enviarCorreoGmail({
+            para: 'Johan.gomez@satlock.com',
+            cc: USER.email||'',
+            asunto: `OSI ${consecutivo} — ${nombreCliente} | ${caracter}`,
+            cuerpo: `<div style="font-family:Arial,sans-serif;max-width:600px;">
+              <div style="background:#19428C;color:white;padding:16px 20px;border-radius:8px 8px 0 0;">
+                <h2 style="margin:0;font-size:16px;">📦 Nueva Orden de Solicitud Interna</h2>
+              </div>
+              <div style="padding:16px 20px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;">
+                <table style="width:100%;margin-bottom:12px;font-size:13px;">
+                  <tr><td style="color:#666;padding:3px 0;">Consecutivo</td><td style="font-weight:600;">${consecutivo}</td></tr>
+                  <tr><td style="color:#666;padding:3px 0;">Cliente</td><td style="font-weight:600;">${nombreCliente}</td></tr>
+                  <tr><td style="color:#666;padding:3px 0;">Solicitante</td><td>${PERFIL.nombre||''}</td></tr>
+                  <tr><td style="color:#666;padding:3px 0;">Carácter</td><td style="font-weight:600;color:${caracter==='Urgente'?'#A32D2D':'#333'}">${caracter}</td></tr>
+                </table>
+                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                  <thead><tr style="background:#F4F6FA;"><th style="padding:6px 8px;text-align:left;">Ítem</th><th style="padding:6px 8px;text-align:left;">Descripción</th><th style="padding:6px 8px;text-align:right;">Cant.</th></tr></thead>
+                  <tbody>${itemsHtml}</tbody>
+                </table>
+                ${payload.observaciones ? `<p style="font-size:12px;color:#666;margin-top:12px;"><strong>Observaciones:</strong> ${payload.observaciones}</p>` : ''}
+              </div>
+            </div>`
+          });
+          showAlert('success', `Solicitud ${consecutivo} creada y correo enviado a Johan.`);
+        }
+      } else {
+        showAlert('success', `Solicitud ${consecutivo} guardada. Recuerda enviar el correo a Johan cuando conectes Gmail.`);
       }
-      showAlert('success', `Solicitud ${consecutivo} creada correctamente.`);
     }
     document.getElementById('modal-supply-form')?.remove();
     // Recargar
@@ -13061,6 +13080,70 @@ function supplyExportarPDF(id) {
   const fecha = s.fecha?.replace(/-/g,'') || '';
   const cliente = (s.nombre_cliente||'cliente').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
   doc.save(`${s.consecutivo}_${cliente}_${fecha}.pdf`);
+}
+
+// ── Alerta Gmail desconectado ────────────────────────────────────────
+function supplyAlertaGmailDesconectado(consecutivo) {
+  const m = document.createElement('div');
+  m.id = 'modal-gmail-alert';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  m.innerHTML = `
+    <div style="background:white;border-radius:12px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2);border-top:4px solid #E8A020;">
+      <div style="padding:18px 22px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <span style="font-size:24px;">⚠️</span>
+          <div style="font-size:15px;font-weight:700;color:#7A5A0F;">Gmail no conectado</div>
+        </div>
+        <p style="font-size:13px;color:#555;margin:0 0 12px;">
+          La solicitud <strong>${consecutivo||''}</strong> fue guardada correctamente, pero el correo a Johan no se envió porque Gmail no está conectado.
+        </p>
+        <p style="font-size:13px;color:#555;margin:0;">
+          Para enviar correos automáticos, conecta tu cuenta en la pestaña <strong>Agenda</strong> → botón <strong>Conectar Google Calendar</strong>. Luego abre la solicitud y usa el botón <strong>Enviar correo</strong>.
+        </p>
+      </div>
+      <div style="padding:12px 22px;border-top:1px solid #EEF1F8;display:flex;justify-content:flex-end;">
+        <button onclick="document.getElementById('modal-gmail-alert').remove()"
+          style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 18px;background:#19428C;color:white;border:none;border-radius:7px;cursor:pointer;">Entendido</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+// ── Enviar correo desde modal Ver (para solicitudes guardadas sin enviar) ──
+async function supplyEnviarCorreoDesdeVer(id) {
+  const s = _supplyData.find(x => x.id === id);
+  if (!s) return;
+  if (!gcalToken) {
+    supplyAlertaGmailDesconectado(s.consecutivo);
+    return;
+  }
+  const det = s.solicitudes_supply_detalle || [];
+  const itemsHtml = det.map(it => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.item}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.descripcion}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${it.cantidad}</td></tr>`).join('');
+  await enviarCorreoGmail({
+    para: 'Johan.gomez@satlock.com',
+    cc: USER.email||'',
+    asunto: `OSI ${s.consecutivo} — ${s.nombre_cliente||''} | ${s.caracter||'Normal'}`,
+    cuerpo: `<div style="font-family:Arial,sans-serif;max-width:600px;">
+      <div style="background:#19428C;color:white;padding:16px 20px;border-radius:8px 8px 0 0;">
+        <h2 style="margin:0;font-size:16px;">📦 Orden de Solicitud Interna</h2>
+      </div>
+      <div style="padding:16px 20px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;">
+        <table style="width:100%;margin-bottom:12px;font-size:13px;">
+          <tr><td style="color:#666;padding:3px 0;">Consecutivo</td><td style="font-weight:600;">${s.consecutivo}</td></tr>
+          <tr><td style="color:#666;padding:3px 0;">Cliente</td><td style="font-weight:600;">${s.nombre_cliente||''}</td></tr>
+          <tr><td style="color:#666;padding:3px 0;">Solicitante</td><td>${s.solicitante_nombre||''}</td></tr>
+          <tr><td style="color:#666;padding:3px 0;">Carácter</td><td style="font-weight:600;color:${s.caracter==='Urgente'?'#A32D2D':'#333'}">${s.caracter||'Normal'}</td></tr>
+        </table>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr style="background:#F4F6FA;"><th style="padding:6px 8px;text-align:left;">Ítem</th><th style="padding:6px 8px;text-align:left;">Descripción</th><th style="padding:6px 8px;text-align:right;">Cant.</th></tr></thead>
+          <tbody>${itemsHtml}</tbody>
+        </table>
+        ${s.observaciones ? `<p style="font-size:12px;color:#666;margin-top:12px;"><strong>Observaciones:</strong> ${s.observaciones}</p>` : ''}
+      </div>
+    </div>`
+  });
+  showAlert('success', `Correo enviado a Johan para la OSI ${s.consecutivo}.`);
+  document.getElementById('modal-supply-detalle')?.remove();
 }
 
 // ── Modal Registrar Guía (Johan, post-Gestionada) ──────────────────
