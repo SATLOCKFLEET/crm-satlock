@@ -1415,6 +1415,12 @@ function construirTabs(){
       {label:'📦 Traslados',render:renderTraslados},
     ];
   }
+  // Rol supply_chain (Johan): solo Supply Chain
+  if(PERFIL.rol === 'supply_chain'){
+    return [
+      {label:'📦 Supply Chain',render:renderSupplyChain},
+    ];
+  }
 
   const base = [
     {label:'Seguimiento',render:renderSeguimiento},
@@ -1443,6 +1449,11 @@ function construirTabs(){
   }
   if(['gerencia','alta_gerencia','jefe_fleet','ejecutivo_fleet'].includes(PERFIL.rol)){
     base.push({label:'📦 Traslados',render:renderTraslados});
+  }
+  // Supply Chain — visible para todos los roles del módulo
+  const ROLES_SUPPLY = ['ejecutivo_fleet','jefe_fleet','facturacion','gerencia','alta_gerencia','supply_chain','analista_comercial','jefe_proyectos'];
+  if(ROLES_SUPPLY.includes(PERFIL.rol)){
+    base.push({label:'📦 Supply Chain',render:renderSupplyChain});
   }
   return base;
 }
@@ -12057,5 +12068,958 @@ async function trasExportarPDF(id){
 <!-- PORTAL TOAST -->
 <div class="pfac-toast" id="pfac-toast"></div>
 
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   MÓDULO SUPPLY CHAIN
+   ═══════════════════════════════════════════════════════════════════════ */
+
+const SUPPLY_ROLES_CREAR  = ['ejecutivo_fleet','jefe_fleet','facturacion','gerencia'];
+const SUPPLY_ROLES_SUPPLY = ['ejecutivo_fleet','jefe_fleet','facturacion','gerencia','alta_gerencia','supply_chain','analista_comercial','jefe_proyectos'];
+
+let _supplyData      = [];
+let _supplySubtab    = 'solicitudes'; // 'solicitudes' | 'gestion' | 'indicadores'
+let _supplyItems     = [];            // ítems del formulario activo
+let _supplyEditId    = null;          // UUID de solicitud en edición
+
+// ── Catálogo de productos (reutiliza el inventario del CRM) ──────────
+function supplyGetInventario() {
+  return typeof INVENTARIO !== 'undefined' ? INVENTARIO : [];
+}
+
+// ── Render principal ─────────────────────────────────────────────────
+async function renderSupplyChain(container) {
+  container.innerHTML = '<div class="loading">Cargando Supply Chain...</div>';
+  try {
+    const { data, error } = await sb
+      .from('solicitudes_supply')
+      .select('*, solicitudes_supply_detalle(*)')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    _supplyData = data || [];
+  } catch(e) {
+    container.innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+    return;
+  }
+
+  const puedeCrear = SUPPLY_ROLES_CREAR.includes(PERFIL.rol);
+  const esJohan    = PERFIL.rol === 'supply_chain';
+
+  container.innerHTML = `
+    <div style="max-width:1100px;margin:0 auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div>
+          <h2 style="font-size:18px;font-weight:700;color:#19428C;margin:0;">📦 Supply Chain</h2>
+          <p style="font-size:12px;color:#6B7A99;margin:4px 0 0;">Órdenes de Solicitud Interna</p>
+        </div>
+        ${puedeCrear ? `<button onclick="supplyAbrirFormulario()"
+          style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 18px;
+            background:#19428C;color:white;border:none;border-radius:8px;cursor:pointer;">
+          + Nueva Solicitud
+        </button>` : ''}
+      </div>
+
+      <!-- Subpestañas -->
+      <div style="display:flex;gap:2px;border-bottom:2px solid #DDE3EE;margin-bottom:20px;">
+        <button id="supply-tab-solicitudes" onclick="supplySwitchTab('solicitudes')"
+          style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 18px;border:none;
+            border-bottom:2px solid #19428C;background:none;color:#19428C;cursor:pointer;margin-bottom:-2px;">
+          📋 Solicitudes
+        </button>
+        <button id="supply-tab-gestion" onclick="supplySwitchTab('gestion')"
+          style="font-family:inherit;font-size:12px;font-weight:500;padding:8px 18px;border:none;
+            border-bottom:2px solid transparent;background:none;color:#6B7A99;cursor:pointer;margin-bottom:-2px;">
+          ⚙ Gestión
+        </button>
+        <button id="supply-tab-indicadores" onclick="supplySwitchTab('indicadores')"
+          style="font-family:inherit;font-size:12px;font-weight:500;padding:8px 18px;border:none;
+            border-bottom:2px solid transparent;background:none;color:#6B7A99;cursor:pointer;margin-bottom:-2px;">
+          📊 Indicadores
+        </button>
+      </div>
+
+      <div id="supply-panel-solicitudes"></div>
+      <div id="supply-panel-gestion"     style="display:none;"></div>
+      <div id="supply-panel-indicadores" style="display:none;"></div>
+    </div>`;
+
+  supplySwitchTab(_supplySubtab);
+}
+
+// ── Subpestañas ──────────────────────────────────────────────────────
+function supplySwitchTab(tab) {
+  _supplySubtab = tab;
+  ['solicitudes','gestion','indicadores'].forEach(t => {
+    const btn   = document.getElementById(`supply-tab-${t}`);
+    const panel = document.getElementById(`supply-panel-${t}`);
+    if (!btn || !panel) return;
+    const active = t === tab;
+    btn.style.borderBottomColor = active ? '#19428C' : 'transparent';
+    btn.style.color             = active ? '#19428C' : '#6B7A99';
+    btn.style.fontWeight        = active ? '600' : '500';
+    panel.style.display         = active ? 'block' : 'none';
+  });
+  if (tab === 'solicitudes')  supplyRenderSolicitudes();
+  if (tab === 'gestion')      supplyRenderGestion();
+  if (tab === 'indicadores')  supplyRenderIndicadores();
+}
+
+// ── Panel SOLICITUDES ────────────────────────────────────────────────
+function supplyRenderSolicitudes() {
+  const el = document.getElementById('supply-panel-solicitudes');
+  if (!el) return;
+
+  const esJohan = PERFIL.rol === 'supply_chain';
+  // Johan ve todas; otros ven las propias o todas según rol
+  const miId = USER.id;
+  let lista = _supplyData;
+  // Mostrar todas — RLS ya filtra en Supabase
+
+  const estadoBadge = (e) => {
+    const cfg = { Pendiente:{bg:'#FCEBEB',color:'#A32D2D',border:'#F5BABA'},
+                  'En proceso':{bg:'#FDF6E3',color:'#7A5A0F',border:'#E8C96B'},
+                  Gestionada:{bg:'#E1F5EE',color:'#1B7A4A',border:'#9FE1CB'} }[e]
+              || {bg:'#F4F6FA',color:'#6B7A99',border:'#DDE3EE'};
+    return `<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;
+      background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.border};">${e}</span>`;
+  };
+
+  const diasDesde = (iso) => {
+    if (!iso) return 0;
+    return Math.floor((new Date() - new Date(iso)) / 86400000);
+  };
+
+  el.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <input type="text" id="supply-search" placeholder="Buscar por cliente, NIT o consecutivo..."
+        oninput="supplyFiltrarLista()"
+        style="flex:1;padding:9px 14px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;">
+      <select id="supply-filtro-estado" onchange="supplyFiltrarLista()"
+        style="padding:9px 14px;border:1px solid #DDE3EE;border-radius:8px;font-size:13px;font-family:inherit;background:white;">
+        <option value="">Todos los estados</option>
+        <option value="Pendiente">Pendiente</option>
+        <option value="En proceso">En proceso</option>
+        <option value="Gestionada">Gestionada</option>
+      </select>
+    </div>
+    <div id="supply-lista-wrap">
+      ${supplyListaHTML(lista, estadoBadge, diasDesde)}
+    </div>`;
+}
+
+function supplyListaHTML(lista, estadoBadge, diasDesde) {
+  if (!lista.length) return `<div class="empty" style="padding:32px;text-align:center;">Sin solicitudes.</div>`;
+
+  const puedeEditar = (s) => {
+    if (s.estado !== 'Pendiente') return false;
+    if (PERFIL.rol === 'jefe_fleet') return true;
+    if (['ejecutivo_fleet','facturacion','gerencia'].includes(PERFIL.rol) && s.usuario_id === USER.id) return true;
+    return false;
+  };
+  const puedeEliminar = (s) => {
+    if (s.estado !== 'Pendiente') return false;
+    if (PERFIL.rol === 'jefe_fleet') return true;
+    if (['ejecutivo_fleet','facturacion','gerencia'].includes(PERFIL.rol) && s.usuario_id === USER.id) return true;
+    return false;
+  };
+
+  return `
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead><tr style="background:#F4F6FA;">
+          ${['N° OSI','Fecha','Cliente','NIT','Solicitante','Ítems','Carácter','Estado','Acciones'].map(h =>
+            `<th style="padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.05em;">${h}</th>`
+          ).join('')}
+        </tr></thead>
+        <tbody>
+          ${lista.map((s,i) => {
+            const dias = diasDesde(s.created_at);
+            const caracterBadge = s.caracter === 'Urgente'
+              ? `<span style="font-size:10px;font-weight:700;color:#A32D2D;background:#FCEBEB;padding:2px 7px;border-radius:10px;">⚡ Urgente</span>`
+              : `<span style="font-size:10px;color:#6B7A99;">Normal</span>`;
+            return `<tr style="border-bottom:1px solid #EEF1F8;background:${i%2===0?'white':'#FAFBFD'};">
+              <td style="padding:9px 14px;font-weight:700;color:#19428C;">${s.consecutivo}</td>
+              <td style="padding:9px 14px;white-space:nowrap;">${s.fecha}</td>
+              <td style="padding:9px 14px;font-weight:500;">${s.nombre_cliente||'—'}</td>
+              <td style="padding:9px 14px;color:#6B7A99;">${s.nit||'—'}</td>
+              <td style="padding:9px 14px;color:#6B7A99;">${s.solicitante_nombre||'—'}</td>
+              <td style="padding:9px 14px;text-align:right;">${(s.solicitudes_supply_detalle||[]).length}</td>
+              <td style="padding:9px 14px;">${caracterBadge}</td>
+              <td style="padding:9px 14px;">${estadoBadge(s.estado)}</td>
+              <td style="padding:9px 14px;white-space:nowrap;display:flex;gap:4px;">
+                <button onclick="supplyVerDetalle('${s.id}')"
+                  style="font-family:inherit;font-size:11px;font-weight:600;padding:4px 10px;background:#E8EEF8;color:#19428C;border:1px solid #B5D4F4;border-radius:6px;cursor:pointer;">Ver</button>
+                ${puedeEditar(s) ? `<button onclick="supplyAbrirFormulario('${s.id}')"
+                  style="font-family:inherit;font-size:11px;padding:4px 10px;background:#FDF6E3;color:#7A5A0F;border:1px solid #E8C96B;border-radius:6px;cursor:pointer;">✎</button>` : ''}
+                ${puedeEliminar(s) ? `<button onclick="supplyEliminar('${s.id}','${s.consecutivo}')"
+                  style="font-family:inherit;font-size:11px;padding:4px 10px;background:#FCEBEB;color:#A32D2D;border:1px solid #F5BABA;border-radius:6px;cursor:pointer;">✕</button>` : ''}
+                <button onclick="supplyExportarExcel('${s.id}')"
+                  style="font-family:inherit;font-size:11px;padding:4px 10px;background:#E8F5EF;color:#1D6F42;border:1px solid #9FE1CB;border-radius:6px;cursor:pointer;">Excel</button>
+                <button onclick="supplyExportarPDF('${s.id}')"
+                  style="font-family:inherit;font-size:11px;padding:4px 10px;background:#FCEBEB;color:#C0392B;border:1px solid #F5BABA;border-radius:6px;cursor:pointer;">PDF</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function supplyFiltrarLista() {
+  const q      = (document.getElementById('supply-search')?.value||'').toLowerCase();
+  const estado = document.getElementById('supply-filtro-estado')?.value||'';
+  let lista    = _supplyData.filter(s => {
+    if (estado && s.estado !== estado) return false;
+    if (q && !`${s.consecutivo} ${s.nombre_cliente||''} ${s.nit||''}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  const wrap = document.getElementById('supply-lista-wrap');
+  if (wrap) {
+    const diasDesde = (iso) => Math.floor((new Date() - new Date(iso)) / 86400000);
+    const estadoBadge = (e) => {
+      const cfg = { Pendiente:{bg:'#FCEBEB',color:'#A32D2D',border:'#F5BABA'},
+                    'En proceso':{bg:'#FDF6E3',color:'#7A5A0F',border:'#E8C96B'},
+                    Gestionada:{bg:'#E1F5EE',color:'#1B7A4A',border:'#9FE1CB'} }[e]
+                || {bg:'#F4F6FA',color:'#6B7A99',border:'#DDE3EE'};
+      return `<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;
+        background:${cfg.bg};color:${cfg.color};border:1px solid ${cfg.border};">${e}</span>`;
+    };
+    wrap.innerHTML = supplyListaHTML(lista, estadoBadge, diasDesde);
+  }
+}
+
+// ── Panel GESTIÓN (Johan) ────────────────────────────────────────────
+function supplyRenderGestion() {
+  const el = document.getElementById('supply-panel-gestion');
+  if (!el) return;
+
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const diasDesde = (iso) => Math.floor((new Date() - new Date(iso)) / 86400000);
+
+  const pendientes  = _supplyData.filter(s => s.estado !== 'Gestionada')
+    .sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+  const gestionadas = _supplyData.filter(s => s.estado === 'Gestionada')
+    .sort((a,b) => new Date(b.gestionada_at||0) - new Date(a.gestionada_at||0));
+
+  const diasBadge = (iso) => {
+    const d = diasDesde(iso);
+    if (d <= 1) return `<span style="font-size:10px;font-weight:700;background:#E1F5EE;color:#1B7A4A;padding:2px 7px;border-radius:10px;">${d}d</span>`;
+    if (d <= 3) return `<span style="font-size:10px;font-weight:700;background:#FDF6E3;color:#7A5A0F;padding:2px 7px;border-radius:10px;">⚠ ${d}d</span>`;
+    return `<span style="font-size:10px;font-weight:700;background:#FCEBEB;color:#A32D2D;padding:2px 7px;border-radius:10px;">🔴 ${d}d</span>`;
+  };
+
+  const cardGestion = (s) => `
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:8px;padding:12px 14px;font-size:12px;
+      ${s.caracter==='Urgente'?'border-left:3px solid #A32D2D;':''}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+        <div>
+          <span style="font-weight:700;color:#19428C;">${s.consecutivo}</span>
+          <span style="color:#9AAABF;margin-left:8px;">${s.fecha}</span>
+          ${s.caracter==='Urgente'?'<span style="font-size:10px;font-weight:700;color:#A32D2D;background:#FCEBEB;padding:2px 7px;border-radius:10px;margin-left:6px;">⚡ Urgente</span>':''}
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          ${diasBadge(s.created_at)}
+          ${s.estado==='Pendiente'
+            ? `<span style="font-size:10px;font-weight:700;background:#FCEBEB;color:#A32D2D;padding:2px 7px;border-radius:10px;border:1px solid #F5BABA;">Pendiente</span>`
+            : `<span style="font-size:10px;font-weight:700;background:#FDF6E3;color:#7A5A0F;padding:2px 7px;border-radius:10px;border:1px solid #E8C96B;">En proceso</span>`}
+        </div>
+      </div>
+      <div style="font-weight:500;margin-bottom:2px;">${s.nombre_cliente||'—'}</div>
+      <div style="color:#9AAABF;margin-bottom:8px;">${s.nit||''} · ${(s.solicitudes_supply_detalle||[]).length} ítem(s) · Solicitado por ${s.solicitante_nombre||'—'}</div>
+      <div style="display:flex;gap:6px;">
+        <button onclick="supplyVerDetalle('${s.id}')"
+          style="font-family:inherit;font-size:11px;padding:5px 12px;background:#E8EEF8;color:#19428C;border:1px solid #B5D4F4;border-radius:6px;cursor:pointer;">Ver detalle</button>
+        ${PERFIL.rol === 'supply_chain' ? `
+        <button onclick="supplyMarcarEnProceso('${s.id}')"
+          style="font-family:inherit;font-size:11px;padding:5px 12px;background:#FDF6E3;color:#7A5A0F;border:1px solid #E8C96B;border-radius:6px;cursor:pointer;">En proceso</button>
+        <button onclick="supplyMarcarGestionada('${s.id}')"
+          style="font-family:inherit;font-size:11px;padding:5px 12px;background:#19428C;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:600;">✓ Gestionada</button>` : ''}
+        <button onclick="supplyExportarExcel('${s.id}')"
+          style="font-family:inherit;font-size:11px;padding:5px 12px;background:#E8F5EF;color:#1D6F42;border:1px solid #9FE1CB;border-radius:6px;cursor:pointer;">Excel</button>
+        <button onclick="supplyExportarPDF('${s.id}')"
+          style="font-family:inherit;font-size:11px;padding:5px 12px;background:#FCEBEB;color:#C0392B;border:1px solid #F5BABA;border-radius:6px;cursor:pointer;">PDF</button>
+      </div>
+    </div>`;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <!-- Pendientes / En proceso -->
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#FCEBEB;border-radius:8px;border-left:3px solid #A32D2D;">
+          <span style="font-size:12px;font-weight:700;color:#A32D2D;">Por gestionar</span>
+          <span style="font-size:11px;background:#A32D2D;color:white;padding:1px 7px;border-radius:10px;font-weight:600;">${pendientes.length}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${pendientes.length ? pendientes.map(cardGestion).join('') : `<div style="text-align:center;padding:24px;color:#9AAABF;font-size:12px;background:white;border:1px solid #DDE3EE;border-radius:8px;">Sin solicitudes pendientes</div>`}
+        </div>
+      </div>
+      <!-- Gestionadas -->
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:#E1F5EE;border-radius:8px;border-left:3px solid #1B7A4A;">
+          <span style="font-size:12px;font-weight:700;color:#1B7A4A;">Gestionadas</span>
+          <span style="font-size:11px;background:#1B7A4A;color:white;padding:1px 7px;border-radius:10px;font-weight:600;">${gestionadas.length}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          ${gestionadas.length ? gestionadas.map(s => `
+            <div style="background:#F7FCF2;border:1px solid #C5E2A0;border-left:3px solid #639922;border-radius:8px;padding:10px 14px;font-size:12px;opacity:0.85;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                  <span style="font-weight:700;color:#19428C;">${s.consecutivo}</span>
+                  <span style="color:#9AAABF;margin-left:8px;">${s.fecha}</span>
+                  <div style="font-weight:500;margin-top:2px;">${s.nombre_cliente||'—'}</div>
+                  <div style="color:#9AAABF;font-size:11px;">Gestionada por ${s.gestionada_por||'—'} · ${s.gestionada_at ? new Date(s.gestionada_at).toLocaleDateString('es-CO') : '—'}</div>
+                </div>
+                <div style="display:flex;gap:4px;">
+                  <button onclick="supplyVerDetalle('${s.id}')" style="font-family:inherit;font-size:11px;padding:4px 10px;background:#E8EEF8;color:#19428C;border:1px solid #B5D4F4;border-radius:6px;cursor:pointer;">Ver</button>
+                  <button onclick="supplyExportarExcel('${s.id}')" style="font-family:inherit;font-size:11px;padding:4px 10px;background:#E8F5EF;color:#1D6F42;border:1px solid #9FE1CB;border-radius:6px;cursor:pointer;">Excel</button>
+                </div>
+              </div>
+            </div>`).join('') : `<div style="text-align:center;padding:24px;color:#9AAABF;font-size:12px;background:white;border:1px solid #DDE3EE;border-radius:8px;">Sin solicitudes gestionadas</div>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Marcar estados (Johan) ───────────────────────────────────────────
+async function supplyMarcarEnProceso(id) {
+  const { error } = await sb.from('solicitudes_supply').update({ estado: 'En proceso' }).eq('id', id);
+  if (error) { showAlert('danger', 'Error: ' + error.message); return; }
+  const s = _supplyData.find(x => x.id === id);
+  if (s) s.estado = 'En proceso';
+  supplyRenderGestion();
+  showAlert('success', 'Solicitud marcada como En proceso.');
+}
+
+async function supplyMarcarGestionada(id) {
+  const { error } = await sb.from('solicitudes_supply').update({
+    estado: 'Gestionada',
+    gestionada_por: PERFIL.nombre || '',
+    gestionada_at:  new Date().toISOString(),
+  }).eq('id', id);
+  if (error) { showAlert('danger', 'Error: ' + error.message); return; }
+  const s = _supplyData.find(x => x.id === id);
+  if (s) { s.estado = 'Gestionada'; s.gestionada_por = PERFIL.nombre; s.gestionada_at = new Date().toISOString(); }
+  supplyRenderGestion();
+  supplyRenderIndicadores();
+  showAlert('success', 'Solicitud marcada como Gestionada.');
+}
+
+// ── Panel INDICADORES ────────────────────────────────────────────────
+function supplyRenderIndicadores() {
+  const el = document.getElementById('supply-panel-indicadores');
+  if (!el) return;
+
+  const gestionadas = _supplyData.filter(s => s.estado === 'Gestionada');
+  const pendientes  = _supplyData.filter(s => s.estado !== 'Gestionada').length;
+  const hoy         = new Date().toISOString().slice(0,10);
+  const hoyCount    = gestionadas.filter(s => s.gestionada_at?.slice(0,10) === hoy).length;
+
+  // Ítems entregados por producto
+  const porProducto = {};
+  gestionadas.forEach(s => {
+    (s.solicitudes_supply_detalle||[]).forEach(d => {
+      const k = d.item + '|' + d.descripcion;
+      if (!porProducto[k]) porProducto[k] = { item: d.item, descripcion: d.descripcion, total: 0 };
+      porProducto[k].total += d.cantidad || 1;
+    });
+  });
+  const productosArr = Object.values(porProducto).sort((a,b) => b.total - a.total);
+
+  // Por mes
+  const porMes = {};
+  gestionadas.forEach(s => {
+    const m = s.gestionada_at ? s.gestionada_at.slice(0,7) : 'Sin fecha';
+    if (!porMes[m]) porMes[m] = 0;
+    porMes[m]++;
+  });
+
+  el.innerHTML = `
+    <!-- Métricas -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;">
+      ${[
+        { lbl:'Total solicitudes', val: _supplyData.length, color:'#19428C' },
+        { lbl:'Pendientes/En proceso', val: pendientes, color: pendientes > 0 ? '#A32D2D' : '#1B7A4A' },
+        { lbl:'Gestionadas', val: gestionadas.length, color:'#1B7A4A' },
+        { lbl:'Gestionadas hoy', val: hoyCount, color:'#534AB7' },
+      ].map(m => `
+        <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid ${m.color};border-radius:10px;padding:14px 16px;">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">${m.lbl}</div>
+          <div style="font-size:26px;font-weight:300;color:${m.color};">${m.val}</div>
+        </div>`).join('')}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
+      <!-- Top productos entregados -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:12px;font-weight:700;color:#19428C;">
+          Productos más entregados
+        </div>
+        <div style="padding:12px 16px;max-height:280px;overflow-y:auto;">
+          ${productosArr.length ? productosArr.slice(0,10).map(p => `
+            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #EEF1F8;font-size:12px;">
+              <span style="color:#3d5080;">${p.descripcion}</span>
+              <span style="font-weight:700;color:#19428C;">${p.total} u.</span>
+            </div>`).join('') : `<div style="color:#9AAABF;font-size:12px;">Sin datos</div>`}
+        </div>
+      </div>
+
+      <!-- Por mes -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:12px;font-weight:700;color:#19428C;">
+          Solicitudes gestionadas por mes
+        </div>
+        <div style="padding:12px 16px;max-height:280px;overflow-y:auto;">
+          ${Object.entries(porMes).sort((a,b)=>b[0].localeCompare(a[0])).map(([mes,cnt]) => `
+            <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #EEF1F8;font-size:12px;">
+              <span style="color:#3d5080;">${mes}</span>
+              <span style="font-weight:700;color:#19428C;">${cnt}</span>
+            </div>`).join('') || `<div style="color:#9AAABF;font-size:12px;">Sin datos</div>`}
+        </div>
+      </div>
+    </div>
+
+    <!-- Exportar indicadores -->
+    <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+      <button onclick="supplyExportarIndicadores()"
+        style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">
+        ⬇ Exportar Excel
+      </button>
+    </div>`;
+}
+
+// ── Modal VER DETALLE ────────────────────────────────────────────────
+function supplyVerDetalle(id) {
+  const s = _supplyData.find(x => x.id === id);
+  if (!s) return;
+  const det = s.solicitudes_supply_detalle || [];
+
+  const m = document.createElement('div');
+  m.id = 'modal-supply-detalle';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  m.innerHTML = `
+    <div style="background:white;border-radius:12px;max-width:700px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);">
+      <div style="padding:20px 24px;border-bottom:1px solid #EEF1F8;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:16px;font-weight:700;color:#19428C;">OSI ${s.consecutivo}</div>
+        <button onclick="document.getElementById('modal-supply-detalle').remove()"
+          style="background:none;border:none;font-size:20px;cursor:pointer;color:#9AAABF;">✕</button>
+      </div>
+      <div style="padding:20px 24px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;margin-bottom:16px;">
+          <div><span style="color:#9AAABF;">Consecutivo</span><div style="font-weight:600;">${s.consecutivo}</div></div>
+          <div><span style="color:#9AAABF;">Fecha</span><div style="font-weight:600;">${s.fecha}</div></div>
+          <div><span style="color:#9AAABF;">Solicitante</span><div style="font-weight:600;">${s.solicitante_nombre||'—'}</div></div>
+          <div><span style="color:#9AAABF;">Cargo</span><div>${s.solicitante_cargo||'—'}</div></div>
+          <div><span style="color:#9AAABF;">Cliente</span><div style="font-weight:600;">${s.nombre_cliente||'—'}</div></div>
+          <div><span style="color:#9AAABF;">NIT</span><div>${s.nit||'—'}</div></div>
+          <div><span style="color:#9AAABF;">Dirección</span><div>${s.direccion_cliente||'—'}</div></div>
+          <div><span style="color:#9AAABF;">Email</span><div>${s.email_cliente||'—'}</div></div>
+          <div><span style="color:#9AAABF;">Carácter</span><div>${s.caracter||'—'}</div></div>
+          <div><span style="color:#9AAABF;">Estado</span><div style="font-weight:600;">${s.estado}</div></div>
+        </div>
+
+        ${s.requiere_envio ? `
+        <div style="background:#E8EEF8;border-radius:8px;padding:12px 14px;font-size:12px;margin-bottom:12px;">
+          <div style="font-weight:700;color:#19428C;margin-bottom:6px;">📦 Información de envío</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div><span style="color:#9AAABF;">Dirección:</span> ${s.dir_envio||'—'}</div>
+            <div><span style="color:#9AAABF;">Ciudad:</span> ${s.ciudad_envio||'—'}</div>
+            <div><span style="color:#9AAABF;">Departamento:</span> ${s.departamento_envio||'—'}</div>
+            <div><span style="color:#9AAABF;">Destinatario:</span> ${s.nombre_destinatario||'—'}</div>
+            <div><span style="color:#9AAABF;">Teléfono:</span> ${s.telefono_destinatario||'—'}</div>
+            <div><span style="color:#9AAABF;">Transportadora:</span> ${s.transportadora?'Sí':'No'}</div>
+            ${!s.transportadora ? `<div><span style="color:#9AAABF;">Terminal a terminal:</span> ${s.terminal_terminal?'Sí':'No'}</div>` : ''}
+            ${s.otro_envio ? `<div style="grid-column:span 2"><span style="color:#9AAABF;">Otro:</span> ${s.otro_envio}</div>` : ''}
+          </div>
+        </div>` : ''}
+
+        ${s.observaciones ? `<div style="background:#FDF6E3;border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:12px;border-left:3px solid #E8A020;"><strong>Observaciones:</strong> ${s.observaciones}</div>` : ''}
+
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:8px;">Equipos solicitados</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
+          <thead><tr style="background:#F4F6FA;">
+            <th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Ítem</th>
+            <th style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Descripción</th>
+            <th style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;color:#19428C;">Cantidad</th>
+          </tr></thead>
+          <tbody>
+            ${det.map((d,i) => `<tr style="border-bottom:1px solid #EEF1F8;background:${i%2===0?'white':'#FAFBFD'};">
+              <td style="padding:7px 10px;font-weight:600;">${d.item}</td>
+              <td style="padding:7px 10px;">${d.descripcion}</td>
+              <td style="padding:7px 10px;text-align:right;font-weight:600;">${d.cantidad}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+
+        ${s.gestionada_por ? `<div style="background:#E1F5EE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1B7A4A;"><strong>Gestionada por:</strong> ${s.gestionada_por} — ${s.gestionada_at ? new Date(s.gestionada_at).toLocaleString('es-CO') : '—'}</div>` : ''}
+      </div>
+      <div style="padding:14px 24px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="document.getElementById('modal-supply-detalle').remove()"
+          style="font-family:inherit;font-size:12px;padding:8px 16px;background:#F4F6FA;color:#6B7A99;border:1px solid #DDE3EE;border-radius:7px;cursor:pointer;">Cerrar</button>
+        <button onclick="supplyExportarExcel('${s.id}')"
+          style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">Excel</button>
+        <button onclick="supplyExportarPDF('${s.id}')"
+          style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#C0392B;color:white;border:none;border-radius:7px;cursor:pointer;">PDF</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+// ── FORMULARIO NUEVA/EDITAR SOLICITUD ────────────────────────────────
+function supplyAbrirFormulario(editId = null) {
+  _supplyEditId = editId;
+  _supplyItems  = [];
+  const s       = editId ? _supplyData.find(x => x.id === editId) : null;
+  if (s) _supplyItems = (s.solicitudes_supply_detalle||[]).map(d => ({...d}));
+
+  const m = document.createElement('div');
+  m.id = 'modal-supply-form';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;';
+  m.innerHTML = `
+    <div style="background:white;border-radius:12px;max-width:720px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);">
+      <div style="padding:20px 24px;border-bottom:1px solid #EEF1F8;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:16px;font-weight:700;color:#19428C;">${editId ? 'Editar Solicitud' : 'Nueva Solicitud Interna'}</div>
+        <button onclick="document.getElementById('modal-supply-form').remove()"
+          style="background:none;border:none;font-size:20px;cursor:pointer;color:#9AAABF;">✕</button>
+      </div>
+      <div style="padding:20px 24px;">
+
+        <!-- Solicitante -->
+        <div style="background:#E8EEF8;border-radius:8px;padding:10px 14px;font-size:12px;margin-bottom:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div><span style="color:#9AAABF;">Quién solicita</span><div style="font-weight:600;">${PERFIL.nombre||''}</div></div>
+          <div><span style="color:#9AAABF;">Cargo</span><div>${PERFIL.cargo||''}</div></div>
+        </div>
+
+        <!-- Sección 1: Cliente -->
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:8px;">1. Información del cliente</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">NIT</label>
+            <input id="sf-nit" class="finput" type="text" value="${s?.nit||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Nombre cliente <span style="color:#A32D2D">*</span></label>
+            <input id="sf-nombre-cliente" class="finput" type="text" value="${s?.nombre_cliente||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Dirección</label>
+            <input id="sf-dir-cliente" class="finput" type="text" value="${s?.direccion_cliente||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Email</label>
+            <input id="sf-email-cliente" class="finput" type="email" value="${s?.email_cliente||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+          </div>
+        </div>
+
+        <!-- Sección 2: Equipos -->
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:8px;">2. Equipos y accesorios</div>
+        <div style="margin-bottom:8px;">
+          <input id="sf-buscar-item" class="finput" type="text" placeholder="Buscar equipo o accesorio..."
+            oninput="supplyBuscarItem(this.value)"
+            style="width:100%;font-size:13px;padding:8px 10px;margin-bottom:6px;">
+          <div id="sf-resultados-busqueda" style="max-height:160px;overflow-y:auto;border:1px solid #DDE3EE;border-radius:8px;display:none;background:white;"></div>
+        </div>
+        <div id="sf-tabla-items" style="margin-bottom:16px;">${supplyTablaItemsHTML()}</div>
+
+        <!-- Sección 3: Envío -->
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:8px;">3. Información para envío</div>
+        <div style="display:flex;gap:16px;align-items:center;margin-bottom:12px;">
+          <span style="font-size:13px;font-weight:500;">¿Requiere envío?</span>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+            <input type="radio" name="sf-requiere-envio" value="si" ${s?.requiere_envio?'checked':''} onchange="supplyToggleEnvio(true)"> Sí
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+            <input type="radio" name="sf-requiere-envio" value="no" ${!s?.requiere_envio?'checked':''} onchange="supplyToggleEnvio(false)"> No
+          </label>
+        </div>
+
+        <div id="sf-envio-detalle" style="${s?.requiere_envio?'':'display:none;'}">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div style="grid-column:span 2">
+              <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Dirección de envío</label>
+              <input id="sf-dir-envio" class="finput" type="text" value="${s?.dir_envio||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Ciudad</label>
+              <input id="sf-ciudad-envio" class="finput" type="text" value="${s?.ciudad_envio||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Departamento</label>
+              <input id="sf-dpto-envio" class="finput" type="text" value="${s?.departamento_envio||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Nombre destinatario</label>
+              <input id="sf-nombre-dest" class="finput" type="text" value="${s?.nombre_destinatario||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Teléfono</label>
+              <input id="sf-tel-dest" class="finput" type="text" value="${s?.telefono_destinatario||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+            </div>
+          </div>
+
+          <!-- Lógica transportadora -->
+          <div style="display:flex;gap:16px;align-items:center;margin-bottom:8px;">
+            <span style="font-size:13px;font-weight:500;">¿Transportadora?</span>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+              <input type="radio" name="sf-transportadora" value="si" ${s?.transportadora?'checked':''} onchange="supplyToggleTransportadora(true)"> Sí
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+              <input type="radio" name="sf-transportadora" value="no" ${!s?.transportadora?'checked':''} onchange="supplyToggleTransportadora(false)"> No
+            </label>
+          </div>
+          <div id="sf-terminal-wrap" style="${s?.transportadora?'display:none;':''}margin-bottom:8px;">
+            <div style="display:flex;gap:16px;align-items:center;margin-bottom:8px;">
+              <span style="font-size:13px;font-weight:500;">¿Terminal a terminal?</span>
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+                <input type="radio" name="sf-terminal" value="si" ${s?.terminal_terminal?'checked':''} onchange="supplyToggleTerminal(true)"> Sí
+              </label>
+              <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+                <input type="radio" name="sf-terminal" value="no" ${!s?.terminal_terminal?'checked':''} onchange="supplyToggleTerminal(false)"> No
+              </label>
+            </div>
+            <div id="sf-otro-envio-wrap" style="${(!s?.transportadora && !s?.terminal_terminal)?'':'display:none;'}">
+              <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Otro (especifique)</label>
+              <input id="sf-otro-envio" class="finput" type="text" value="${s?.otro_envio||''}" style="width:100%;font-size:13px;padding:8px 10px;" placeholder="Describa el medio de envío">
+            </div>
+          </div>
+        </div>
+
+        <!-- Carácter -->
+        <div style="display:flex;gap:16px;align-items:center;margin-bottom:16px;">
+          <span style="font-size:13px;font-weight:500;">Carácter:</span>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+            <input type="radio" name="sf-caracter" value="Normal" ${s?.caracter!=='Urgente'?'checked':''}> Normal
+          </label>
+          <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px;">
+            <input type="radio" name="sf-caracter" value="Urgente" ${s?.caracter==='Urgente'?'checked':''}> Urgente
+          </label>
+        </div>
+
+        <!-- Observaciones -->
+        <div style="margin-bottom:8px;">
+          <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Observaciones</label>
+          <textarea id="sf-obs" class="ftxt" style="width:100%;min-height:70px;font-size:13px;resize:vertical;">${s?.observaciones||''}</textarea>
+        </div>
+      </div>
+
+      <div style="padding:14px 24px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="document.getElementById('modal-supply-form').remove()"
+          style="font-family:inherit;font-size:12px;padding:8px 16px;background:#F4F6FA;color:#6B7A99;border:1px solid #DDE3EE;border-radius:7px;cursor:pointer;">Cancelar</button>
+        <button onclick="supplyGuardar()"
+          style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 20px;background:#19428C;color:white;border:none;border-radius:7px;cursor:pointer;">
+          ${editId ? 'Guardar cambios' : 'Crear solicitud'}
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+function supplyToggleEnvio(show) {
+  const el = document.getElementById('sf-envio-detalle');
+  if (el) el.style.display = show ? 'block' : 'none';
+}
+function supplyToggleTransportadora(esSi) {
+  const tw = document.getElementById('sf-terminal-wrap');
+  if (tw) tw.style.display = esSi ? 'none' : 'block';
+  if (esSi) { const ow = document.getElementById('sf-otro-envio-wrap'); if(ow) ow.style.display='none'; }
+}
+function supplyToggleTerminal(esSi) {
+  const ow = document.getElementById('sf-otro-envio-wrap');
+  if (ow) ow.style.display = esSi ? 'none' : 'block';
+}
+
+function supplyBuscarItem(q) {
+  const res = document.getElementById('sf-resultados-busqueda');
+  if (!res) return;
+  if (!q.trim()) { res.style.display='none'; return; }
+  const ql = q.toLowerCase();
+  const inv = supplyGetInventario();
+  const matches = inv.filter(i => i.DESC_ITEM?.toLowerCase().includes(ql)).slice(0, 15);
+  if (!matches.length) { res.style.display='none'; return; }
+  res.style.display = 'block';
+  res.innerHTML = matches.map(i => `
+    <div onclick="supplyAgregarItem('${i.ITEM}','${i.DESC_ITEM?.replace(/'/g,"\'")||i.ITEM}')"
+      style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #EEF1F8;display:flex;justify-content:space-between;"
+      onmouseover="this.style.background='#E8EEF8'" onmouseout="this.style.background='white'">
+      <span>${i.DESC_ITEM||i.ITEM}</span>
+      <span style="color:#9AAABF;font-size:11px;">${i.ITEM}</span>
+    </div>`).join('');
+}
+
+function supplyAgregarItem(item, descripcion) {
+  _supplyItems.push({ item, descripcion, cantidad: 1 });
+  const res = document.getElementById('sf-resultados-busqueda');
+  const inp = document.getElementById('sf-buscar-item');
+  if (res) res.style.display = 'none';
+  if (inp) inp.value = '';
+  const wrap = document.getElementById('sf-tabla-items');
+  if (wrap) wrap.innerHTML = supplyTablaItemsHTML();
+}
+
+function supplyTablaItemsHTML() {
+  if (!_supplyItems.length) return `<div style="text-align:center;padding:16px;color:#9AAABF;font-size:12px;background:#F4F6FA;border-radius:8px;border:1px dashed #DDE3EE;">Sin ítems agregados</div>`;
+  return `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr style="background:#F4F6FA;">
+      <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Ítem</th>
+      <th style="padding:7px 10px;text-align:left;font-size:10px;font-weight:700;color:#19428C;">Descripción</th>
+      <th style="padding:7px 10px;text-align:center;font-size:10px;font-weight:700;color:#19428C;">Cant.</th>
+      <th style="padding:7px 10px;text-align:center;font-size:10px;font-weight:700;color:#19428C;"></th>
+    </tr></thead>
+    <tbody>
+      ${_supplyItems.map((it,i) => `<tr style="border-bottom:1px solid #EEF1F8;">
+        <td style="padding:7px 10px;font-weight:600;">${it.item}</td>
+        <td style="padding:7px 10px;">${it.descripcion}</td>
+        <td style="padding:7px 10px;text-align:center;">
+          <input type="number" min="1" value="${it.cantidad}" onchange="_supplyItems[${i}].cantidad=parseInt(this.value)||1"
+            style="width:60px;padding:4px 6px;border:1px solid #DDE3EE;border-radius:5px;text-align:center;font-family:inherit;">
+        </td>
+        <td style="padding:7px 10px;text-align:center;">
+          <button onclick="_supplyItems.splice(${i},1);document.getElementById('sf-tabla-items').innerHTML=supplyTablaItemsHTML()"
+            style="background:none;border:none;color:#A32D2D;cursor:pointer;font-size:14px;">✕</button>
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+// ── Guardar ──────────────────────────────────────────────────────────
+async function supplyGuardar() {
+  const nombreCliente = document.getElementById('sf-nombre-cliente')?.value.trim();
+  if (!nombreCliente) { alert('El nombre del cliente es obligatorio.'); return; }
+  if (!_supplyItems.length) { alert('Debe agregar al menos un ítem.'); return; }
+
+  const requiereEnvio = document.querySelector('input[name="sf-requiere-envio"]:checked')?.value === 'si';
+  const transportadora = document.querySelector('input[name="sf-transportadora"]:checked')?.value === 'si';
+  const terminal = document.querySelector('input[name="sf-terminal"]:checked')?.value === 'si';
+  const caracter = document.querySelector('input[name="sf-caracter"]:checked')?.value || 'Normal';
+
+  const payload = {
+    nombre_cliente:       nombreCliente,
+    nit:                  document.getElementById('sf-nit')?.value.trim()||null,
+    direccion_cliente:    document.getElementById('sf-dir-cliente')?.value.trim()||null,
+    email_cliente:        document.getElementById('sf-email-cliente')?.value.trim()||null,
+    requiere_envio:       requiereEnvio,
+    dir_envio:            requiereEnvio ? document.getElementById('sf-dir-envio')?.value.trim()||null : null,
+    ciudad_envio:         requiereEnvio ? document.getElementById('sf-ciudad-envio')?.value.trim()||null : null,
+    departamento_envio:   requiereEnvio ? document.getElementById('sf-dpto-envio')?.value.trim()||null : null,
+    nombre_destinatario:  requiereEnvio ? document.getElementById('sf-nombre-dest')?.value.trim()||null : null,
+    telefono_destinatario:requiereEnvio ? document.getElementById('sf-tel-dest')?.value.trim()||null : null,
+    transportadora:       requiereEnvio ? transportadora : false,
+    terminal_terminal:    requiereEnvio && !transportadora ? terminal : false,
+    otro_envio:           requiereEnvio && !transportadora && !terminal ? document.getElementById('sf-otro-envio')?.value.trim()||null : null,
+    caracter,
+    observaciones:        document.getElementById('sf-obs')?.value.trim()||null,
+    solicitante_nombre:   PERFIL.nombre||'',
+    solicitante_cargo:    PERFIL.cargo||'',
+    usuario_id:           USER.id,
+  };
+
+  try {
+    if (_supplyEditId) {
+      // Editar
+      const { error } = await sb.from('solicitudes_supply').update(payload).eq('id', _supplyEditId);
+      if (error) throw error;
+      // Actualizar detalle
+      await sb.from('solicitudes_supply_detalle').delete().eq('solicitud_id', _supplyEditId);
+      if (_supplyItems.length) {
+        await sb.from('solicitudes_supply_detalle').insert(
+          _supplyItems.map(it => ({ solicitud_id: _supplyEditId, item: it.item, descripcion: it.descripcion, cantidad: it.cantidad }))
+        );
+      }
+      showAlert('success', 'Solicitud actualizada correctamente.');
+    } else {
+      // Nueva — obtener consecutivo
+      const { data: consNum, error: consErr } = await sb.rpc('get_next_consecutivo_supply');
+      if (consErr) throw consErr;
+      const consecutivo = String(consNum).padStart(4, '0');
+      payload.consecutivo = consecutivo;
+      const { data: nueva, error } = await sb.from('solicitudes_supply').insert(payload).select().single();
+      if (error) throw error;
+      if (_supplyItems.length) {
+        await sb.from('solicitudes_supply_detalle').insert(
+          _supplyItems.map(it => ({ solicitud_id: nueva.id, item: it.item, descripcion: it.descripcion, cantidad: it.cantidad }))
+        );
+      }
+      // Enviar correo a Johan
+      if (typeof enviarCorreoGmail === 'function' && gcalToken) {
+        const itemsHtml = _supplyItems.map(it => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.item}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.descripcion}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${it.cantidad}</td></tr>`).join('');
+        await enviarCorreoGmail({
+          para: 'Johan.gomez@satlock.com',
+          cc: USER.email||'',
+          asunto: `OSI ${consecutivo} — ${nombreCliente} | ${caracter}`,
+          cuerpo: `<div style="font-family:Arial,sans-serif;max-width:600px;">
+            <div style="background:#19428C;color:white;padding:16px 20px;border-radius:8px 8px 0 0;">
+              <h2 style="margin:0;font-size:16px;">📦 Nueva Orden de Solicitud Interna</h2>
+            </div>
+            <div style="padding:16px 20px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;">
+              <table style="width:100%;margin-bottom:12px;font-size:13px;">
+                <tr><td style="color:#666;padding:3px 0;">Consecutivo</td><td style="font-weight:600;">${consecutivo}</td></tr>
+                <tr><td style="color:#666;padding:3px 0;">Cliente</td><td style="font-weight:600;">${nombreCliente}</td></tr>
+                <tr><td style="color:#666;padding:3px 0;">Solicitante</td><td>${PERFIL.nombre||''}</td></tr>
+                <tr><td style="color:#666;padding:3px 0;">Carácter</td><td style="font-weight:600;color:${caracter==='Urgente'?'#A32D2D':'#333'}">${caracter}</td></tr>
+              </table>
+              <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead><tr style="background:#F4F6FA;"><th style="padding:6px 8px;text-align:left;">Ítem</th><th style="padding:6px 8px;text-align:left;">Descripción</th><th style="padding:6px 8px;text-align:right;">Cant.</th></tr></thead>
+                <tbody>${itemsHtml}</tbody>
+              </table>
+              ${payload.observaciones ? `<p style="font-size:12px;color:#666;margin-top:12px;"><strong>Observaciones:</strong> ${payload.observaciones}</p>` : ''}
+            </div>
+          </div>`
+        });
+      }
+      showAlert('success', `Solicitud ${consecutivo} creada correctamente.`);
+    }
+    document.getElementById('modal-supply-form')?.remove();
+    // Recargar
+    const { data } = await sb.from('solicitudes_supply').select('*, solicitudes_supply_detalle(*)').order('created_at', { ascending: false });
+    _supplyData = data || [];
+    supplySwitchTab(_supplySubtab);
+  } catch(e) {
+    showAlert('danger', 'Error: ' + e.message);
+  }
+}
+
+// ── Eliminar ─────────────────────────────────────────────────────────
+async function supplyEliminar(id, consecutivo) {
+  if (!confirm(`¿Eliminar la solicitud ${consecutivo}? Esta acción no se puede deshacer.`)) return;
+  const { error } = await sb.from('solicitudes_supply').delete().eq('id', id);
+  if (error) { showAlert('danger', 'Error: ' + error.message); return; }
+  _supplyData = _supplyData.filter(s => s.id !== id);
+  showAlert('success', `Solicitud ${consecutivo} eliminada.`);
+  supplySwitchTab(_supplySubtab);
+}
+
+// ── EXPORTAR EXCEL ───────────────────────────────────────────────────
+function supplyExportarExcel(id) {
+  const s = _supplyData.find(x => x.id === id);
+  if (!s) return;
+  const det = s.solicitudes_supply_detalle || [];
+  const wb  = XLSX.utils.book_new();
+
+  // Hoja info general
+  const info = [
+    ['ORDEN DE SOLICITUD INTERNA', '', '', ''],
+    ['', '', '', ''],
+    ['Consecutivo', s.consecutivo, 'Fecha', s.fecha],
+    ['Quién solicita', s.solicitante_nombre||'', 'Cargo', s.solicitante_cargo||''],
+    ['', '', '', ''],
+    ['1. INFORMACIÓN DEL CLIENTE', '', '', ''],
+    ['NIT', s.nit||'', 'Nombre', s.nombre_cliente||''],
+    ['Dirección', s.direccion_cliente||'', 'Email', s.email_cliente||''],
+    ['', '', '', ''],
+    ['2. ESPECIFICACIONES TÉCNICAS', '', '', ''],
+    ['Cantidad', 'Ítem', 'Descripción', ''],
+    ...det.map(d => [d.cantidad, d.item, d.descripcion, '']),
+    ['', '', '', ''],
+    ['3. INFORMACIÓN PARA ENVÍO', '', '', ''],
+    ['Requiere envío', s.requiere_envio?'SÍ':'NO', '', ''],
+    ...(s.requiere_envio ? [
+      ['Dirección envío', s.dir_envio||'', 'Ciudad', s.ciudad_envio||''],
+      ['Departamento', s.departamento_envio||'', 'Destinatario', s.nombre_destinatario||''],
+      ['Teléfono', s.telefono_destinatario||'', '', ''],
+      ['Transportadora', s.transportadora?'SÍ':'NO', 'Terminal a terminal', s.terminal_terminal?'SÍ':'NO'],
+      ...(s.otro_envio ? [['Otro', s.otro_envio, '', '']] : []),
+    ] : []),
+    ['Carácter', s.caracter||'', '', ''],
+    ['Observaciones', s.observaciones||'', '', ''],
+    ...(s.gestionada_por ? [['', '', '', ''], ['Gestionada por', s.gestionada_por, 'Fecha gestión', s.gestionada_at ? new Date(s.gestionada_at).toLocaleString('es-CO') : '']] : []),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(info);
+  ws['!cols'] = [{wch:22},{wch:35},{wch:22},{wch:35}];
+  XLSX.utils.book_append_sheet(wb, ws, 'OSI');
+
+  const fecha = s.fecha?.replace(/-/g,'') || '';
+  const cliente = (s.nombre_cliente||'cliente').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
+  XLSX.writeFile(wb, `${s.consecutivo}_${cliente}_${fecha}.xlsx`);
+}
+
+// ── EXPORTAR PDF ─────────────────────────────────────────────────────
+function supplyExportarPDF(id) {
+  const s = _supplyData.find(x => x.id === id);
+  if (!s || typeof jspdf === 'undefined' && typeof window.jspdf === 'undefined') {
+    showAlert('danger', 'jsPDF no disponible'); return;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation:'p', unit:'mm', format:'letter' });
+
+  doc.setFillColor(25,66,140);
+  doc.rect(0,0,216,18,'F');
+  doc.setTextColor(255,255,255);
+  doc.setFontSize(13); doc.setFont('helvetica','bold');
+  doc.text('ORDEN DE SOLICITUD INTERNA', 108, 12, {align:'center'});
+
+  doc.setTextColor(0,0,0);
+  doc.setFontSize(10); doc.setFont('helvetica','normal');
+  let y = 28;
+  const campo = (lbl, val, x, yy) => {
+    doc.setFont('helvetica','bold'); doc.text(lbl+': ', x, yy);
+    doc.setFont('helvetica','normal'); doc.text(String(val||'—'), x + doc.getTextWidth(lbl+': '), yy);
+  };
+  campo('Consecutivo', s.consecutivo, 14, y);
+  campo('Fecha', s.fecha, 120, y); y += 7;
+  campo('Quién solicita', s.solicitante_nombre||'', 14, y);
+  campo('Cargo', s.solicitante_cargo||'', 120, y); y += 12;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(10);
+  doc.text('1. INFORMACIÓN DEL CLIENTE', 14, y); y += 6;
+  doc.setFont('helvetica','normal');
+  campo('NIT', s.nit||'', 14, y); campo('Nombre', s.nombre_cliente||'', 120, y); y += 6;
+  campo('Dirección', s.direccion_cliente||'', 14, y); y += 10;
+
+  doc.setFont('helvetica','bold');
+  doc.text('2. ESPECIFICACIONES TÉCNICAS', 14, y); y += 6;
+  doc.autoTable({
+    head: [['Cantidad','Ítem','Descripción']],
+    body: (s.solicitudes_supply_detalle||[]).map(d => [d.cantidad, d.item, d.descripcion]),
+    startY: y, margin:{left:14,right:14},
+    columnStyles:{0:{cellWidth:20,halign:'right'},1:{cellWidth:25},2:{cellWidth:147}},
+    styles:{fontSize:9},
+    headStyles:{fillColor:[25,66,140],textColor:255},
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  if (s.requiere_envio) {
+    doc.setFont('helvetica','bold');
+    doc.text('3. INFORMACIÓN DE ENVÍO', 14, y); y += 6;
+    doc.setFont('helvetica','normal');
+    campo('Dirección', s.dir_envio||'', 14, y); campo('Ciudad', s.ciudad_envio||'', 120, y); y += 6;
+    campo('Transportadora', s.transportadora?'Sí':'No', 14, y);
+    if (!s.transportadora) campo('Terminal a terminal', s.terminal_terminal?'Sí':'No', 120, y);
+    y += 6;
+    if (s.otro_envio) { campo('Otro', s.otro_envio, 14, y); y += 6; }
+  }
+
+  doc.setFont('helvetica','bold'); doc.text('Carácter: ', 14, y);
+  doc.setFont('helvetica','normal'); doc.text(s.caracter||'Normal', 14 + doc.getTextWidth('Carácter: '), y); y += 8;
+
+  if (s.observaciones) {
+    doc.setFont('helvetica','bold'); doc.text('Observaciones:', 14, y); y += 5;
+    doc.setFont('helvetica','normal');
+    const lines = doc.splitTextToSize(s.observaciones, 186);
+    doc.text(lines, 14, y); y += lines.length * 5 + 4;
+  }
+
+  const fecha = s.fecha?.replace(/-/g,'') || '';
+  const cliente = (s.nombre_cliente||'cliente').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
+  doc.save(`${s.consecutivo}_${cliente}_${fecha}.pdf`);
+}
+
+// ── Exportar indicadores ─────────────────────────────────────────────
+function supplyExportarIndicadores() {
+  const gestionadas = _supplyData.filter(s => s.estado === 'Gestionada');
+  if (!gestionadas.length) { showAlert('danger','Sin datos para exportar'); return; }
+  const rows = [];
+  gestionadas.forEach(s => {
+    (s.solicitudes_supply_detalle||[]).forEach(d => {
+      rows.push([s.consecutivo, s.fecha, s.nombre_cliente||'', s.nit||'', s.solicitante_nombre||'', d.item, d.descripcion, d.cantidad, s.gestionada_por||'', s.gestionada_at ? new Date(s.gestionada_at).toLocaleString('es-CO') : '']);
+    });
+  });
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([['OSI','Fecha','Cliente','NIT','Solicitante','Ítem','Descripción','Cantidad','Gestionada por','Fecha gestión'],...rows]);
+  ws['!cols'] = [{wch:8},{wch:12},{wch:35},{wch:14},{wch:22},{wch:8},{wch:45},{wch:8},{wch:22},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Indicadores');
+  XLSX.writeFile(wb, `SupplyChain_Indicadores_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.xlsx`);
+}
+
+</script>
 </body>
 </html>
