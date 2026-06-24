@@ -1415,7 +1415,7 @@ function construirTabs(){
       {label:'📦 Traslados',render:renderTraslados},
     ];
   }
-  // Rol supply_chain (Johan): solo Supply Chain
+  // Rol supply_chain: solo Supply Chain
   if(PERFIL.rol === 'supply_chain'){
     return [
       {label:'📦 Supply Chain',render:renderSupplyChain},
@@ -12305,7 +12305,7 @@ function supplyFiltrarLista() {
   }
 }
 
-// ── Panel GESTIÓN (Johan) ────────────────────────────────────────────
+// ── Panel GESTIÓN (Supply Chain) ────────────────────────────────────────────
 function supplyRenderGestion() {
   const el = document.getElementById('supply-panel-gestion');
   if (!el) return;
@@ -12397,7 +12397,7 @@ function supplyRenderGestion() {
     </div>`;
 }
 
-// ── Marcar estados (Johan) ───────────────────────────────────────────
+// ── Marcar estados (Supply Chain) ───────────────────────────────────────────
 async function supplyMarcarEnProceso(id) {
   const { error } = await sb.from('solicitudes_supply').update({ estado: 'En proceso' }).eq('id', id);
   if (error) { showAlert('danger', 'Error: ' + error.message); return; }
@@ -12572,7 +12572,7 @@ function supplyVerDetalle(id) {
       <div style="padding:14px 24px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
         <button onclick="document.getElementById('modal-supply-detalle').remove()"
           style="font-family:inherit;font-size:12px;padding:8px 16px;background:#F4F6FA;color:#6B7A99;border:1px solid #DDE3EE;border-radius:7px;cursor:pointer;">Cerrar</button>
-        ${s.estado === 'Pendiente' ? `<button onclick="supplyEnviarCorreoDesdeVer('${s.id}')" style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#E8A020;color:white;border:none;border-radius:7px;cursor:pointer;">📨 Enviar correo a Johan</button>` : ""}
+        ${s.estado === 'Pendiente' ? `<button onclick="supplyEnviarCorreoDesdeVer('${s.id}')" style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#E8A020;color:white;border:none;border-radius:7px;cursor:pointer;">📨 Notificar a Supply Chain</button>` : ""}
         <button onclick="supplyExportarExcel('${s.id}')"
           style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">Excel</button>
         <button onclick="supplyExportarPDF('${s.id}')"
@@ -12733,11 +12733,11 @@ function supplyAbrirFormulario(editId = null) {
       <div style="padding:14px 24px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
         <button onclick="document.getElementById('modal-supply-form').remove()"
           style="font-family:inherit;font-size:12px;padding:8px 16px;background:#F4F6FA;color:#6B7A99;border:1px solid #DDE3EE;border-radius:7px;cursor:pointer;">Cancelar</button>
-        ${!editId ? `<button onclick="supplyGuardar(false)"
-          style="font-family:inherit;font-size:12px;padding:8px 16px;background:white;color:#19428C;border:1.5px solid #19428C;border-radius:7px;cursor:pointer;">💾 Guardar sin enviar</button>` : ''}
-        <button onclick="supplyGuardar(${!editId ? 'true' : 'undefined'})"
+        <button onclick="supplyGuardar(true)"
+          style="font-family:inherit;font-size:12px;padding:8px 16px;background:white;color:#19428C;border:1.5px solid #19428C;border-radius:7px;cursor:pointer;">💾 Guardar y notificar a Supply Chain</button>
+        <button onclick="supplyGuardar(false)"
           style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 20px;background:#19428C;color:white;border:none;border-radius:7px;cursor:pointer;">
-          ${editId ? 'Guardar cambios' : '📨 Crear y enviar a Johan'}
+          ${editId ? 'Guardar cambios' : '💾 Guardar'}
         </button>
       </div>
     </div>`;
@@ -12884,7 +12884,7 @@ async function supplyGuardar(enviarCorreo = true) {
         );
       }
       if (eraGestionada) {
-        // Notificar a Johan por correo si Gmail conectado
+        // Notificar a Supply Chain por correo si Gmail conectado
         if (typeof enviarCorreoGmail === 'function' && gcalToken) {
           await enviarCorreoGmail({
             para: 'Johan.gomez@satlock.com',
@@ -12893,7 +12893,7 @@ async function supplyGuardar(enviarCorreo = true) {
             cuerpo: `<div style="font-family:Arial;max-width:600px;"><div style="background:#E8A020;color:white;padding:14px 18px;border-radius:8px 8px 0 0;"><strong>⚠ Solicitud modificada después de gestionada</strong></div><div style="padding:14px 18px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;font-size:13px;"><p>La OSI <strong>${solAnterior.consecutivo}</strong> — ${solAnterior.nombre_cliente||''} fue editada por ${PERFIL.nombre||''} y ha vuelto a estado <strong>Pendiente</strong>.</p><p>Por favor revise los cambios y vuelva a gestionar la orden en el módulo Supply Chain.</p></div></div>`
           });
         }
-        showAlert('danger', 'La solicitud estaba Gestionada. Se devolvió a Pendiente — Johan será notificado para re-gestionar.');
+        showAlert('danger', 'La solicitud estaba Gestionada. Se devolvió a Pendiente — Supply Chain será notificado para re-gestionar.');
       } else {
         showAlert('success', 'Solicitud actualizada correctamente.');
       }
@@ -12901,7 +12901,7 @@ async function supplyGuardar(enviarCorreo = true) {
       // Nueva — obtener consecutivo
       const { data: consNum, error: consErr } = await sb.rpc('get_next_consecutivo_supply');
       if (consErr) throw consErr;
-      const consecutivo = String(consNum).padStart(4, '0');
+      const consecutivo = 'OS' + String(consNum).padStart(4, '0');
       payload.consecutivo = consecutivo;
       const { data: nueva, error } = await sb.from('solicitudes_supply').insert(payload).select().single();
       if (error) throw error;
@@ -12910,7 +12910,7 @@ async function supplyGuardar(enviarCorreo = true) {
           _supplyItems.map(it => ({ solicitud_id: nueva.id, item: it.item, descripcion: it.descripcion, cantidad: it.cantidad }))
         );
       }
-      // Enviar correo a Johan
+      // Notificar a Supply Chain
       if (enviarCorreo) {
         if (!gcalToken) {
           supplyAlertaGmailDesconectado(consecutivo);
@@ -12919,7 +12919,7 @@ async function supplyGuardar(enviarCorreo = true) {
           await enviarCorreoGmail({
             para: 'Johan.gomez@satlock.com',
             cc: USER.email||'',
-            asunto: `OSI ${consecutivo} — ${nombreCliente} | ${caracter}`,
+            asunto: `OSI ${consecutivo} — ${nombreCliente} | ${caracter} | Supply Chain`,
             cuerpo: `<div style="font-family:Arial,sans-serif;max-width:600px;">
               <div style="background:#19428C;color:white;padding:16px 20px;border-radius:8px 8px 0 0;">
                 <h2 style="margin:0;font-size:16px;">📦 Nueva Orden de Solicitud Interna</h2>
@@ -12939,10 +12939,10 @@ async function supplyGuardar(enviarCorreo = true) {
               </div>
             </div>`
           });
-          showAlert('success', `Solicitud ${consecutivo} creada y correo enviado a Johan.`);
+          showAlert('success', `Solicitud ${consecutivo} creada y notificación enviada a Supply Chain.`);
         }
       } else {
-        showAlert('success', `Solicitud ${consecutivo} guardada. Recuerda enviar el correo a Johan cuando conectes Gmail.`);
+        showAlert('success', `Solicitud ${consecutivo} guardada. Recuerda enviar el notificación a Supply Chain cuando conectes Gmail.`);
       }
     }
     document.getElementById('modal-supply-form')?.remove();
@@ -13095,7 +13095,7 @@ function supplyAlertaGmailDesconectado(consecutivo) {
           <div style="font-size:15px;font-weight:700;color:#7A5A0F;">Gmail no conectado</div>
         </div>
         <p style="font-size:13px;color:#555;margin:0 0 12px;">
-          La solicitud <strong>${consecutivo||''}</strong> fue guardada correctamente, pero el correo a Johan no se envió porque Gmail no está conectado.
+          La solicitud <strong>${consecutivo||''}</strong> fue guardada correctamente, pero el notificación a Supply Chain no se envió porque Gmail no está conectado.
         </p>
         <p style="font-size:13px;color:#555;margin:0;">
           Para enviar correos automáticos, conecta tu cuenta en la pestaña <strong>Agenda</strong> → botón <strong>Conectar Google Calendar</strong>. Luego abre la solicitud y usa el botón <strong>Enviar correo</strong>.
@@ -13142,11 +13142,11 @@ async function supplyEnviarCorreoDesdeVer(id) {
       </div>
     </div>`
   });
-  showAlert('success', `Correo enviado a Johan para la OSI ${s.consecutivo}.`);
+  showAlert('success', `Notificación enviada a Supply Chain para la OSI ${s.consecutivo}.`);
   document.getElementById('modal-supply-detalle')?.remove();
 }
 
-// ── Modal Registrar Guía (Johan, post-Gestionada) ──────────────────
+// ── Modal Registrar Guía (Supply Chain, post-Gestionada) ──────────────────
 function supplyAbrirGuia(id) {
   const s = _supplyData.find(x => x.id === id);
   if (!s) return;
