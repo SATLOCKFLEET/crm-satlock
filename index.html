@@ -12758,9 +12758,7 @@ function supplyBuscarItem(q) {
   const res = document.getElementById('sf-resultados-busqueda');
   if (!res) return;
   if (!q.trim()) { res.style.display='none'; return; }
-  const ql = q.toLowerCase();
-  const inv = supplyGetInventario();
-  const matches = inv.filter(i => (i.desc_item||'').toLowerCase().includes(ql)).slice(0, 15);
+  const matches = ProductosService.buscar(q).slice(0, 15);
   if (!matches.length) { res.style.display='none'; return; }
   res.style.display = 'block';
   res.innerHTML = matches.map(i => {
