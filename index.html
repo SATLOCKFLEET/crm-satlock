@@ -12081,9 +12081,9 @@ let _supplySubtab    = 'solicitudes'; // 'solicitudes' | 'gestion' | 'indicadore
 let _supplyItems     = [];            // ítems del formulario activo
 let _supplyEditId    = null;          // UUID de solicitud en edición
 
-// ── Catálogo de productos (reutiliza el inventario del CRM) ──────────
+// ── Catálogo de productos (reutiliza ProductosService del CRM) ───────
 function supplyGetInventario() {
-  return typeof INVENTARIO !== 'undefined' ? INVENTARIO : [];
+  return typeof ProductosService !== 'undefined' ? ProductosService.getAll() : [];
 }
 
 // ── Render principal ─────────────────────────────────────────────────
@@ -12593,7 +12593,10 @@ function supplyAbrirFormulario(editId = null) {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
           <div>
             <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">NIT</label>
-            <input id="sf-nit" class="finput" type="text" value="${s?.nit||''}" style="width:100%;font-size:13px;padding:8px 10px;">
+            <input id="sf-nit" class="finput" type="text" value="${s?.nit||''}"
+              oninput="supplyBuscarPorNIT(this.value)"
+              style="width:100%;font-size:13px;padding:8px 10px;">
+            <div id="sf-nit-sugerencia" style="display:none;font-size:11px;color:#1B7A4A;margin-top:3px;padding:4px 8px;background:#E1F5EE;border-radius:5px;cursor:pointer;"></div>
           </div>
           <div>
             <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Nombre cliente <span style="color:#A32D2D">*</span></label>
@@ -12712,6 +12715,31 @@ function supplyAbrirFormulario(editId = null) {
   document.body.appendChild(m);
 }
 
+async function supplyBuscarPorNIT(nit) {
+  const sug = document.getElementById('sf-nit-sugerencia');
+  if (!sug) return;
+  if (!nit || nit.length < 5) { sug.style.display = 'none'; return; }
+  // Buscar en oportunidades
+  const { data } = await sb.from('oportunidades')
+    .select('empresa, nit, ciudad')
+    .eq('nit', nit)
+    .limit(1)
+    .maybeSingle();
+  if (data) {
+    sug.style.display = 'block';
+    sug.textContent = `✓ Encontrado: ${data.empresa}${data.ciudad ? ' — '+data.ciudad : ''} — Clic para autocompletar`;
+    sug.onclick = () => {
+      const inp = document.getElementById('sf-nombre-cliente');
+      const dir = document.getElementById('sf-dir-cliente');
+      if (inp) inp.value = data.empresa;
+      if (dir && data.ciudad) dir.value = data.ciudad;
+      sug.style.display = 'none';
+    };
+  } else {
+    sug.style.display = 'none';
+  }
+}
+
 function supplyToggleEnvio(show) {
   const el = document.getElementById('sf-envio-detalle');
   if (el) el.style.display = show ? 'block' : 'none';
@@ -12732,18 +12760,20 @@ function supplyBuscarItem(q) {
   if (!q.trim()) { res.style.display='none'; return; }
   const ql = q.toLowerCase();
   const inv = supplyGetInventario();
-  const matches = inv.filter(i => i.DESC_ITEM?.toLowerCase().includes(ql)).slice(0, 15);
+  const matches = inv.filter(i => (i.desc_item||'').toLowerCase().includes(ql)).slice(0, 15);
   if (!matches.length) { res.style.display='none'; return; }
   res.style.display = 'block';
-  res.innerHTML = matches.map(i => `
-    <div onclick="supplyAgregarItem('${i.ITEM}','${i.DESC_ITEM?.replace(/'/g,"\'")||i.ITEM}')"
+  res.innerHTML = matches.map(i => {
+    const desc = i.desc_item || '';
+    const item = i.item || '';
+    return `<div onclick="supplyAgregarItem('${item.replace(/'/g,"\'")}','${desc.replace(/'/g,"\'")}')"
       style="padding:8px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #EEF1F8;display:flex;justify-content:space-between;"
       onmouseover="this.style.background='#E8EEF8'" onmouseout="this.style.background='white'">
-      <span>${i.DESC_ITEM||i.ITEM}</span>
-      <span style="color:#9AAABF;font-size:11px;">${i.ITEM}</span>
-    </div>`).join('');
+      <span>${desc}</span>
+      <span style="color:#9AAABF;font-size:11px;">${item}</span>
+    </div>`;
+  }).join('');
 }
-
 function supplyAgregarItem(item, descripcion) {
   _supplyItems.push({ item, descripcion, cantidad: 1 });
   const res = document.getElementById('sf-resultados-busqueda');
