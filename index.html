@@ -12328,7 +12328,7 @@ function supplyRenderGestion() {
       <div style="display:flex;gap:6px;">
         <button onclick="supplyVerDetalle('${s.id}')"
           style="font-family:inherit;font-size:11px;padding:5px 12px;background:#E8EEF8;color:#19428C;border:1px solid #B5D4F4;border-radius:6px;cursor:pointer;">Ver detalle</button>
-        ${PERFIL.rol === 'supply_chain' ? `
+        ${['supply_chain','jefe_fleet','alta_gerencia','gerencia'].includes(PERFIL.rol) ? `
         <button onclick="supplyMarcarEnProceso('${s.id}')"
           style="font-family:inherit;font-size:11px;padding:5px 12px;background:#FDF6E3;color:#7A5A0F;border:1px solid #E8C96B;border-radius:6px;cursor:pointer;">En proceso</button>
         <button onclick="supplyMarcarGestionada('${s.id}')"
@@ -12558,12 +12558,12 @@ function supplyVerDetalle(id) {
           style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">Excel</button>
         <button onclick="supplyExportarPDF('${s.id}')"
           style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#C0392B;color:white;border:none;border-radius:7px;cursor:pointer;">PDF</button>
-        ${PERFIL.rol === "supply_chain" && s.estado !== "Gestionada" ? `
+        ${["supply_chain","jefe_fleet","alta_gerencia","gerencia"].includes(PERFIL.rol) && s.estado !== "Gestionada" ? `
         <button onclick="supplyMarcarEnProceso('${s.id}');document.getElementById('modal-supply-detalle').remove();"
           style="font-family:inherit;font-size:12px;padding:8px 16px;background:#FDF6E3;color:#7A5A0F;border:1px solid #E8C96B;border-radius:7px;cursor:pointer;">En proceso</button>
         <button onclick="supplyMarcarGestionada('${s.id}');document.getElementById('modal-supply-detalle').remove();"
           style="font-family:inherit;font-size:12px;font-weight:700;padding:8px 16px;background:#19428C;color:white;border:none;border-radius:7px;cursor:pointer;">✓ Marcar gestionada</button>` : ""}
-        ${PERFIL.rol === "supply_chain" && s.estado === "Gestionada" ? `
+        ${["supply_chain","jefe_fleet","alta_gerencia","gerencia"].includes(PERFIL.rol) && s.estado === "Gestionada" ? `
         <button onclick="supplyAbrirGuia('${s.id}')"
           style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#534AB7;color:white;border:none;border-radius:7px;cursor:pointer;">📦 Registrar guía</button>` : ""}
       </div>
