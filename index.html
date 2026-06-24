@@ -12551,13 +12551,21 @@ function supplyVerDetalle(id) {
 
         ${s.gestionada_por ? `<div style="background:#E1F5EE;border-radius:8px;padding:10px 14px;font-size:12px;color:#1B7A4A;"><strong>Gestionada por:</strong> ${s.gestionada_por} — ${s.gestionada_at ? new Date(s.gestionada_at).toLocaleString('es-CO') : '—'}</div>` : ''}
       </div>
-      <div style="padding:14px 24px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;">
+      <div style="padding:14px 24px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
         <button onclick="document.getElementById('modal-supply-detalle').remove()"
           style="font-family:inherit;font-size:12px;padding:8px 16px;background:#F4F6FA;color:#6B7A99;border:1px solid #DDE3EE;border-radius:7px;cursor:pointer;">Cerrar</button>
         <button onclick="supplyExportarExcel('${s.id}')"
           style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#1D6F42;color:white;border:none;border-radius:7px;cursor:pointer;">Excel</button>
         <button onclick="supplyExportarPDF('${s.id}')"
           style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#C0392B;color:white;border:none;border-radius:7px;cursor:pointer;">PDF</button>
+        ${PERFIL.rol === "supply_chain" && s.estado !== "Gestionada" ? `
+        <button onclick="supplyMarcarEnProceso('${s.id}');document.getElementById('modal-supply-detalle').remove();"
+          style="font-family:inherit;font-size:12px;padding:8px 16px;background:#FDF6E3;color:#7A5A0F;border:1px solid #E8C96B;border-radius:7px;cursor:pointer;">En proceso</button>
+        <button onclick="supplyMarcarGestionada('${s.id}');document.getElementById('modal-supply-detalle').remove();"
+          style="font-family:inherit;font-size:12px;font-weight:700;padding:8px 16px;background:#19428C;color:white;border:none;border-radius:7px;cursor:pointer;">✓ Marcar gestionada</button>` : ""}
+        ${PERFIL.rol === "supply_chain" && s.estado === "Gestionada" ? `
+        <button onclick="supplyAbrirGuia('${s.id}')"
+          style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#534AB7;color:white;border:none;border-radius:7px;cursor:pointer;">📦 Registrar guía</button>` : ""}
       </div>
     </div>`;
   document.body.appendChild(m);
@@ -12719,20 +12727,15 @@ async function supplyBuscarPorNIT(nit) {
   const sug = document.getElementById('sf-nit-sugerencia');
   if (!sug) return;
   if (!nit || nit.length < 5) { sug.style.display = 'none'; return; }
-  // Buscar en oportunidades
-  const { data } = await sb.from('oportunidades')
-    .select('empresa, nit, ciudad')
-    .eq('nit', nit)
-    .limit(1)
-    .maybeSingle();
-  if (data) {
+  const resultado = await ClientesCRM.buscarPorNIT(nit);
+  if (resultado) {
     sug.style.display = 'block';
-    sug.textContent = `✓ Encontrado: ${data.empresa}${data.ciudad ? ' — '+data.ciudad : ''} — Clic para autocompletar`;
+    sug.textContent = `✓ Encontrado: ${resultado.empresa}${resultado.ciudad ? ' — '+resultado.ciudad : ''} — Clic para autocompletar`;
     sug.onclick = () => {
-      const inp = document.getElementById('sf-nombre-cliente');
-      const dir = document.getElementById('sf-dir-cliente');
-      if (inp) inp.value = data.empresa;
-      if (dir && data.ciudad) dir.value = data.ciudad;
+      const f = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+      f('sf-nombre-cliente', resultado.empresa);
+      f('sf-dir-cliente',    resultado.ciudad);
+      f('sf-email-cliente',  resultado.correo);
       sug.style.display = 'none';
     };
   } else {
@@ -12842,7 +12845,14 @@ async function supplyGuardar() {
 
   try {
     if (_supplyEditId) {
-      // Editar
+      // Si estaba Gestionada, volver a Pendiente y alertar
+      const solAnterior = _supplyData.find(x => x.id === _supplyEditId);
+      const eraGestionada = solAnterior?.estado === 'Gestionada';
+      if (eraGestionada) {
+        payload.estado = 'Pendiente';
+        payload.gestionada_por = null;
+        payload.gestionada_at  = null;
+      }
       const { error } = await sb.from('solicitudes_supply').update(payload).eq('id', _supplyEditId);
       if (error) throw error;
       // Actualizar detalle
@@ -12852,7 +12862,20 @@ async function supplyGuardar() {
           _supplyItems.map(it => ({ solicitud_id: _supplyEditId, item: it.item, descripcion: it.descripcion, cantidad: it.cantidad }))
         );
       }
-      showAlert('success', 'Solicitud actualizada correctamente.');
+      if (eraGestionada) {
+        // Notificar a Johan por correo si Gmail conectado
+        if (typeof enviarCorreoGmail === 'function' && gcalToken) {
+          await enviarCorreoGmail({
+            para: 'Johan.gomez@satlock.com',
+            cc: USER.email||'',
+            asunto: `⚠ OSI ${solAnterior.consecutivo} fue modificada — requiere nueva gestión`,
+            cuerpo: `<div style="font-family:Arial;max-width:600px;"><div style="background:#E8A020;color:white;padding:14px 18px;border-radius:8px 8px 0 0;"><strong>⚠ Solicitud modificada después de gestionada</strong></div><div style="padding:14px 18px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;font-size:13px;"><p>La OSI <strong>${solAnterior.consecutivo}</strong> — ${solAnterior.nombre_cliente||''} fue editada por ${PERFIL.nombre||''} y ha vuelto a estado <strong>Pendiente</strong>.</p><p>Por favor revise los cambios y vuelva a gestionar la orden en el módulo Supply Chain.</p></div></div>`
+          });
+        }
+        showAlert('danger', 'La solicitud estaba Gestionada. Se devolvió a Pendiente — Johan será notificado para re-gestionar.');
+      } else {
+        showAlert('success', 'Solicitud actualizada correctamente.');
+      }
     } else {
       // Nueva — obtener consecutivo
       const { data: consNum, error: consErr } = await sb.rpc('get_next_consecutivo_supply');
@@ -12996,12 +13019,13 @@ function supplyExportarPDF(id) {
   doc.setFont('helvetica','bold');
   doc.text('2. ESPECIFICACIONES TÉCNICAS', 14, y); y += 6;
   doc.autoTable({
-    head: [['Cantidad','Ítem','Descripción']],
+    head: [['Cant.','Ítem','Descripción']],
     body: (s.solicitudes_supply_detalle||[]).map(d => [d.cantidad, d.item, d.descripcion]),
     startY: y, margin:{left:14,right:14},
-    columnStyles:{0:{cellWidth:20,halign:'right'},1:{cellWidth:25},2:{cellWidth:147}},
+    columnStyles:{0:{cellWidth:15,halign:'right'},1:{cellWidth:22},2:{cellWidth:155}},
     styles:{fontSize:9},
     headStyles:{fillColor:[25,66,140],textColor:255},
+    tableWidth: 192,
   });
   y = doc.lastAutoTable.finalY + 8;
 
@@ -13029,6 +13053,60 @@ function supplyExportarPDF(id) {
   const fecha = s.fecha?.replace(/-/g,'') || '';
   const cliente = (s.nombre_cliente||'cliente').replace(/[^a-zA-Z0-9]/g,'_').slice(0,30);
   doc.save(`${s.consecutivo}_${cliente}_${fecha}.pdf`);
+}
+
+// ── Modal Registrar Guía (Johan, post-Gestionada) ──────────────────
+function supplyAbrirGuia(id) {
+  const s = _supplyData.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('modal-supply-detalle')?.remove();
+  const m = document.createElement('div');
+  m.id = 'modal-supply-guia';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  m.innerHTML = `
+    <div style="background:white;border-radius:12px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2);">
+      <div style="padding:18px 22px;border-bottom:1px solid #EEF1F8;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:15px;font-weight:700;color:#19428C;">📦 Registrar guía — ${s.consecutivo}</div>
+        <button onclick="document.getElementById('modal-supply-guia').remove()"
+          style="background:none;border:none;font-size:20px;cursor:pointer;color:#9AAABF;">✕</button>
+      </div>
+      <div style="padding:18px 22px;">
+        <div style="margin-bottom:12px;">
+          <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Número de guía</label>
+          <input id="sg-num-guia" class="finput" type="text" value="${s.numero_guia||''}"
+            placeholder="Ej: 123456789"
+            style="width:100%;font-size:13px;padding:8px 10px;">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Empresa transportadora</label>
+          <input id="sg-empresa-transp" class="finput" type="text" value="${s.empresa_transportadora||''}"
+            placeholder="Ej: Servientrega, Coordinadora, TCC..."
+            style="width:100%;font-size:13px;padding:8px 10px;">
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid #EEF1F8;display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="document.getElementById('modal-supply-guia').remove()"
+          style="font-family:inherit;font-size:12px;padding:8px 16px;background:#F4F6FA;color:#6B7A99;border:1px solid #DDE3EE;border-radius:7px;cursor:pointer;">Cancelar</button>
+        <button onclick="supplyGuardarGuia('${s.id}')"
+          style="font-family:inherit;font-size:12px;font-weight:700;padding:8px 18px;background:#534AB7;color:white;border:none;border-radius:7px;cursor:pointer;">Guardar guía</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+}
+
+async function supplyGuardarGuia(id) {
+  const numGuia   = document.getElementById('sg-num-guia')?.value.trim();
+  const empresaTr = document.getElementById('sg-empresa-transp')?.value.trim();
+  const { error } = await sb.from('solicitudes_supply').update({
+    numero_guia:           numGuia   || null,
+    empresa_transportadora: empresaTr || null,
+  }).eq('id', id);
+  if (error) { showAlert('danger', 'Error: ' + error.message); return; }
+  const s = _supplyData.find(x => x.id === id);
+  if (s) { s.numero_guia = numGuia; s.empresa_transportadora = empresaTr; }
+  document.getElementById('modal-supply-guia')?.remove();
+  showAlert('success', 'Guía registrada correctamente.');
+  supplySwitchTab(_supplySubtab);
 }
 
 // ── Exportar indicadores ─────────────────────────────────────────────
