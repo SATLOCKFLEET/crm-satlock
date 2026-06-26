@@ -9739,9 +9739,20 @@ function pfac_buscarOrdenes(query) {
     return;
   }
 
+  // Agrupar por solicitud_id+cuota_num igual que pfac_renderOrdenesDia
+  const gruposMapB = {};
+  resultados.forEach(o => {
+    const key = (o.solicitud_id || o.empresa) + '|' + o.cuota_num;
+    if (!gruposMapB[key]) gruposMapB[key] = { ...o, _items: [], _totalOrden: 0 };
+    gruposMapB[key]._items.push({ item: o.item, descripcion: o.descripcion, modalidad: o.modalidad, cantidad: o.cantidad, valor_unitario: o.valor_unitario, total: o.total });
+    gruposMapB[key]._totalOrden += (parseFloat(o.total) || (o.cantidad * o.valor_unitario) || 0);
+    gruposMapB[key].total = gruposMapB[key]._totalOrden;
+  });
+  const resultadosAgrupados = Object.values(gruposMapB);
+
   // Agrupar por fecha para dar contexto visual
   const porFecha = {};
-  resultados.forEach(o => {
+  resultadosAgrupados.forEach(o => {
     if (!porFecha[o.fecha_factura]) porFecha[o.fecha_factura] = [];
     porFecha[o.fecha_factura].push(o);
   });
