@@ -9804,7 +9804,7 @@ function pfac_buscarOrdenes(query) {
               </div>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:18px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatCOP(o.valor_unitario)}</div>
+              <div style="font-size:18px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatCOP(o.total || (o.cantidad * o.valor_unitario))}</div>
             </div>
           </div>
         </div>`;
