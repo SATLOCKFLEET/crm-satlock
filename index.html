@@ -9505,8 +9505,9 @@ function pfac_renderOrdenesDia(iso) {
       gruposMap[key] = { ...o, _items: [] };
     }
     gruposMap[key]._items.push({ item: o.item, descripcion: o.descripcion, modalidad: o.modalidad, cantidad: o.cantidad, valor_unitario: o.valor_unitario, total: o.total });
-    // Sumar totales
-    gruposMap[key].total = (gruposMap[key]._items || []).reduce((s, i) => s + (parseFloat(i.total)||0), 0);
+    // Sumar totales — acumular correctamente
+    gruposMap[key]._totalOrden = (gruposMap[key]._totalOrden || 0) + (parseFloat(o.total) || (o.cantidad * o.valor_unitario) || 0);
+    gruposMap[key].total = gruposMap[key]._totalOrden;
   });
   // Usar el primer registro de cada grupo como representante, con _items agregado
   filtradas = Object.values(gruposMap);
@@ -9680,7 +9681,7 @@ function pfac_renderOrdenesDia(iso) {
             </div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:20px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatCOP(o.valor_unitario)}</div>
+            <div style="font-size:20px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatCOP(o.total || (o.cantidad * o.valor_unitario))}</div>
             <div style="font-size:11px;color:#9AAABF;margin-top:2px;">Total orden</div>
           </div>
         </div>
