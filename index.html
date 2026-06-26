@@ -9705,7 +9705,7 @@ function pfac_buscarOrdenes(query) {
   if (count) count.textContent = `${resultados.length} orden(es) encontrada(s)`;
 
   // Renderizar usando la misma lógica de tarjetas pero con los resultados filtrados
-  const container = containerEl;
+  const container = document.getElementById('pfac-ordenes-container');
   if (!container) return;
 
   if (resultados.length === 0) {
