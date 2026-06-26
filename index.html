@@ -9497,6 +9497,20 @@ function pfac_renderOrdenesDia(iso) {
   let filtradas = pfac_ordenes.filter(o => o.fecha_factura === iso);
   if (pfac_filtroModalidad !== 'Todos') filtradas = filtradas.filter(o => o.modalidad === pfac_filtroModalidad);
 
+  // Agrupar por solicitud_id+cuota_num — varias filas del mismo cliente/cuota → una sola tarjeta
+  const gruposMap = {};
+  filtradas.forEach(o => {
+    const key = (o.solicitud_id || o.empresa) + '|' + o.cuota_num;
+    if (!gruposMap[key]) {
+      gruposMap[key] = { ...o, _items: [] };
+    }
+    gruposMap[key]._items.push({ item: o.item, descripcion: o.descripcion, modalidad: o.modalidad, cantidad: o.cantidad, valor_unitario: o.valor_unitario, total: o.total });
+    // Sumar totales
+    gruposMap[key].total = (gruposMap[key]._items || []).reduce((s, i) => s + (parseFloat(i.total)||0), 0);
+  });
+  // Usar el primer registro de cada grupo como representante, con _items agregado
+  filtradas = Object.values(gruposMap);
+
   const pending = filtradas.filter(o => o.estado === 'Pendiente').length;
   titleEl.textContent = label.charAt(0).toUpperCase() + label.slice(1);
   countEl.textContent = filtradas.length === 0
@@ -9558,7 +9572,10 @@ function pfac_renderOrdenesDia(iso) {
     // Detalle de ítems (acordeón)
     let tablaDetalle = '';
     try {
-      const items = o.items_detalle ? (typeof o.items_detalle === 'string' ? JSON.parse(o.items_detalle) : o.items_detalle) : [];
+      // _items viene del agrupador (múltiples filas BD); items_detalle viene del JSON guardado
+      const items = o._items && o._items.length > 0 ? o._items
+                  : o.items_detalle ? (typeof o.items_detalle === 'string' ? JSON.parse(o.items_detalle) : o.items_detalle)
+                  : [];
       if (items.length > 0) {
         const filas = items.map(i => {
           const colMod = i.modalidad === 'Recurrente' ? '#0F6E56'
@@ -9567,6 +9584,7 @@ function pfac_renderOrdenesDia(iso) {
           const bgMod  = i.modalidad === 'Recurrente' ? '#E1F5EE'
                        : i.modalidad === 'Comodato'   ? '#FDF6E3'
                        : '#E8EEF8';
+          const subtotal = i.subtotal || i.total || (i.cantidad * i.valor_unitario) || 0;
           return `<tr style="border-bottom:1px solid #EEF1F8;">
             <td style="padding:5px 8px;font-weight:600;font-size:12px;">${i.item}</td>
             <td style="padding:5px 8px;font-size:12px;color:#3d5080;">${i.descripcion}</td>
@@ -9577,7 +9595,7 @@ function pfac_renderOrdenesDia(iso) {
             </td>
             <td style="padding:5px 8px;text-align:right;font-size:12px;">${i.cantidad}</td>
             <td style="padding:5px 8px;text-align:right;font-size:12px;">${formatCOP(i.valor_unitario)}</td>
-            <td style="padding:5px 8px;text-align:right;font-size:12px;font-weight:700;color:#19428C;">${formatCOP(i.subtotal)}</td>
+            <td style="padding:5px 8px;text-align:right;font-size:12px;font-weight:700;color:#19428C;">${formatCOP(subtotal)}</td>
           </tr>`;
         }).join('');
         tablaDetalle = `
