@@ -9094,12 +9094,20 @@ function _facUnifRenderHistorialEstado(container) {
 }
 
 function _facUnifRenderIndicadores(container) {
-  renderPortalFacturacion(container);
-  // Después de renderizar, activar la pestaña indicadores automáticamente
-  setTimeout(() => {
-    const btn = container.querySelector('[onclick*="indicadores"]');
-    if (btn) btn.click();
-  }, 300);
+  // Renderizar indicadores directamente sin el sidebar de la agenda
+  container.innerHTML = `
+    <div id="pfac-ppanel-indicadores" style="display:block;"></div>`;
+  // Necesitamos pfac_ordenes cargadas — si no están, cargar el portal completo primero
+  if (!pfac_ordenes || pfac_ordenes.length === 0) {
+    container.innerHTML = '<div class="loading">Cargando indicadores...</div>';
+    renderPortalFacturacion(container);
+    setTimeout(() => {
+      const btn = container.querySelector('[onclick*="indicadores"]');
+      if (btn) btn.click();
+    }, 500);
+  } else {
+    pfac_renderIndicadores();
+  }
 }
 
 
