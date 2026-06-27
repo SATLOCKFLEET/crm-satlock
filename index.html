@@ -1396,8 +1396,9 @@ function iniciarApp(){
 
   const tabs = construirTabs();
   const nav = document.getElementById('nav-tabs');
-  nav.innerHTML = tabs.map((t,i)=>`<button class="nav-tab${i===0?' active':''}" onclick="switchTab(${i})" data-idx="${i}">${t.label}</button>`).join('');
-  renderTab(0,tabs);
+  nav.innerHTML = tabs.map((t,i)=>`<button class="nav-tab" onclick="switchTab(${i})" data-idx="${i}">${t.label}</button>`).join('');
+  // Mostrar home con tarjetas en lugar de primera pestaña
+  renderHome();
 }
 
 function construirTabs(){
@@ -1452,8 +1453,13 @@ function construirTabs(){
 let TABS = [];
 function switchTab(idx){
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  document.querySelector(`.nav-tab[data-idx="${idx}"]`).classList.add('active');
+  document.querySelector(`.nav-tab[data-idx="${idx}"]`)?.classList.add('active');
   renderTab(idx, construirTabs());
+}
+
+function irHome(){
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  renderHome();
 }
 function renderTab(idx,tabs){
   TABS = tabs;
