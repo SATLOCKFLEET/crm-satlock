@@ -9093,7 +9093,14 @@ function facUnifSwitch(tabId) {
     }, 150);
   }
   else if (tabId === 'historial') { _facUnifRenderHistorialEstado(content); }
-  else if (tabId === 'agenda')    { renderPortalFacturacion(content); }
+  else if (tabId === 'agenda') {
+    renderPortalFacturacion(content);
+    setTimeout(() => {
+      // Ocultar la pestaña interna "Indicadores" — ya existe como subpestaña separada
+      const btnInd = document.getElementById('pfac-ptab-indicadores');
+      if (btnInd) btnInd.style.display = 'none';
+    }, 250);
+  }
   else if (tabId === 'traslados') { renderTraslados(content); }
   else if (tabId === 'indicadores') { _facUnifRenderIndicadores(content); }
 }
