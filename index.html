@@ -578,7 +578,8 @@ tbody tr:hover{background:var(--surface2)}
 #fac-root .badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; letter-spacing:0.3px; text-transform:uppercase; white-space:nowrap; }
 #fac-root .badge-pendiente { background:var(--fac-warning-bg); color:var(--fac-warning); border:1px solid #E8D080; }
 #fac-root .badge-enviada   { background:var(--fac-info-bg);    color:var(--fac-info);    border:1px solid #85B7EB; }
-#fac-root .badge-facturada { background:var(--fac-success-bg); color:var(--fac-success); border:1px solid #9FE1CB; }
+#fac-root .badge-facturada  { background:var(--fac-success-bg); color:var(--fac-success); border:1px solid #9FE1CB; }
+#fac-root .badge-completada { background:#E8EEF8; color:#19428C; border:1px solid #B5D4F4; }
 #fac-root .badge-rechazada { background:var(--fac-danger-bg);  color:var(--fac-danger);  border:1px solid #F09595; }
 
 /* ─── METRICS ─────────────────────────────────────────── */
@@ -8397,7 +8398,7 @@ function verDetalle(consecutivo) {
   // ── Encabezado ─────────────────────────────────────
   document.getElementById('det-consecutivo').textContent = `N° ${s.consecutivo}`;
 
-  const badgeClase = { Pendiente:'badge-pendiente', Enviada:'badge-enviada', Facturada:'badge-facturada', Rechazada:'badge-rechazada' }[s.estado] || 'badge-pendiente';
+  const badgeClase = s.estado.startsWith('Facturada ') ? 'badge-facturada' : s.estado === 'Completada' ? 'badge-completada' : ({ Pendiente:'badge-pendiente', Enviada:'badge-enviada', Rechazada:'badge-rechazada' }[s.estado] || 'badge-pendiente');
   document.getElementById('det-badge-estado').innerHTML = `<span class="badge ${badgeClase}">${s.estado}</span>`;
 
   // ── Datos generales ─────────────────────────────────
@@ -8628,7 +8629,7 @@ function renderEstado() {
       <td>${s.ejecutivo.split(' ').slice(0,2).join(' ')}</td>
       <td>${s.fecha}</td>
       <td style="text-align:right;font-weight:600">${formatCOP(s.total_general)}</td>
-      <td><span class="badge badge-${s.estado.toLowerCase()}">${s.estado}</span></td>
+      <td><span class="badge ${s.estado.startsWith('Facturada ') ? 'badge-facturada' : s.estado === 'Completada' ? 'badge-completada' : 'badge-'+s.estado.toLowerCase()}">${s.estado}</span></td>
       <td style="color:var(--text-muted);font-size:12px">${s.updated_at}</td>
     </tr>
   `).join('');
@@ -10125,12 +10126,25 @@ async function pfac_confirmarNumFactura() {
     o.facturada_at  = new Date().toISOString();
     o.facturada_por = PERFIL?.nombre || '';
 
-    // Actualizar estado de la solicitud si todas sus órdenes están facturadas u omitidas
+    // Calcular estado dinámico con mes de la cuota facturada
+    const mesesES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    const fechaCuota = o.fecha_factura ? new Date(o.fecha_factura + 'T12:00:00') : new Date();
+    const mesLabel   = mesesES[fechaCuota.getMonth()];
+    const anoLabel   = fechaCuota.getFullYear();
+    const estadoNuevo = `Facturada ${mesLabel} ${anoLabel}`;
+
+    // Verificar si todas las cuotas están cerradas → Completada
     const ordensDeSolicitud = pfac_ordenes.filter(x => x.solicitud_id === o.solicitud_id);
     const todasCerradas = ordensDeSolicitud.every(x => x.estado === 'Facturada' || x.estado === 'Omitida' || x.id === o.id);
-    if (todasCerradas) {
-      await sb.from('solicitudes_facturacion').update({ estado: 'Facturada' }).eq('consecutivo', o.solicitud_id);
-    }
+    const estadoFinal = todasCerradas ? 'Completada' : estadoNuevo;
+
+    await sb.from('solicitudes_facturacion')
+      .update({ estado: estadoFinal })
+      .eq('consecutivo', o.solicitud_id);
+
+    // Actualizar en memoria
+    const solIdx = solicitudes.findIndex(s => s.consecutivo === o.solicitud_id);
+    if (solIdx > -1) solicitudes[solIdx].estado = estadoFinal;
 
     pfac_cerrarModalNumFactura();
     pfac_renderOrdenesDia(pfac_fechaSeleccionada);
