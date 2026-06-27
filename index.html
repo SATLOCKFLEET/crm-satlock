@@ -8313,7 +8313,7 @@ function filtrarHistorial() {
 
   const filtradas = solicitudes.filter(s => {
     const matchTexto = !texto || s.empresa.toLowerCase().includes(texto) || s.nit.includes(texto);
-    const matchEstado = !estado || s.estado === estado;
+    const matchEstado = !estado || s.estado === estado || (estado === 'Facturada ' && s.estado.startsWith('Facturada '));
     const matchLinea = !linea || s.linea === linea;
     return matchTexto && matchEstado && matchLinea;
   });
@@ -9108,18 +9108,44 @@ function facUnifSwitch(tabId) {
 function _facUnifRenderHistorialEstado(container) {
   renderFacturacion(container);
   setTimeout(() => {
-    // Ocultar barra de tabs interna
+    // Ocultar barra de tabs interna y panel nueva solicitud
     const tabBar = document.getElementById('fac-tabs-bar');
     if (tabBar) tabBar.style.display = 'none';
-    // Ocultar panel nueva solicitud
     const pNueva = document.getElementById('fac-panel-nueva');
     if (pNueva) pNueva.style.display = 'none';
-    // Mostrar historial
-    const pHist = document.getElementById('fac-panel-historial');
-    if (pHist) { pHist.style.display = 'block'; renderHistorial(); }
-    // Mostrar estado (métricas)
+
+    // Ocultar panel estado (tabla duplicada) — solo usamos sus métricas
     const pEst = document.getElementById('fac-panel-estado');
-    if (pEst) { pEst.style.display = 'block'; renderEstado(); }
+    if (pEst) pEst.style.display = 'none';
+
+    // Mostrar historial con métricas integradas encima
+    const pHist = document.getElementById('fac-panel-historial');
+    if (pHist) {
+      pHist.style.display = 'block';
+      // Inyectar métricas antes del card del historial
+      const metricas = `
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px;">
+          <div class="metric-card"><div class="metric-label">Total</div><div class="metric-value" id="metricTotal">0</div></div>
+          <div class="metric-card warning"><div class="metric-label">Pendientes</div><div class="metric-value" id="metricPendiente">0</div></div>
+          <div class="metric-card orange"><div class="metric-label">Enviadas</div><div class="metric-value" id="metricEnviada">0</div></div>
+          <div class="metric-card success"><div class="metric-label">Facturadas</div><div class="metric-value" id="metricFacturada">0</div></div>
+          <div class="metric-card"><div class="metric-label">Completadas</div><div class="metric-value" id="metricCompletada">0</div></div>
+        </div>`;
+      pHist.innerHTML = metricas + pHist.innerHTML;
+      // Agregar columna Actualización al header del historial
+      const thead = pHist.querySelector('thead tr');
+      if (thead && !thead.querySelector('th[data-unif]')) {
+        const th = document.createElement('th');
+        th.setAttribute('data-unif','1');
+        th.textContent = 'Actualización';
+        th.style.cssText = 'font-size:11px;color:#6B7A99;';
+        // Insert before Acciones
+        const ths = thead.querySelectorAll('th');
+        thead.insertBefore(th, ths[ths.length-1]);
+      }
+      renderHistorial();
+      renderEstado(); // actualiza los contadores de las métricas
+    }
   }, 150);
 }
 
@@ -9408,7 +9434,8 @@ function inicializarModuloFacturacion(){
           <option value="">Todos los estados</option>
           <option value="Pendiente">Pendiente</option>
           <option value="Enviada">Enviada</option>
-          <option value="Facturada">Facturada</option>
+          <option value="Facturada ">Facturada (mes)</option>
+          <option value="Completada">Completada</option>
           <option value="Rechazada">Rechazada</option>
         </select>
         <select id="filtroLinea" onchange="filtrarHistorial()" style="padding:7px 11px;font-size:13px;border:1px solid var(--border);border-radius:8px;font-family:inherit;">
