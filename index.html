@@ -9897,17 +9897,27 @@ function pfac_exportarIndicadoresExcel() {
 
   // ── Hoja 2: Facturas emitidas ─────────────────────────────────────────────
   const headFac = ['N° Factura','Fecha factura','Fecha emisión','Empresa','NIT','Contacto',
-                   'Teléfono','Email','Ciudad','Modalidad','Ejecutivo','Facturada por','Valor'];
+                   'Teléfono','Email','Ciudad','Productos','Modalidad','Ejecutivo','Facturada por','Valor'];
   const rowsFac = [...facturadas].sort((a,b)=>(b.facturada_at||'').localeCompare(a.facturada_at||''))
-    .map(o => [
-      o.num_factura||'—',
-      o.fecha_factura,
-      o.facturada_at ? new Date(o.facturada_at).toLocaleDateString('es-CO') : '—',
-      o.empresa, o.nit,
-      o.contacto||'—', o.telefono||'—', o.email_facturacion||'—', o.ciudad||'—',
-      o.modalidad, o.ejecutivo, o.facturada_por||'—',
-      o.valor_unitario,
-    ]);
+    .map(o => {
+      // Construir resumen de productos desde items_detalle
+      const detalle = o.items_detalle
+        ? (typeof o.items_detalle==='string' ? JSON.parse(o.items_detalle) : o.items_detalle)
+        : null;
+      const productos = detalle && detalle.length > 0
+        ? detalle.map(i => `${i.item} ${i.descripcion} x${i.cantidad}`).join(' | ')
+        : (o.descripcion||'—');
+      return [
+        o.num_factura||'—',
+        o.fecha_factura,
+        o.facturada_at ? new Date(o.facturada_at).toLocaleDateString('es-CO') : '—',
+        o.empresa, o.nit,
+        o.contacto||'—', o.telefono||'—', o.email_facturacion||'—', o.ciudad||'—',
+        productos,
+        o.modalidad, o.ejecutivo, o.facturada_por||'—',
+        o.valor_unitario,
+      ];
+    });
   const ws2 = XLSX.utils.aoa_to_sheet([headFac, ...rowsFac]);
   ws2['!cols'] = [{wch:14},{wch:14},{wch:14},{wch:30},{wch:12},{wch:20},{wch:14},{wch:28},{wch:16},{wch:12},{wch:28},{wch:20},{wch:16}];
   XLSX.utils.book_append_sheet(wb, ws2, 'Facturadas');
@@ -10312,13 +10322,25 @@ function pfac_renderIndicadores() {
   });
   const top10Cli = Object.values(porCliente).sort((a,b)=>(b.fac+b.pend)-(a.fac+a.pend)).slice(0,10);
 
-  // Distribución modalidad para pastel
+  // Distribución modalidad para pastel — leer desde items_detalle
   const distModal={Recurrente:0,'Venta Única':0,Comodato:0};
   [...facturadas,...pendientes].forEach(o => {
-    const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
-    if(o.item==='579'||o.modalidad==='Comodato') distModal['Comodato']+=v;
-    else if(o.modalidad==='Recurrente') distModal['Recurrente']+=v;
-    else distModal['Venta Única']+=v;
+    const detalle = o.items_detalle
+      ? (typeof o.items_detalle==='string' ? JSON.parse(o.items_detalle) : o.items_detalle)
+      : null;
+    if (detalle && detalle.length > 0) {
+      detalle.forEach(i => {
+        const v = parseFloat(i.subtotal)||0;
+        if(i.item==='579'||i.modalidad==='Comodato') distModal['Comodato']+=v;
+        else if(i.modalidad==='Recurrente') distModal['Recurrente']+=v;
+        else distModal['Venta Única']+=v;
+      });
+    } else {
+      const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+      if(o.item==='579'||o.modalidad==='Comodato') distModal['Comodato']+=v;
+      else if(o.modalidad==='Recurrente') distModal['Recurrente']+=v;
+      else distModal['Venta Única']+=v;
+    }
   });
   const totalModal=Object.values(distModal).reduce((a,v)=>a+v,0)||1;
   const pieColors={Recurrente:'#19428C','Venta Única':'#534AB7',Comodato:'#E8A020'};
@@ -10564,11 +10586,28 @@ function pfac_renderIndicadores() {
             ${(()=>{
               const pm={};
               delPeriodo.forEach(o=>{
-                const k=o.modalidad||'Sin definir';
-                if(!pm[k]) pm[k]={fac:0,pend:0,valFac:0,valPend:0};
-                const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
-                if(o.estado==='Facturada'){pm[k].fac++;pm[k].valFac+=v;}
-                if(o.estado==='Pendiente'){pm[k].pend++;pm[k].valPend+=v;}
+                const detalle = o.items_detalle
+                  ? (typeof o.items_detalle==='string' ? JSON.parse(o.items_detalle) : o.items_detalle)
+                  : null;
+                if (detalle && detalle.length > 0) {
+                  detalle.forEach(i => {
+                    const k = i.item==='579' ? 'Comodato' : (i.modalidad||'Sin definir');
+                    if(!pm[k]) pm[k]={fac:0,pend:0,valFac:0,valPend:0};
+                    const v=parseFloat(i.subtotal)||0;
+                    if(o.estado==='Facturada'){pm[k].valFac+=v;}
+                    if(o.estado==='Pendiente'){pm[k].valPend+=v;}
+                  });
+                  const k2 = o.modalidad||'Sin definir';
+                  if(!pm[k2]) pm[k2]={fac:0,pend:0,valFac:0,valPend:0};
+                  if(o.estado==='Facturada') pm[k2].fac++;
+                  if(o.estado==='Pendiente') pm[k2].pend++;
+                } else {
+                  const k=o.modalidad||'Sin definir';
+                  if(!pm[k]) pm[k]={fac:0,pend:0,valFac:0,valPend:0};
+                  const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+                  if(o.estado==='Facturada'){pm[k].fac++;pm[k].valFac+=v;}
+                  if(o.estado==='Pendiente'){pm[k].pend++;pm[k].valPend+=v;}
+                }
               });
               return Object.entries(pm).length===0
                 ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#9AAABF;">Sin datos</td></tr>`
