@@ -8011,6 +8011,7 @@ async function confirmarEnvio() {
         ipc_aplicado:           o.ipc_aplicado || 0,
         estado:                 'Pendiente',
         items_detalle:          o.items_detalle || null,
+      total:                  parseFloat(o.total) || (parseFloat(o.valor_unitario) * (o.cantidad || 1)) || 0,
         // 'total' es GENERATED ALWAYS AS en Supabase — no incluir
       }));
 
@@ -9574,8 +9575,11 @@ function pfac_renderOrdenesDia(iso) {
     let tablaDetalle = '';
     try {
       // _items viene del agrupador (múltiples filas BD); items_detalle viene del JSON guardado
-      const items = o._items && o._items.length > 0 ? o._items
+      // Para multi-fila (Nalsani): _items tiene los ítems reales
+      // Para single-fila (FAC-XXX): items_detalle tiene los ítems reales
+      const items = o._items && o._items.length > 1 ? o._items
                   : o.items_detalle ? (typeof o.items_detalle === 'string' ? JSON.parse(o.items_detalle) : o.items_detalle)
+                  : o._items && o._items.length === 1 ? o._items
                   : [];
       if (items.length > 0) {
         const filas = items.map(i => {
@@ -10073,8 +10077,8 @@ function pfac_marcarFacturada(id) {
   document.getElementById('err-num-factura').style.display = 'none';
   document.getElementById('modal-factura-orden-info').innerHTML = `
     <strong>${o.empresa}</strong> — NIT ${o.nit}<br>
-    Cuota ${o.cuota_num}${o.cuotas_total ? '/'+o.cuotas_total : ''} · ${o.descripcion}<br>
-    <span style="color:var(--text-hint)">Total: <strong>${formatCOP(o.valor_unitario)}</strong></span>
+    Cuota ${o.cuota_num}${o.cuotas_total ? '/'+o.cuotas_total : ''}<br>
+    <span style="color:var(--text-hint)">Total: <strong>${formatCOP(o.total || o._totalOrden || (o.cantidad * o.valor_unitario))}</strong></span>
   `;
   document.getElementById('modal-num-factura').classList.add('show');
   setTimeout(() => document.getElementById('input-num-factura').focus(), 80);
