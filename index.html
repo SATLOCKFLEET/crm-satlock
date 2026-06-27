@@ -51,12 +51,17 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .btn-logout{font-family:inherit;font-size:11px;color:var(--red);background:var(--red-light);border:0.5px solid var(--red);border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:500}
 .btn-logout:hover{background:var(--red);color:#fff;border-color:var(--red)}
 
-.breadcrumb-bar{background:var(--surface);border-bottom:0.5px solid var(--border);padding:0 20px;display:flex;align-items:center;gap:8px;height:40px}
-.breadcrumb-home{font-size:18px;background:none;border:none;cursor:pointer;color:var(--sat-orange);padding:4px 6px;border-radius:6px}
-.breadcrumb-home:hover{background:var(--sat-orange-light)}
-.breadcrumb-sep{color:var(--text2);font-size:13px}
-.breadcrumb-item{color:var(--text2);font-size:12px}
-.breadcrumb-item.active{color:var(--sat-orange);font-weight:600}
+.app-body{display:flex;flex:1;overflow:hidden}
+.sidebar{width:220px;background:var(--surface);border-right:0.5px solid var(--border);display:flex;flex-direction:column;padding:12px 0;transition:width .2s ease;flex-shrink:0;overflow-x:hidden}
+.sidebar.collapsed{width:60px}
+.sidebar-item{display:flex;align-items:center;gap:12px;padding:11px 18px;cursor:pointer;border:none;background:none;font-family:inherit;font-size:13px;color:var(--text2);width:100%;text-align:left;white-space:nowrap;border-left:3px solid transparent;transition:all .12s}
+.sidebar-item:hover{background:var(--sat-orange-light);color:var(--sat-orange)}
+.sidebar-item.active{color:var(--sat-orange);font-weight:600;border-left-color:var(--sat-orange);background:var(--sat-orange-light)}
+.sidebar-item .icon{font-size:18px;flex-shrink:0;width:22px;text-align:center}
+.sidebar.collapsed .sidebar-item .label{display:none}
+.sidebar-toggle{margin-top:auto;padding:11px 18px;cursor:pointer;border:none;background:none;color:var(--text2);font-size:16px;text-align:left}
+.sidebar-toggle:hover{color:var(--sat-orange)}
+.content-area{flex:1;overflow-y:auto;padding:20px}
 .nav-tabs{display:none}
 .nav-tab{font-family:inherit;font-size:12px;font-weight:400;color:var(--text2);background:none;border:none;border-bottom:2px solid transparent;padding:10px 14px;cursor:pointer;white-space:nowrap;transition:color .12s,border-color .12s}
 .nav-tab:hover{color:var(--text)}
@@ -1172,8 +1177,10 @@ tbody tr:hover{background:var(--surface2)}
       <button class="btn-logout" onclick="window.logout()">Salir</button>
     </div>
   </div>
-  <div class="breadcrumb-bar" id="breadcrumb-bar" style="display:none;"></div>
-  <div class="content" id="main-content"></div>
+  <div class="app-body">
+    <div class="sidebar" id="sidebar"></div>
+    <div class="content-area" id="main-content"></div>
+  </div>
 </div>
 
 <script>
@@ -1402,8 +1409,10 @@ function iniciarApp(){
 
   const tabs = construirTabs();
   window._crmTabs = tabs;
-  // Mostrar home con tarjetas en lugar de primera pestaña
-  renderHome();
+  window._tabActivo = 0;
+  window._sidebarCollapsed = false;
+  renderSidebar();
+  switchTab(0);
 }
 
 function construirTabs(){
@@ -1458,26 +1467,47 @@ function construirTabs(){
 let TABS = [];
 function _limpiarEmoji(label){ return (label||'').replace(/^[^\w\s]+\s/, ''); }
 
+function _iconoModulo(label){
+  return {
+    'Seguimiento':'📊','+ Nueva oportunidad':'➕','Mi día':'📅','Agenda':'📆',
+    '15 · 5 · 1':'🎯','Consolidado equipo':'👥','KPIs & Analytics':'📈',
+    '🔑 Solicitudes NIT':'🔑','Alta Gerencia':'🏢','🧾 Facturación':'🧾','📦 Supply Chain':'📦'
+  }[label] || '📌';
+}
+
+function renderSidebar(){
+  const sb = document.getElementById('sidebar');
+  if(!sb) return;
+  const tabs = window._crmTabs || construirTabs();
+  const activo = window._tabActivo || 0;
+  sb.classList.toggle('collapsed', !!window._sidebarCollapsed);
+  sb.innerHTML =
+    tabs.map((t,i)=>
+      '<button class="sidebar-item'+(i===activo?' active':'')+'" onclick="switchTab('+i+')" title="'+_limpiarEmoji(t.label)+'">'+
+        '<span class="icon">'+_iconoModulo(t.label)+'</span>'+
+        '<span class="label">'+_limpiarEmoji(t.label)+'</span>'+
+      '</button>'
+    ).join('') +
+    '<button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" title="Colapsar menú">'+(window._sidebarCollapsed?'»':'«')+'</button>';
+}
+
 function switchTab(idx){
   const tabs = window._crmTabs || construirTabs();
   const t = tabs[idx];
   if(!t) return;
-  // Breadcrumb: 🏠 › Módulo
-  const bc = document.getElementById('breadcrumb-bar');
-  if(bc){
-    bc.style.display = 'flex';
-    bc.innerHTML =
-      '<button class="breadcrumb-home" onclick="irHome()" title="Inicio">🏠</button>' +
-      '<span class="breadcrumb-sep">›</span>' +
-      '<span class="breadcrumb-item active">' + _limpiarEmoji(t.label) + '</span>';
-  }
+  window._tabActivo = idx;
+  document.querySelectorAll('#sidebar .sidebar-item').forEach((el,i)=>{
+    el.classList.toggle('active', i===idx);
+  });
   renderTab(idx, tabs);
 }
 
-function irHome(){
-  const bc = document.getElementById('breadcrumb-bar');
-  if(bc){ bc.style.display = 'none'; bc.innerHTML = ''; }
-  renderHome();
+function toggleSidebar(){
+  window._sidebarCollapsed = !window._sidebarCollapsed;
+  const sb = document.getElementById('sidebar');
+  const tg = document.getElementById('sidebar-toggle');
+  if(sb) sb.classList.toggle('collapsed', window._sidebarCollapsed);
+  if(tg) tg.textContent = window._sidebarCollapsed ? '»' : '«';
 }
 function renderTab(idx,tabs){
   TABS = tabs;
@@ -9022,82 +9052,7 @@ document.addEventListener('click', (e) => {
    HOME — Tarjetas de módulos
    ═══════════════════════════════════════════════════════ */
 
-async function renderHome() {
-  const content = document.getElementById('main-content');
-  if (!content) return;
-
-  // Cargar KPIs básicos en paralelo
-  const tabs = construirTabs();
-
-  // Definir datos de cada módulo
-  const modulos = [];
-
-  for (let i = 0; i < tabs.length; i++) {
-    const t = tabs[i];
-    modulos.push({ idx: i, label: t.label });
-  }
-
-  content.innerHTML = `
-    <div style="min-height:100%;background:#F4F6FA;padding:32px 40px;">
-      <div style="max-width:1100px;margin:0 auto;">
-        <!-- Bienvenida -->
-        <div style="margin-bottom:32px;">
-          <h1 style="font-size:22px;font-weight:700;color:#19428C;margin:0 0 4px;">
-            Bienvenido, ${PERFIL.nombre.split(' ')[0]}
-          </h1>
-          <p style="font-size:13px;color:#9AAABF;margin:0;">
-            ${new Date().toLocaleDateString('es-CO', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
-          </p>
-        </div>
-
-        <!-- Tarjetas de módulos -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:20px;">
-          ${modulos.map(m => {
-            const icono = {
-              'Seguimiento': '📊',
-              '+ Nueva oportunidad': '➕',
-              'Mi día': '📅',
-              'Agenda': '📆',
-              '15 · 5 · 1': '🎯',
-              'Consolidado equipo': '👥',
-              'KPIs & Analytics': '📈',
-              '🔑 Solicitudes NIT': '🔑',
-              'Alta Gerencia': '🏢',
-              '🧾 Facturación': '🧾',
-              '📦 Supply Chain': '📦',
-            }[m.label] || '📌';
-
-            const desc = {
-              'Seguimiento': 'Seguimiento de oportunidades comerciales',
-              '+ Nueva oportunidad': 'Registrar nueva oportunidad o tarea',
-              'Mi día': 'Gestiones y tareas del día',
-              'Agenda': 'Calendario de actividades',
-              '15 · 5 · 1': 'Metodología de seguimiento',
-              'Consolidado equipo': 'Vista consolidada del equipo',
-              'KPIs & Analytics': 'Indicadores clave de desempeño',
-              '🔑 Solicitudes NIT': 'Gestión de solicitudes de NIT',
-              'Alta Gerencia': 'Dashboard gerencial',
-              '🧾 Facturación': 'Solicitudes, agenda y portal de facturación',
-              '📦 Supply Chain': 'Órdenes de solicitud interna',
-            }[m.label] || 'Acceder al módulo';
-
-            return `
-              <div onclick="switchTab(${m.idx})"
-                style="background:white;border:1px solid #DDE3EE;border-radius:14px;padding:24px 20px;
-                  cursor:pointer;transition:all .18s;box-shadow:0 2px 8px rgba(25,66,140,.06);"
-                onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 24px rgba(25,66,140,.12)';"
-                onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(25,66,140,.06)';">
-                <div style="font-size:32px;margin-bottom:12px;">${icono}</div>
-                <div style="font-size:14px;font-weight:700;color:#19428C;margin-bottom:6px;">
-                  ${m.label.replace(/^[^\w\s]+\s/, '')}
-                </div>
-                <div style="font-size:12px;color:#9AAABF;line-height:1.4;">${desc}</div>
-              </div>`;
-          }).join('')}
-        </div>
-      </div>
-    </div>`;
-}
+/* renderHome() eliminada — Opción C reemplazada por sidebar (Opción B) */
 
 
 /* ═══════════════════════════════════════════════════════
@@ -9169,20 +9124,6 @@ function renderFacturacionUnificada(container) {
 
 function facUnifSwitch(tabId) {
   _facUnifTabActiva = tabId;
-  // Sub-breadcrumb: 🏠 › Facturación › Subpestaña
-  (function(){
-    const bc = document.getElementById('breadcrumb-bar');
-    if(!bc) return;
-    bc.querySelectorAll('.breadcrumb-sep.sub, .breadcrumb-item.sub').forEach(e=>e.remove());
-    const mapa = {nueva:'Nueva Solicitud', historial:'Historial / Estado', agenda:'Agenda', traslados:'Traslados', indicadores:'Indicadores'};
-    const sub = (facUnifSubtabs().find(t=>t.id===tabId)||{}).label || mapa[tabId] || tabId;
-    bc.querySelectorAll('.breadcrumb-item').forEach(e=>e.classList.remove('active'));
-    const sep = document.createElement('span');
-    sep.className = 'breadcrumb-sep sub'; sep.textContent = '›';
-    const item = document.createElement('span');
-    item.className = 'breadcrumb-item sub active'; item.textContent = sub;
-    bc.appendChild(sep); bc.appendChild(item);
-  })();
   // Update button styles
   facUnifSubtabs().forEach(t => {
     const btn = document.getElementById(`fac-unif-tab-${t.id}`);
