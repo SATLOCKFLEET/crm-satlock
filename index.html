@@ -10201,138 +10201,320 @@ function pfac_portalTab(tab) {
    INDICADORES DE FACTURACIÓN
    ═══════════════════════════════════════════════════════ */
 function pfac_renderIndicadores() {
-  const hoy      = new Date();
-  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
-  const mesLabel  = hoy.toLocaleDateString('es-CO', { month:'long', year:'numeric' });
+  const hoy        = new Date();
+  const anoActual  = hoy.getFullYear();
 
-  // ── Filtros por mes ──────────────────────────────────────────────────────
-  const delMes        = pfac_ordenes.filter(o => o.fecha_factura && o.fecha_factura.startsWith(mesActual));
-  const facturadas    = delMes.filter(o => o.estado === 'Facturada');
-  const pendientes    = delMes.filter(o => o.estado === 'Pendiente');
-  const omitidas      = delMes.filter(o => o.estado === 'Omitida');
+  // ── Datos históricos reales 2026 (Ene–May) ────────────────────────────────
+  const METAS_2026 = [90.0,95.0,115.0,146.2,191.8,184.7,205.0,258.6,208.7,240.6,215.5,263.2].map(v=>v*1e6);
+  const REAL_2026  = [86.5,126.4,119.6,180.1,129.8,null,null,null,null,null,null,null].map(v=>v?v*1e6:null);
 
-  const totalFacturado  = facturadas.reduce((a, o) => a + o.valor_unitario, 0);
-  const totalPendiente  = pendientes.reduce((a, o) => a + o.valor_unitario, 0);
-  const clientesFac     = new Set(facturadas.map(o => o.nit)).size;
-  const clientesPend    = new Set(pendientes.map(o => o.nit)).size;
+  if (typeof window._pfacIndFiltro === 'undefined') window._pfacIndFiltro = { tipo:'mes', valor: `${anoActual}-${String(hoy.getMonth()+1).padStart(2,'0')}` };
+  const filtro = window._pfacIndFiltro;
 
-  // ── Histórico acumulado (todo el tiempo) ──────────────────────────────────
-  const todasFac        = pfac_ordenes.filter(o => o.estado === 'Facturada');
-  const totalHistorico  = todasFac.reduce((a, o) => a + o.valor_unitario, 0);
+  const enFiltro = (fechaStr) => {
+    if (!fechaStr) return false;
+    if (filtro.tipo === 'mes') return fechaStr.startsWith(filtro.valor);
+    if (filtro.tipo === 'q') {
+      const [ano, q] = filtro.valor.split('-Q');
+      const mes = parseInt(fechaStr.slice(5,7));
+      return fechaStr.startsWith(ano) && Math.ceil(mes/3) === parseInt(q);
+    }
+    if (filtro.tipo === 'ano') return fechaStr.startsWith(filtro.valor);
+    return false;
+  };
 
-  // ── Resumen por ejecutivo del mes ─────────────────────────────────────────
-  const porEjecutivo = {};
-  delMes.forEach(o => {
-    if (!porEjecutivo[o.ejecutivo]) porEjecutivo[o.ejecutivo] = { fac:0, pend:0, valFac:0, valPend:0 };
-    if (o.estado === 'Facturada') { porEjecutivo[o.ejecutivo].fac++;    porEjecutivo[o.ejecutivo].valFac  += o.valor_unitario; }
-    if (o.estado === 'Pendiente') { porEjecutivo[o.ejecutivo].pend++;   porEjecutivo[o.ejecutivo].valPend += o.valor_unitario; }
+  const delPeriodo  = pfac_ordenes.filter(o => enFiltro(o.fecha_factura));
+  const facturadas  = delPeriodo.filter(o => o.estado === 'Facturada');
+  const pendientes  = delPeriodo.filter(o => o.estado === 'Pendiente');
+  const todasFac    = pfac_ordenes.filter(o => o.estado === 'Facturada');
+
+  const agrupar = (arr) => {
+    const m = {};
+    arr.forEach(o => {
+      const k = (o.solicitud_id||o.empresa)+'|'+o.cuota_num;
+      if (!m[k]) m[k] = { ...o, _total: 0 };
+      m[k]._total += parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+    });
+    return Object.values(m);
+  };
+
+  const facAgrp   = agrupar(facturadas);
+  const pendAgrp  = agrupar(pendientes);
+  const todasAgrp = agrupar(todasFac);
+
+  const totalFacturado = facAgrp.reduce((a,o)  => a + o._total, 0);
+  const totalPendiente = pendAgrp.reduce((a,o) => a + o._total, 0);
+  const totalForecast  = totalFacturado + totalPendiente;
+  const totalHistorico = todasAgrp.reduce((a,o) => a + o._total, 0);
+  const clientesFac    = new Set(facturadas.map(o=>o.nit)).size;
+  const clientesPend   = new Set(pendientes.map(o=>o.nit)).size;
+  const pct            = delPeriodo.length > 0 ? Math.round(facturadas.length/delPeriodo.length*100) : 0;
+  const barColor       = pct>=80?'#1B7A4A':pct>=50?'#E8A020':'#A32D2D';
+
+  const meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+  // Meta del período
+  let metaPeriodo = 0;
+  if (filtro.tipo==='mes') {
+    const mesIdx = parseInt(filtro.valor.slice(5,7))-1;
+    if (filtro.valor.startsWith('2026') && mesIdx>=0 && mesIdx<12) metaPeriodo=METAS_2026[mesIdx];
+  } else if (filtro.tipo==='q') {
+    const [ano,q]=filtro.valor.split('-Q');
+    if (ano==='2026') { const ini=(parseInt(q)-1)*3; metaPeriodo=METAS_2026.slice(ini,ini+3).reduce((a,v)=>a+v,0); }
+  } else if (filtro.tipo==='ano'&&filtro.valor==='2026') {
+    metaPeriodo=METAS_2026.reduce((a,v)=>a+v,0);
+  }
+
+  let realPeriodo = null;
+  if (filtro.tipo==='mes') {
+    const mesIdx=parseInt(filtro.valor.slice(5,7))-1;
+    if (filtro.valor.startsWith('2026') && mesIdx<5) realPeriodo=REAL_2026[mesIdx];
+  }
+  const pctMeta   = metaPeriodo>0 ? Math.round((realPeriodo||totalFacturado)/metaPeriodo*100) : null;
+  const metaColor = pctMeta===null?'#9AAABF':pctMeta>=100?'#1B7A4A':pctMeta>=80?'#E8A020':'#A32D2D';
+
+  // Top 10 productos
+  const porProducto = {};
+  [...facturadas,...pendientes].forEach(o => {
+    const k=o.item+'|'+(o.descripcion||o.item);
+    if (!porProducto[k]) porProducto[k]={item:o.item,desc:o.descripcion||o.item,val:0};
+    porProducto[k].val += parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+  });
+  const top10Prod = Object.values(porProducto).sort((a,b)=>b.val-a.val).slice(0,10);
+  const maxProd   = top10Prod[0]?.val||1;
+
+  // Top 10 clientes
+  const porCliente = {};
+  [...facturadas,...pendientes].forEach(o => {
+    const k=o.nit||o.empresa;
+    if (!porCliente[k]) porCliente[k]={empresa:o.empresa,nit:o.nit,fac:0,pend:0};
+    const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+    if(o.estado==='Facturada') porCliente[k].fac+=v; else porCliente[k].pend+=v;
+  });
+  const top10Cli = Object.values(porCliente).sort((a,b)=>(b.fac+b.pend)-(a.fac+a.pend)).slice(0,10);
+
+  // Distribución modalidad para pastel
+  const distModal={Recurrente:0,'Venta Única':0,Comodato:0};
+  [...facturadas,...pendientes].forEach(o => {
+    const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+    if(o.item==='579'||o.modalidad==='Comodato') distModal['Comodato']+=v;
+    else if(o.modalidad==='Recurrente') distModal['Recurrente']+=v;
+    else distModal['Venta Única']+=v;
+  });
+  const totalModal=Object.values(distModal).reduce((a,v)=>a+v,0)||1;
+  const pieColors={Recurrente:'#19428C','Venta Única':'#534AB7',Comodato:'#E8A020'};
+  let pieHTML=''; let startAngle=-Math.PI/2; const cx=80,cy=80,r=65;
+  Object.entries(distModal).forEach(([k,v])=>{
+    if(!v) return;
+    const angle=(v/totalModal)*2*Math.PI;
+    const x1=cx+r*Math.cos(startAngle),y1=cy+r*Math.sin(startAngle);
+    const x2=cx+r*Math.cos(startAngle+angle),y2=cy+r*Math.sin(startAngle+angle);
+    const large=angle>Math.PI?1:0;
+    pieHTML+=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${pieColors[k]}" opacity="0.9"/>`;
+    startAngle+=angle;
   });
 
-  // ── Resumen por modalidad del mes ─────────────────────────────────────────
-  const porModalidad = {};
-  delMes.forEach(o => {
-    const k = o.modalidad || 'Sin definir';
-    if (!porModalidad[k]) porModalidad[k] = { fac:0, pend:0, valFac:0, valPend:0 };
-    if (o.estado === 'Facturada') { porModalidad[k].fac++;  porModalidad[k].valFac  += o.valor_unitario; }
-    if (o.estado === 'Pendiente') { porModalidad[k].pend++; porModalidad[k].valPend += o.valor_unitario; }
+  // Por ejecutivo
+  const porEjecutivo={};
+  delPeriodo.forEach(o=>{
+    if(!porEjecutivo[o.ejecutivo]) porEjecutivo[o.ejecutivo]={fac:0,pend:0,valFac:0,valPend:0};
+    const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+    if(o.estado==='Facturada'){porEjecutivo[o.ejecutivo].fac++;porEjecutivo[o.ejecutivo].valFac+=v;}
+    if(o.estado==='Pendiente'){porEjecutivo[o.ejecutivo].pend++;porEjecutivo[o.ejecutivo].valPend+=v;}
   });
 
-  // ── Resumen por persona que factura ──────────────────────────────────────
-  const porFaclurador = {};
-  facturadas.forEach(o => {
-    const quien = o.facturada_por || 'Sin registrar';
-    if (!porFaclurador[quien]) porFaclurador[quien] = { count: 0, valor: 0, clientes: new Set() };
+  // Por facturadora
+  const porFaclurador={};
+  facturadas.forEach(o=>{
+    const quien=o.facturada_por||'Sin registrar';
+    if(!porFaclurador[quien]) porFaclurador[quien]={count:0,valor:0,clientes:new Set()};
     porFaclurador[quien].count++;
-    porFaclurador[quien].valor += o.valor_unitario;
+    porFaclurador[quien].valor+=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
     porFaclurador[quien].clientes.add(o.nit);
   });
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // Etiqueta período
+  let periodoLabel='';
+  if(filtro.tipo==='mes'){const[a,m]=filtro.valor.split('-');periodoLabel=`${meses[parseInt(m)-1]} ${a}`;}
+  else if(filtro.tipo==='q'){const[a,q]=filtro.valor.split('-Q');periodoLabel=`Q${q} ${a}`;}
+  else periodoLabel=`Año ${filtro.valor}`;
+
+  const btnStyle=(active)=>`font-family:inherit;font-size:11px;font-weight:${active?'700':'500'};padding:5px 12px;border-radius:20px;cursor:pointer;border:1.5px solid ${active?'#19428C':'#DDE3EE'};background:${active?'#19428C':'white'};color:${active?'white':'#6B7A99'};`;
+  const mesesBtns=meses.map((m,i)=>{const val=`${anoActual}-${String(i+1).padStart(2,'0')}`;const act=filtro.tipo==='mes'&&filtro.valor===val;return `<button style="${btnStyle(act)}" onclick="pfacIndSetFiltro('mes','${val}')">${m.slice(0,3)}</button>`;}).join('');
+  const qBtns=[1,2,3,4].map(q=>{const val=`${anoActual}-Q${q}`;const act=filtro.tipo==='q'&&filtro.valor===val;return `<button style="${btnStyle(act)}" onclick="pfacIndSetFiltro('q','${val}')">Q${q}</button>`;}).join('');
+  const anoBtnAct=filtro.tipo==='ano'&&filtro.valor===String(anoActual);
+  const anoBtn=`<button style="${btnStyle(anoBtnAct)}" onclick="pfacIndSetFiltro('ano','${anoActual}')">Año ${anoActual}</button>`;
+
   const panel = document.getElementById('pfac-ppanel-indicadores');
   if (!panel) return;
 
-  const pct = delMes.length > 0 ? Math.round(facturadas.length / delMes.length * 100) : 0;
-  const barColor = pct >= 80 ? '#1B7A4A' : pct >= 50 ? '#E8A020' : '#A32D2D';
-
   panel.innerHTML = `
-    <!-- Selector de mes -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-      <div>
-        <span style="font-size:18px;font-weight:700;color:#19428C;text-transform:capitalize;">${mesLabel}</span>
-        <span style="font-size:12px;color:#6B7A99;margin-left:8px;">— Dashboard de facturación</span>
+    <!-- Filtros -->
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:12px 16px;margin-bottom:20px;">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;">
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          ${mesesBtns}
+          <span style="color:#DDE3EE;margin:0 4px;">|</span>
+          ${qBtns}
+          <span style="color:#DDE3EE;margin:0 4px;">|</span>
+          ${anoBtn}
+        </div>
+        <button onclick="pfac_exportarIndicadoresExcel()"
+          style="font-family:inherit;font-size:12px;font-weight:600;padding:7px 16px;border:none;border-radius:7px;background:#1D6F42;color:white;cursor:pointer;">⬇ Excel</button>
       </div>
-      <div style="font-size:11px;color:#6B7A99;">Actualizado al abrir la pestaña</div>
-      <button onclick="pfac_exportarIndicadoresExcel()"
-        style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;border:none;border-radius:7px;
-               background:#1D6F42;color:white;cursor:pointer;display:flex;align-items:center;gap:6px;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-          <line x1="8" y1="13" x2="16" y2="13"/>
-          <line x1="8" y1="17" x2="16" y2="17"/>
-        </svg>
-        Descargar Excel
-      </button>
     </div>
 
-    <!-- Métricas principales del mes -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">
-      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7A99;margin-bottom:6px;">Facturado en el mes</div>
-        <div style="font-size:20px;font-weight:700;color:#1B7A4A;font-variant-numeric:tabular-nums;">${formatCOP(totalFacturado)}</div>
-        <div style="font-size:11px;color:#6B7A99;margin-top:4px;">${facturadas.length} orden(es) · ${clientesFac} cliente(s)</div>
+    <!-- 5 Minitarjetas -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
+      <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid #1B7A4A;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Facturado</div>
+        <div style="font-size:17px;font-weight:700;color:#1B7A4A;">${formatCOP(totalFacturado)}</div>
+        <div style="font-size:10px;color:#9AAABF;margin-top:3px;">${clientesFac} cliente(s)</div>
       </div>
-      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7A99;margin-bottom:6px;">Pendiente por facturar</div>
-        <div style="font-size:20px;font-weight:700;color:#E8A020;font-variant-numeric:tabular-nums;">${formatCOP(totalPendiente)}</div>
-        <div style="font-size:11px;color:#6B7A99;margin-top:4px;">${pendientes.length} orden(es) · ${clientesPend} cliente(s)</div>
+      <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid #E8A020;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Pendiente</div>
+        <div style="font-size:17px;font-weight:700;color:#E8A020;">${formatCOP(totalPendiente)}</div>
+        <div style="font-size:10px;color:#9AAABF;margin-top:3px;">${clientesPend} cliente(s)</div>
       </div>
-      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7A99;margin-bottom:6px;">Avance del mes</div>
-        <div style="font-size:20px;font-weight:700;color:#19428C;">${pct}%</div>
-        <div style="background:#EEF1F8;border-radius:20px;height:6px;margin-top:8px;overflow:hidden;">
-          <div style="height:100%;width:${pct}%;background:${barColor};border-radius:20px;transition:width .4s;"></div>
+      <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid #534AB7;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Forecast período</div>
+        <div style="font-size:17px;font-weight:700;color:#534AB7;">${formatCOP(totalForecast)}</div>
+        <div style="font-size:10px;color:#9AAABF;margin-top:3px;">Facturado + Pendiente</div>
+      </div>
+      <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid ${metaColor};border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Meta ${periodoLabel}</div>
+        <div style="font-size:17px;font-weight:700;color:${metaColor};">${metaPeriodo?formatCOP(metaPeriodo):'—'}</div>
+        <div style="font-size:10px;color:${metaColor};margin-top:3px;font-weight:600;">${pctMeta!==null?pctMeta+'% cumplimiento':'Sin meta'}</div>
+      </div>
+      <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid #19428C;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Avance período</div>
+        <div style="font-size:17px;font-weight:700;color:#19428C;">${pct}%</div>
+        <div style="background:#EEF1F8;border-radius:20px;height:5px;margin-top:6px;overflow:hidden;">
+          <div style="height:100%;width:${Math.min(pct,100)}%;background:${barColor};border-radius:20px;"></div>
         </div>
-        <div style="font-size:10px;color:#6B7A99;margin-top:4px;">${facturadas.length} de ${delMes.length} órdenes del mes</div>
       </div>
-      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;box-shadow:0 1px 4px rgba(25,66,140,.06);">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6B7A99;margin-bottom:6px;">Total histórico facturado</div>
-        <div style="font-size:20px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;">${formatCOP(totalHistorico)}</div>
-        <div style="font-size:11px;color:#6B7A99;margin-top:4px;">${todasFac.length} factura(s) emitida(s)</div>
+    </div>
+
+    <!-- Gráfica Meta vs Real anual -->
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;margin-bottom:20px;overflow-x:auto;">
+      <div style="font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">Meta vs. Real 2026</div>
+      <div style="display:flex;gap:6px;align-items:flex-end;min-width:600px;height:120px;">
+        ${meses.map((m,i)=>{
+          const meta=METAS_2026[i];
+          const real=REAL_2026[i];
+          const pctBar=real?Math.round(real/meta*100):0;
+          const col=pctBar>=100?'#1B7A4A':pctBar>=80?'#E8A020':'#A32D2D';
+          const maxH=90;
+          const realH=real?Math.max(Math.round(real/meta*maxH),4):0;
+          return `<div style="flex:1;text-align:center;min-width:38px;">
+            <div style="font-size:9px;color:${col};font-weight:700;margin-bottom:2px;">${real?pctBar+'%':''}</div>
+            <div style="display:flex;align-items:flex-end;justify-content:center;gap:2px;height:${maxH}px;">
+              <div style="width:45%;height:${maxH}px;background:#EEF1F8;border-radius:3px 3px 0 0;"></div>
+              <div style="width:45%;height:${real?realH:4}px;background:${real?col:'#EEF1F8'};border-radius:3px 3px 0 0;opacity:${real?1:0.4};"></div>
+            </div>
+            <div style="font-size:9px;color:#6B7A99;margin-top:3px;">${m.slice(0,3)}</div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:16px;margin-top:8px;font-size:10px;color:#6B7A99;">
+        <span><span style="display:inline-block;width:10px;height:10px;background:#EEF1F8;border-radius:2px;margin-right:4px;"></span>Meta</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#19428C;border-radius:2px;margin-right:4px;"></span>Real / Forecast</span>
+      </div>
+    </div>
+
+    <!-- Top 10 Productos + Top 10 Clientes + Pastel -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:20px;">
+      <!-- Top 10 Productos -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Top 10 Productos</div>
+        <div style="padding:10px 14px;display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;">
+          ${top10Prod.length ? top10Prod.map(p=>{
+            const pct=Math.round(p.val/maxProd*100);
+            return `<div>
+              <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;">
+                <span style="color:#3d5080;font-weight:500;">${p.desc}</span>
+                <span style="font-weight:700;color:#19428C;">${formatCOP(p.val)}</span>
+              </div>
+              <div style="height:5px;background:#EEF1F8;border-radius:3px;overflow:hidden;">
+                <div style="width:${pct}%;height:100%;background:#19428C;border-radius:3px;"></div>
+              </div>
+            </div>`;
+          }).join('') : '<div style="text-align:center;padding:20px;color:#9AAABF;font-size:12px;">Sin datos</div>'}
+        </div>
+      </div>
+
+      <!-- Top 10 Clientes -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Top 10 Clientes</div>
+        <div style="padding:8px;display:flex;flex-direction:column;gap:4px;max-height:280px;overflow-y:auto;">
+          ${top10Cli.length ? top10Cli.map((c,i)=>{
+            const total=c.fac+c.pend;
+            return `<div style="padding:7px 10px;border-radius:6px;background:${i%2===0?'white':'#FAFBFD'};border:1px solid #EEF1F8;">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:11px;font-weight:600;color:#0d1b3e;">${c.empresa}</span>
+                <span style="font-size:11px;font-weight:700;color:#19428C;">${formatCOP(total)}</span>
+              </div>
+              <div style="display:flex;gap:8px;font-size:10px;margin-top:2px;">
+                <span style="color:#1B7A4A;">✓ ${formatCOP(c.fac)}</span>
+                <span style="color:#E8A020;">⏳ ${formatCOP(c.pend)}</span>
+              </div>
+            </div>`;
+          }).join('') : '<div style="text-align:center;padding:20px;color:#9AAABF;font-size:12px;">Sin datos</div>'}
+        </div>
+      </div>
+
+      <!-- Pastel distribución -->
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Distribución facturación</div>
+        <div style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:12px;">
+          <svg viewBox="0 0 160 160" width="160" height="160">
+            ${pieHTML}
+            <circle cx="80" cy="80" r="35" fill="white"/>
+            <text x="80" y="76" text-anchor="middle" font-size="10" font-weight="700" fill="#19428C">${formatCOP(totalModal)}</text>
+            <text x="80" y="90" text-anchor="middle" font-size="9" fill="#9AAABF">Total</text>
+          </svg>
+          <div style="display:flex;flex-direction:column;gap:6px;width:100%;">
+            ${Object.entries(distModal).map(([k,v])=>{
+              const pct=totalModal>0?Math.round(v/totalModal*100):0;
+              return `<div style="display:flex;align-items:center;gap:8px;font-size:11px;">
+                <span style="width:10px;height:10px;border-radius:2px;background:${pieColors[k]};flex-shrink:0;"></span>
+                <span style="flex:1;color:#3d5080;">${k}</span>
+                <span style="font-weight:700;color:#19428C;">${pct}%</span>
+                <span style="color:#9AAABF;">${formatCOP(v)}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- Productividad por facturadora -->
     ${Object.keys(porFaclurador).length > 0 ? `
-    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);margin-bottom:20px;">
-      <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Productividad por facturadora — ${mesLabel}</div>
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+      <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Productividad por facturadora — ${periodoLabel}</div>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr style="background:#F4F6FA;">
           <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#6B7A99;text-transform:uppercase;">Facturadora</th>
           <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Facturas</th>
           <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Clientes</th>
-          <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#1B7A4A;text-transform:uppercase;">Valor facturado</th>
+          <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#1B7A4A;text-transform:uppercase;">Valor</th>
         </tr></thead>
         <tbody>
-          ${Object.entries(porFaclurador)
-            .sort((a,b) => b[1].valor - a[1].valor)
-            .map(([quien, v], i) => `
-              <tr style="background:${i%2===0?'white':'#F8F9FC'};border-bottom:1px solid #EEF1F8;">
-                <td style="padding:8px 12px;font-weight:600;">${quien}</td>
-                <td style="padding:8px 12px;text-align:right;">${v.count}</td>
-                <td style="padding:8px 12px;text-align:right;">${v.clientes.size}</td>
-                <td style="padding:8px 12px;text-align:right;font-weight:600;color:#1B7A4A;font-variant-numeric:tabular-nums;">${formatCOP(v.valor)}</td>
-              </tr>`).join('')}
+          ${Object.entries(porFaclurador).sort((a,b)=>b[1].valor-a[1].valor).map(([q,v],i)=>`
+            <tr style="background:${i%2===0?'white':'#F8F9FC'};border-bottom:1px solid #EEF1F8;">
+              <td style="padding:8px 12px;font-weight:600;">${q}</td>
+              <td style="padding:8px 12px;text-align:right;">${v.count}</td>
+              <td style="padding:8px 12px;text-align:right;">${v.clientes.size}</td>
+              <td style="padding:8px 12px;text-align:right;font-weight:600;color:#1B7A4A;">${formatCOP(v.valor)}</td>
+            </tr>`).join('')}
         </tbody>
       </table>
     </div>` : ''}
 
-    <!-- Por ejecutivo y por modalidad -->
+    <!-- Por ejecutivo y modalidad -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">
-
-      <!-- Por ejecutivo -->
-      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);">
-        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Por ejecutivo — ${mesLabel}</div>
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Por ejecutivo — ${periodoLabel}</div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead><tr style="background:#F4F6FA;">
             <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#6B7A99;text-transform:uppercase;">Ejecutivo</th>
@@ -10340,24 +10522,19 @@ function pfac_renderIndicadores() {
             <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#E8A020;text-transform:uppercase;">Pendiente</th>
           </tr></thead>
           <tbody>
-            ${Object.entries(porEjecutivo).length === 0
+            ${Object.entries(porEjecutivo).length===0
               ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#9AAABF;font-style:italic;">Sin datos</td></tr>`
-              : Object.entries(porEjecutivo)
-                  .sort((a,b) => b[1].valFac - a[1].valFac)
-                  .map(([ej, v], i) => `
+              : Object.entries(porEjecutivo).sort((a,b)=>b[1].valFac-a[1].valFac).map(([ej,v],i)=>`
                 <tr style="background:${i%2===0?'white':'#F8F9FC'};border-bottom:1px solid #EEF1F8;">
                   <td style="padding:8px 12px;font-weight:500;">${ej}</td>
-                  <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#1B7A4A;font-weight:600;">${formatCOP(v.valFac)} <span style="color:#9AAABF;font-weight:400;">(${v.fac})</span></td>
-                  <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#E8A020;font-weight:600;">${formatCOP(v.valPend)} <span style="color:#9AAABF;font-weight:400;">(${v.pend})</span></td>
-                </tr>`).join('')
-            }
+                  <td style="padding:8px 12px;text-align:right;color:#1B7A4A;font-weight:600;">${formatCOP(v.valFac)} <span style="color:#9AAABF;font-weight:400;">(${v.fac})</span></td>
+                  <td style="padding:8px 12px;text-align:right;color:#E8A020;font-weight:600;">${formatCOP(v.valPend)} <span style="color:#9AAABF;font-weight:400;">(${v.pend})</span></td>
+                </tr>`).join('')}
           </tbody>
         </table>
       </div>
-
-      <!-- Por modalidad -->
-      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);">
-        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Por modalidad — ${mesLabel}</div>
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;">
+        <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Por modalidad — ${periodoLabel}</div>
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead><tr style="background:#F4F6FA;">
             <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#6B7A99;text-transform:uppercase;">Modalidad</th>
@@ -10365,103 +10542,67 @@ function pfac_renderIndicadores() {
             <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#E8A020;text-transform:uppercase;">Pendiente</th>
           </tr></thead>
           <tbody>
-            ${Object.entries(porModalidad).length === 0
-              ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#9AAABF;font-style:italic;">Sin datos</td></tr>`
-              : Object.entries(porModalidad)
-                  .sort((a,b) => b[1].valFac - a[1].valFac)
-                  .map(([mod, v], i) => {
-                    const col = mod==='Recurrente'?'#0F6E56':mod==='Comodato'?'#7A5A0F':'#19428C';
-                    const bg2 = mod==='Recurrente'?'#E1F5EE':mod==='Comodato'?'#FDF6E3':'#E8EEF8';
+            ${(()=>{
+              const pm={};
+              delPeriodo.forEach(o=>{
+                const k=o.modalidad||'Sin definir';
+                if(!pm[k]) pm[k]={fac:0,pend:0,valFac:0,valPend:0};
+                const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+                if(o.estado==='Facturada'){pm[k].fac++;pm[k].valFac+=v;}
+                if(o.estado==='Pendiente'){pm[k].pend++;pm[k].valPend+=v;}
+              });
+              return Object.entries(pm).length===0
+                ? `<tr><td colspan="3" style="padding:20px;text-align:center;color:#9AAABF;">Sin datos</td></tr>`
+                : Object.entries(pm).sort((a,b)=>b[1].valFac-a[1].valFac).map(([mod,v],i)=>{
+                    const col=mod==='Recurrente'?'#0F6E56':mod==='Comodato'?'#7A5A0F':'#19428C';
+                    const bg2=mod==='Recurrente'?'#E1F5EE':mod==='Comodato'?'#FDF6E3':'#E8EEF8';
                     return `<tr style="background:${i%2===0?'white':'#F8F9FC'};border-bottom:1px solid #EEF1F8;">
-                      <td style="padding:8px 12px;">
-                        <span style="background:${bg2};color:${col};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">${mod}</span>
-                      </td>
-                      <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#1B7A4A;font-weight:600;">${formatCOP(v.valFac)} <span style="color:#9AAABF;font-weight:400;">(${v.fac})</span></td>
-                      <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#E8A020;font-weight:600;">${formatCOP(v.valPend)} <span style="color:#9AAABF;font-weight:400;">(${v.pend})</span></td>
+                      <td style="padding:8px 12px;"><span style="background:${bg2};color:${col};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">${mod}</span></td>
+                      <td style="padding:8px 12px;text-align:right;color:#1B7A4A;font-weight:600;">${formatCOP(v.valFac)} <span style="color:#9AAABF;font-weight:400;">(${v.fac})</span></td>
+                      <td style="padding:8px 12px;text-align:right;color:#E8A020;font-weight:600;">${formatCOP(v.valPend)} <span style="color:#9AAABF;font-weight:400;">(${v.pend})</span></td>
                     </tr>`;
-                  }).join('')
-            }
+                  }).join('');
+            })()}
           </tbody>
         </table>
       </div>
     </div>
 
-    <!-- Pendientes del mes — detalle ─────────────────────────────────────── -->
+    <!-- Pendientes del período -->
     ${pendientes.length > 0 ? `
-    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);margin-bottom:20px;">
-      <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:11px;font-weight:700;color:#A32D2D;text-transform:uppercase;letter-spacing:.06em;">⚠ Pendientes por facturar este mes (${pendientes.length})</span>
-        <span style="font-size:12px;font-weight:700;color:#A32D2D;font-variant-numeric:tabular-nums;">${formatCOP(totalPendiente)}</span>
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+      <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:11px;font-weight:700;color:#A32D2D;text-transform:uppercase;letter-spacing:.06em;">⚠ Pendientes — ${periodoLabel} (${pendientes.length})</span>
+        <span style="font-size:12px;font-weight:700;color:#A32D2D;">${formatCOP(totalPendiente)}</span>
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <thead><tr style="background:#FFF4F4;">
-          <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Fecha</th>
-          <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Cliente</th>
-          <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Ejecutivo</th>
-          <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Modalidad</th>
-          <th style="padding:7px 12px;text-align:right;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Valor</th>
-        </tr></thead>
-        <tbody>
-          ${pendientes
-            .sort((a,b) => a.fecha_factura.localeCompare(b.fecha_factura))
-            .map((o,i) => `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:600px;">
+          <thead><tr style="background:#FFF4F4;">
+            <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Fecha</th>
+            <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Cliente</th>
+            <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Ejecutivo</th>
+            <th style="padding:7px 12px;text-align:left;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Modalidad</th>
+            <th style="padding:7px 12px;text-align:right;font-size:10px;font-weight:700;color:#A32D2D;text-transform:uppercase;">Valor</th>
+          </tr></thead>
+          <tbody>
+            ${pendientes.sort((a,b)=>a.fecha_factura.localeCompare(b.fecha_factura)).map((o,i)=>`
               <tr style="background:${i%2===0?'white':'#FFF8F8'};border-bottom:1px solid #F5DADA;">
                 <td style="padding:7px 12px;white-space:nowrap;color:#A32D2D;font-weight:600;">${o.fecha_factura}</td>
                 <td style="padding:7px 12px;font-weight:500;">${o.empresa}</td>
                 <td style="padding:7px 12px;color:#6B7A99;">${o.ejecutivo}</td>
                 <td style="padding:7px 12px;"><span style="font-size:10px;font-weight:700;background:#FDF6E3;color:#7A5A0F;padding:2px 7px;border-radius:10px;">${o.modalidad}</span></td>
-                <td style="padding:7px 12px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;">${formatCOP(o.valor_unitario)}</td>
-              </tr>`).join('')
-          }
-        </tbody>
-      </table>
-    </div>` : ''}
-
-    <!-- Registro completo de facturas emitidas ───────────────────────────── -->
-    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;box-shadow:0 1px 4px rgba(25,66,140,.06);">
-      <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;">Registro de facturas emitidas — ${mesLabel}</span>
-        <span style="font-size:12px;font-weight:700;color:#1B7A4A;font-variant-numeric:tabular-nums;">${formatCOP(totalFacturado)}</span>
-      </div>
-      <div style="overflow-x:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;min-width:700px;">
-          <thead><tr style="background:#F4F6FA;">
-            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">N° Factura</th>
-            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Fecha</th>
-            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Cliente</th>
-            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Modalidad</th>
-            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Ejecutivo</th>
-            <th style="padding:8px 12px;text-align:left;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Facturado por</th>
-            <th style="padding:8px 12px;text-align:right;font-size:10px;font-weight:700;color:#19428C;text-transform:uppercase;">Valor</th>
-          </tr></thead>
-          <tbody id="pfac-ind-tabla-body">
-            ${facturadas.length === 0
-              ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:#9AAABF;font-style:italic;">Sin facturas emitidas en ${mesLabel}.</td></tr>`
-              : [...facturadas].sort((a,b) => (b.facturada_at||'').localeCompare(a.facturada_at||'')).map((o,i) => {
-                  const fecha = o.facturada_at ? new Date(o.facturada_at).toLocaleDateString('es-CO') : o.fecha_factura;
-                  const modCol = o.modalidad==='Recurrente'?'#0F6E56':o.modalidad==='Comodato'?'#7A5A0F':'#19428C';
-                  const modBg  = o.modalidad==='Recurrente'?'#E1F5EE':o.modalidad==='Comodato'?'#FDF6E3':'#E8EEF8';
-                  return `<tr style="background:${i%2===0?'white':'#F8F9FC'};border-bottom:1px solid #EEF1F8;">
-                    <td style="padding:8px 12px;font-weight:700;color:#19428C;white-space:nowrap;">${o.num_factura||'—'}</td>
-                    <td style="padding:8px 12px;white-space:nowrap;">${fecha}</td>
-                    <td style="padding:8px 12px;font-weight:500;">${o.empresa}</td>
-                    <td style="padding:8px 12px;"><span style="background:${modBg};color:${modCol};padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">${o.modalidad}</span></td>
-                    <td style="padding:8px 12px;color:#6B7A99;">${o.ejecutivo}</td>
-                    <td style="padding:8px 12px;color:#6B7A99;">${o.facturada_por||'—'}</td>
-                    <td style="padding:8px 12px;text-align:right;font-weight:600;color:#19428C;font-variant-numeric:tabular-nums;">${formatCOP(o.valor_unitario)}</td>
-                  </tr>`;
-                }).join('')
-            }
+                <td style="padding:7px 12px;text-align:right;font-weight:600;">${formatCOP(o.valor_unitario)}</td>
+              </tr>`).join('')}
           </tbody>
         </table>
       </div>
-    </div>`;
+    </div>` : ''}`;
 }
 
-/* ═══════════════════════════════════════════════════════
-   IPC
-   ═══════════════════════════════════════════════════════ */
-let pfac_ipcPendiente = 0;
+function pfacIndSetFiltro(tipo, valor) {
+  window._pfacIndFiltro = { tipo, valor };
+  pfac_renderIndicadores();
+}
 
 function pfac_abrirModalIPC() {
   const val = parseFloat(document.getElementById('pfac-ipc-nuevo').value);
