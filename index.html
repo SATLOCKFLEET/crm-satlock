@@ -51,7 +51,13 @@ body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(
 .btn-logout{font-family:inherit;font-size:11px;color:var(--red);background:var(--red-light);border:0.5px solid var(--red);border-radius:6px;padding:5px 12px;cursor:pointer;font-weight:500}
 .btn-logout:hover{background:var(--red);color:#fff;border-color:var(--red)}
 
-.nav-tabs{background:var(--surface);border-bottom:0.5px solid var(--border);padding:0 20px;display:flex;gap:2px;overflow-x:auto}
+.breadcrumb-bar{background:var(--surface);border-bottom:0.5px solid var(--border);padding:0 20px;display:flex;align-items:center;gap:8px;height:40px}
+.breadcrumb-home{font-size:18px;background:none;border:none;cursor:pointer;color:var(--sat-orange);padding:4px 6px;border-radius:6px}
+.breadcrumb-home:hover{background:var(--sat-orange-light)}
+.breadcrumb-sep{color:var(--text2);font-size:13px}
+.breadcrumb-item{color:var(--text2);font-size:12px}
+.breadcrumb-item.active{color:var(--sat-orange);font-weight:600}
+.nav-tabs{display:none}
 .nav-tab{font-family:inherit;font-size:12px;font-weight:400;color:var(--text2);background:none;border:none;border-bottom:2px solid transparent;padding:10px 14px;cursor:pointer;white-space:nowrap;transition:color .12s,border-color .12s}
 .nav-tab:hover{color:var(--text)}
 .nav-tab.active{color:var(--sat-orange);font-weight:500;border-bottom-color:var(--sat-orange)}
@@ -1166,7 +1172,7 @@ tbody tr:hover{background:var(--surface2)}
       <button class="btn-logout" onclick="window.logout()">Salir</button>
     </div>
   </div>
-  <div class="nav-tabs" id="nav-tabs"></div>
+  <div class="breadcrumb-bar" id="breadcrumb-bar" style="display:none;"></div>
   <div class="content" id="main-content"></div>
 </div>
 
@@ -1395,8 +1401,7 @@ function iniciarApp(){
   document.getElementById('user-name-top').textContent=PERFIL.nombre;
 
   const tabs = construirTabs();
-  const nav = document.getElementById('nav-tabs');
-  nav.innerHTML = tabs.map((t,i)=>`<button class="nav-tab" onclick="switchTab(${i})" data-idx="${i}">${t.label}</button>`).join('');
+  window._crmTabs = tabs;
   // Mostrar home con tarjetas en lugar de primera pestaña
   renderHome();
 }
@@ -1451,14 +1456,27 @@ function construirTabs(){
 }
 
 let TABS = [];
+function _limpiarEmoji(label){ return (label||'').replace(/^[^\w\s]+\s/, ''); }
+
 function switchTab(idx){
-  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  document.querySelector(`.nav-tab[data-idx="${idx}"]`)?.classList.add('active');
-  renderTab(idx, construirTabs());
+  const tabs = window._crmTabs || construirTabs();
+  const t = tabs[idx];
+  if(!t) return;
+  // Breadcrumb: 🏠 › Módulo
+  const bc = document.getElementById('breadcrumb-bar');
+  if(bc){
+    bc.style.display = 'flex';
+    bc.innerHTML =
+      '<button class="breadcrumb-home" onclick="irHome()" title="Inicio">🏠</button>' +
+      '<span class="breadcrumb-sep">›</span>' +
+      '<span class="breadcrumb-item active">' + _limpiarEmoji(t.label) + '</span>';
+  }
+  renderTab(idx, tabs);
 }
 
 function irHome(){
-  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  const bc = document.getElementById('breadcrumb-bar');
+  if(bc){ bc.style.display = 'none'; bc.innerHTML = ''; }
   renderHome();
 }
 function renderTab(idx,tabs){
@@ -9151,6 +9169,20 @@ function renderFacturacionUnificada(container) {
 
 function facUnifSwitch(tabId) {
   _facUnifTabActiva = tabId;
+  // Sub-breadcrumb: 🏠 › Facturación › Subpestaña
+  (function(){
+    const bc = document.getElementById('breadcrumb-bar');
+    if(!bc) return;
+    bc.querySelectorAll('.breadcrumb-sep.sub, .breadcrumb-item.sub').forEach(e=>e.remove());
+    const mapa = {nueva:'Nueva Solicitud', historial:'Historial / Estado', agenda:'Agenda', traslados:'Traslados', indicadores:'Indicadores'};
+    const sub = (facUnifSubtabs().find(t=>t.id===tabId)||{}).label || mapa[tabId] || tabId;
+    bc.querySelectorAll('.breadcrumb-item').forEach(e=>e.classList.remove('active'));
+    const sep = document.createElement('span');
+    sep.className = 'breadcrumb-sep sub'; sep.textContent = '›';
+    const item = document.createElement('span');
+    item.className = 'breadcrumb-item sub active'; item.textContent = sub;
+    bc.appendChild(sep); bc.appendChild(item);
+  })();
   // Update button styles
   facUnifSubtabs().forEach(t => {
     const btn = document.getElementById(`fac-unif-tab-${t.id}`);
