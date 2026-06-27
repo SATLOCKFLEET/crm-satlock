@@ -10277,12 +10277,27 @@ function pfac_renderIndicadores() {
   const pctMeta   = metaPeriodo>0 ? Math.round((realPeriodo||totalFacturado)/metaPeriodo*100) : null;
   const metaColor = pctMeta===null?'#9AAABF':pctMeta>=100?'#1B7A4A':pctMeta>=80?'#E8A020':'#A32D2D';
 
-  // Top 10 productos
+  // Top 10 productos — leer desde items_detalle cuando existe (formato real)
   const porProducto = {};
+  const _agregarProducto = (itemCode, desc, val) => {
+    if (!itemCode || itemCode.startsWith('FAC-')) return;
+    const k = itemCode+'|'+desc;
+    if (!porProducto[k]) porProducto[k]={item:itemCode, desc:desc, val:0};
+    porProducto[k].val += val||0;
+  };
   [...facturadas,...pendientes].forEach(o => {
-    const k=o.item+'|'+(o.descripcion||o.item);
-    if (!porProducto[k]) porProducto[k]={item:o.item,desc:o.descripcion||o.item,val:0};
-    porProducto[k].val += parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+    const detalle = o.items_detalle
+      ? (typeof o.items_detalle === 'string' ? JSON.parse(o.items_detalle) : o.items_detalle)
+      : null;
+    if (detalle && detalle.length > 0) {
+      // Usar ítems reales del detalle, proporcionalmente al total de la orden
+      detalle.forEach(i => {
+        _agregarProducto(i.item, i.descripcion, parseFloat(i.subtotal)||0);
+      });
+    } else if (!o.item?.startsWith('FAC-')) {
+      // Fila directa (formato Nalsani antiguo ya corregido, por si acaso)
+      _agregarProducto(o.item, o.descripcion||o.item, parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0);
+    }
   });
   const top10Prod = Object.values(porProducto).sort((a,b)=>b.val-a.val).slice(0,10);
   const maxProd   = top10Prod[0]?.val||1;
