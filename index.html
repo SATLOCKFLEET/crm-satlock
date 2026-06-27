@@ -1401,22 +1401,17 @@ function iniciarApp(){
 }
 
 function construirTabs(){
-  // Rol facturacion: acceso exclusivo a Facturación y Portal Facturación
+  // Roles con acceso SOLO al módulo de facturación
   if(PERFIL.rol === 'facturacion'){
     return [
-      {label:'Facturación',render:renderFacturacion},
-      {label:'🧾 Portal Facturación',render:renderPortalFacturacion},
+      {label:'🧾 Facturación',render:renderFacturacionUnificada},
     ];
   }
-  // Rol contabilidad: Facturación + Portal + Traslados (sin el resto del CRM)
   if(PERFIL.rol === 'contabilidad'){
     return [
-      {label:'Facturación',render:renderFacturacion},
-      {label:'🧾 Portal Facturación',render:renderPortalFacturacion},
-      {label:'📦 Traslados',render:renderTraslados},
+      {label:'🧾 Facturación',render:renderFacturacionUnificada},
     ];
   }
-  // Rol supply_chain: solo Supply Chain
   if(PERFIL.rol === 'supply_chain'){
     return [
       {label:'📦 Supply Chain',render:renderSupplyChain},
@@ -1441,18 +1436,13 @@ function construirTabs(){
   if(ROLES_GERENCIA.includes(PERFIL.rol)){
     base.push({label:'Alta Gerencia',render:renderAltaGerencia});
   }
-  const ROLES_FAC=['ejecutivo_fleet','ejecutivo_carga','jefe_fleet','gerencia','alta_gerencia','analista_comercial','jefe_proyectos'];
-  if(ROLES_FAC.includes(PERFIL.rol)){
-    base.push({label:'Facturación',render:renderFacturacion});
+  // Facturación unificada — todos los roles que tenían acceso antes
+  const ROLES_FAC_UNIF=['ejecutivo_fleet','ejecutivo_carga','jefe_fleet','gerencia','alta_gerencia','analista_comercial','jefe_proyectos'];
+  if(ROLES_FAC_UNIF.includes(PERFIL.rol)){
+    base.push({label:'🧾 Facturación',render:renderFacturacionUnificada});
   }
-  if(['facturacion','gerencia','alta_gerencia','jefe_fleet','ejecutivo_fleet'].includes(PERFIL.rol)){
-    base.push({label:'🧾 Portal Facturación',render:renderPortalFacturacion});
-  }
-  if(['gerencia','alta_gerencia','jefe_fleet','ejecutivo_fleet'].includes(PERFIL.rol)){
-    base.push({label:'📦 Traslados',render:renderTraslados});
-  }
-  // Supply Chain — visible para todos los roles del módulo
-  const ROLES_SUPPLY = ['ejecutivo_fleet','jefe_fleet','facturacion','gerencia','alta_gerencia','supply_chain','analista_comercial','jefe_proyectos'];
+  // Supply Chain
+  const ROLES_SUPPLY=['ejecutivo_fleet','jefe_fleet','facturacion','gerencia','alta_gerencia','supply_chain','analista_comercial','jefe_proyectos'];
   if(ROLES_SUPPLY.includes(PERFIL.rol)){
     base.push({label:'📦 Supply Chain',render:renderSupplyChain});
   }
@@ -8301,7 +8291,8 @@ function renderHistorial(data) {
       <td class="empresa">${s.empresa}</td>
       <td style="font-variant-numeric:tabular-nums">${s.nit}</td>
       <td class="monto">${formatCOP(s.total_general)}</td>
-      <td><span class="badge badge-${s.estado.toLowerCase()}">${s.estado}</span></td>
+      <td><span class="badge ${s.estado.startsWith('Facturada ') ? 'badge-facturada' : s.estado === 'Completada' ? 'badge-completada' : 'badge-'+s.estado.toLowerCase()}">${s.estado}</span></td>
+      <td style="white-space:nowrap;font-size:11px;color:#9AAABF;">${s.updated_at||'—'}</td>
       <td style="white-space:nowrap">${s.ejecutivo.split(' ').slice(0,2).join(' ')}</td>
       <td style="white-space:nowrap;display:flex;gap:5px;align-items:center;">
         <button class="btn-add-sm" onclick="verDetalle('${s.consecutivo}')">Ver</button>
@@ -8608,13 +8599,20 @@ function switchTabDirect(tab) {
    ESTADO / MÉTRICAS
    ═══════════════════════════════════════════════════════ */
 function renderEstado() {
-  const counts = { Pendiente: 0, Enviada: 0, Facturada: 0, Rechazada: 0 };
-  solicitudes.forEach(s => { if (counts[s.estado] !== undefined) counts[s.estado]++; });
+  const counts = { Pendiente: 0, Enviada: 0, Facturada: 0, Completada: 0 };
+  solicitudes.forEach(s => {
+    if (s.estado === 'Completada') counts.Completada++;
+    else if (s.estado === 'Pendiente') counts.Pendiente++;
+    else if (s.estado === 'Enviada') counts.Enviada++;
+    else if (s.estado.startsWith('Facturada ')) counts.Facturada++;
+  });
 
-  document.getElementById('metricTotal').textContent = solicitudes.length;
-  document.getElementById('metricPendiente').textContent = counts.Pendiente;
-  document.getElementById('metricEnviada').textContent = counts.Enviada;
-  document.getElementById('metricFacturada').textContent = counts.Facturada;
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setEl('metricTotal',     solicitudes.length);
+  setEl('metricPendiente', counts.Pendiente);
+  setEl('metricEnviada',   counts.Enviada);
+  setEl('metricFacturada', counts.Facturada);
+  setEl('metricCompletada', counts.Completada);
 
   const body = document.getElementById('estadoBody');
   if (solicitudes.length === 0) {
@@ -8996,6 +8994,115 @@ document.addEventListener('click', (e) => {
 
 
 // ── FACTURACIÓN ───────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════
+   FACTURACIÓN UNIFICADA — router de subpestañas
+   ═══════════════════════════════════════════════════════ */
+
+// Subpestañas visibles por rol
+function facUnifSubtabs() {
+  const rol = PERFIL.rol;
+  const tabs = [];
+  // Nueva solicitud: ejecutivos, jefe, gerencia, contabilidad — NO facturacion
+  if (['ejecutivo_fleet','ejecutivo_carga','jefe_fleet','gerencia','alta_gerencia',
+       'analista_comercial','jefe_proyectos','contabilidad'].includes(rol)) {
+    tabs.push({ id:'nueva', label:'Nueva Solicitud' });
+  }
+  // Historial/Estado: todos excepto facturacion puro
+  if (['ejecutivo_fleet','ejecutivo_carga','jefe_fleet','gerencia','alta_gerencia',
+       'analista_comercial','jefe_proyectos','contabilidad','facturacion'].includes(rol)) {
+    tabs.push({ id:'historial', label:'Historial / Estado' });
+  }
+  // Agenda: facturacion, contabilidad, jefe, gerencia — NO ejecutivos
+  if (['facturacion','contabilidad','jefe_fleet','gerencia','alta_gerencia'].includes(rol)) {
+    tabs.push({ id:'agenda', label:'Agenda de Facturación' });
+  }
+  // Traslados: contabilidad, jefe, gerencia, facturacion — NO ejecutivos
+  if (['contabilidad','jefe_fleet','gerencia','alta_gerencia','facturacion'].includes(rol)) {
+    tabs.push({ id:'traslados', label:'Traslados' });
+  }
+  // Indicadores: todos
+  tabs.push({ id:'indicadores', label:'Indicadores' });
+  return tabs;
+}
+
+let _facUnifTabActiva = null;
+
+function renderFacturacionUnificada(container) {
+  const subtabs = facUnifSubtabs();
+  if (!subtabs.length) {
+    container.innerHTML = '<div class="empty">Sin acceso</div>';
+    return;
+  }
+  // Default tab
+  if (!_facUnifTabActiva || !subtabs.find(t => t.id === _facUnifTabActiva)) {
+    _facUnifTabActiva = subtabs[0].id;
+  }
+
+  container.innerHTML = `
+    <div id="fac-unif-root" style="height:100%;display:flex;flex-direction:column;">
+      <!-- Subpestañas -->
+      <div style="display:flex;gap:2px;border-bottom:2px solid #DDE3EE;margin-bottom:0;padding:0 4px;background:white;flex-shrink:0;">
+        ${subtabs.map(t => `
+          <button id="fac-unif-tab-${t.id}" onclick="facUnifSwitch('${t.id}')"
+            style="font-family:inherit;font-size:13px;font-weight:${_facUnifTabActiva===t.id?'700':'500'};
+              padding:10px 20px;border:none;background:none;cursor:pointer;
+              border-bottom:2px solid ${_facUnifTabActiva===t.id?'#19428C':'transparent'};
+              color:${_facUnifTabActiva===t.id?'#19428C':'#6B7A99'};
+              margin-bottom:-2px;transition:all .15s;">
+            ${t.label}
+          </button>`).join('')}
+      </div>
+      <!-- Contenedor de cada subpestaña -->
+      <div id="fac-unif-content" style="flex:1;overflow-y:auto;padding:20px;">
+        <div class="loading">Cargando...</div>
+      </div>
+    </div>`;
+
+  facUnifSwitch(_facUnifTabActiva);
+}
+
+function facUnifSwitch(tabId) {
+  _facUnifTabActiva = tabId;
+  // Update button styles
+  facUnifSubtabs().forEach(t => {
+    const btn = document.getElementById(`fac-unif-tab-${t.id}`);
+    if (!btn) return;
+    const active = t.id === tabId;
+    btn.style.fontWeight     = active ? '700' : '500';
+    btn.style.borderBottom   = active ? '2px solid #19428C' : '2px solid transparent';
+    btn.style.color          = active ? '#19428C' : '#6B7A99';
+  });
+  const content = document.getElementById('fac-unif-content');
+  if (!content) return;
+  content.innerHTML = '<div class="loading">Cargando...</div>';
+
+  if (tabId === 'nueva')       { renderFacturacion(content); }
+  else if (tabId === 'historial') { _facUnifRenderHistorialEstado(content); }
+  else if (tabId === 'agenda')    { renderPortalFacturacion(content); }
+  else if (tabId === 'traslados') { renderTraslados(content); }
+  else if (tabId === 'indicadores') { _facUnifRenderIndicadores(content); }
+}
+
+function _facUnifRenderHistorialEstado(container) {
+  // Reutiliza renderFacturacion pero muestra solo historial+estado
+  renderFacturacion(container);
+  // Después de renderizar, activar la pestaña historial automáticamente
+  setTimeout(() => {
+    const btn = container.querySelector('[onclick*="historial"]');
+    if (btn) btn.click();
+  }, 100);
+}
+
+function _facUnifRenderIndicadores(container) {
+  renderPortalFacturacion(container);
+  // Después de renderizar, activar la pestaña indicadores automáticamente
+  setTimeout(() => {
+    const btn = container.querySelector('[onclick*="indicadores"]');
+    if (btn) btn.click();
+  }, 300);
+}
+
+
 function renderFacturacion(container){
   container.innerHTML = `
 <div id="fac-root">
@@ -11160,7 +11267,7 @@ function getTotalOpItems() {
 function prepoblarFacturacionDesdeOp(op, items) {
   // Cambiar a pestaña Facturación
   const tabs = construirTabs();
-  const idxFac = tabs.findIndex(t => t.label === 'Facturación');
+  const idxFac = tabs.findIndex(t => t.label === '🧾 Facturación');
   if (idxFac >= 0) switchTab(idxFac);
 
   setTimeout(() => {
