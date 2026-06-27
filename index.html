@@ -9076,7 +9076,22 @@ function facUnifSwitch(tabId) {
   if (!content) return;
   content.innerHTML = '<div class="loading">Cargando...</div>';
 
-  if (tabId === 'nueva')       { renderFacturacion(content); }
+  if (tabId === 'nueva') {
+    renderFacturacion(content);
+    setTimeout(() => {
+      // Ocultar barra de tabs interna
+      const tabBar = document.getElementById('fac-tabs-bar');
+      if (tabBar) tabBar.style.display = 'none';
+      // Ocultar historial y estado
+      const pH = document.getElementById('fac-panel-historial');
+      const pE = document.getElementById('fac-panel-estado');
+      if (pH) pH.style.display = 'none';
+      if (pE) pE.style.display = 'none';
+      // Asegurar que nueva esté visible
+      const pN = document.getElementById('fac-panel-nueva');
+      if (pN) pN.style.display = 'block';
+    }, 150);
+  }
   else if (tabId === 'historial') { _facUnifRenderHistorialEstado(content); }
   else if (tabId === 'agenda')    { renderPortalFacturacion(content); }
   else if (tabId === 'traslados') { renderTraslados(content); }
@@ -9084,13 +9099,21 @@ function facUnifSwitch(tabId) {
 }
 
 function _facUnifRenderHistorialEstado(container) {
-  // Reutiliza renderFacturacion pero muestra solo historial+estado
   renderFacturacion(container);
-  // Después de renderizar, activar la pestaña historial automáticamente
   setTimeout(() => {
-    const btn = container.querySelector('[onclick*="historial"]');
-    if (btn) btn.click();
-  }, 100);
+    // Ocultar barra de tabs interna
+    const tabBar = document.getElementById('fac-tabs-bar');
+    if (tabBar) tabBar.style.display = 'none';
+    // Ocultar panel nueva solicitud
+    const pNueva = document.getElementById('fac-panel-nueva');
+    if (pNueva) pNueva.style.display = 'none';
+    // Mostrar historial
+    const pHist = document.getElementById('fac-panel-historial');
+    if (pHist) { pHist.style.display = 'block'; renderHistorial(); }
+    // Mostrar estado (métricas)
+    const pEst = document.getElementById('fac-panel-estado');
+    if (pEst) { pEst.style.display = 'block'; renderEstado(); }
+  }, 150);
 }
 
 function _facUnifRenderIndicadores(container) {
@@ -9120,7 +9143,7 @@ function renderFacturacion(container){
     <span id="alertMsg"></span>
   </div>
 
-  <div style="display:flex;border-bottom:2px solid var(--border);margin-bottom:24px;">
+  <div id="fac-tabs-bar" style="display:flex;border-bottom:2px solid var(--border);margin-bottom:24px;">
     <button class="fac-mtab" style="padding:10px 20px;font-size:13px;cursor:pointer;border:none;background:transparent;color:var(--text2);font-weight:600;border-bottom:2px solid var(--sat-orange);margin-bottom:-2px;color:var(--sat-blue);font-family:inherit;" onclick="facSwitchTab('nueva',this)">Nueva Solicitud</button>
     <button class="fac-mtab" style="padding:10px 20px;font-size:13px;cursor:pointer;border:none;background:transparent;color:var(--text2);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;font-family:inherit;" onclick="facSwitchTab('historial',this)">Historial de Solicitudes</button>
     <button class="fac-mtab" style="padding:10px 20px;font-size:13px;cursor:pointer;border:none;background:transparent;color:var(--text2);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;font-family:inherit;" onclick="facSwitchTab('estado',this)">Estado de Solicitudes</button>
