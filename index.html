@@ -10148,30 +10148,42 @@ function pfac_exportarIndicadoresExcel() {
   XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
 
   // ── Hoja 2: Facturas emitidas ─────────────────────────────────────────────
+  // Una fila independiente por cada producto de items_detalle (no se agrupan
+  // en una sola celda). La modalidad de cada fila es la del ítem individual
+  // (ej. el ítem agrupado de comodato ya trae modalidad:'Comodato').
   const headFac = ['N° Factura','Fecha factura','Fecha emisión','Empresa','NIT','Contacto',
-                   'Teléfono','Email','Ciudad','Productos','Modalidad','Ejecutivo','Facturada por','Valor'];
+                   'Teléfono','Email','Ciudad','Producto','Modalidad','Cantidad','Valor unitario',
+                   'Valor total','Ejecutivo','Facturada por','Valor'];
   const rowsFac = [...facturadas].sort((a,b)=>(b.facturada_at||'').localeCompare(a.facturada_at||''))
-    .map(o => {
-      // Construir resumen de productos desde items_detalle
+    .flatMap(o => {
+      // Desglosar productos desde items_detalle: una fila por ítem
       const detalle = o.items_detalle
         ? (typeof o.items_detalle==='string' ? JSON.parse(o.items_detalle) : o.items_detalle)
         : null;
-      const productos = detalle && detalle.length > 0
-        ? detalle.map(i => `${i.item} ${i.descripcion} x${i.cantidad}`).join(' | ')
-        : (o.descripcion||'—');
-      return [
+      const itemsParaFila = detalle && detalle.length > 0
+        ? detalle
+        : [{ descripcion: o.descripcion||'—', modalidad: o.modalidad, cantidad: 1,
+             valor_unitario: o.valor_unitario, subtotal: o.valor_unitario }];
+      const base = [
         o.num_factura||'—',
         o.fecha_factura,
         o.facturada_at ? new Date(o.facturada_at).toLocaleDateString('es-CO') : '—',
         o.empresa, o.nit,
         o.contacto||'—', o.telefono||'—', o.email_facturacion||'—', o.ciudad||'—',
-        productos,
-        o.modalidad, o.ejecutivo, o.facturada_por||'—',
-        o.valor_unitario,
       ];
+      return itemsParaFila.map(i => [
+        ...base,
+        i.descripcion||'—',
+        i.modalidad||o.modalidad,
+        i.cantidad||0,
+        i.valor_unitario||0,
+        i.subtotal||((i.cantidad||0)*(i.valor_unitario||0)),
+        o.ejecutivo, o.facturada_por||'—',
+        o.valor_unitario,
+      ]);
     });
   const ws2 = XLSX.utils.aoa_to_sheet([headFac, ...rowsFac]);
-  ws2['!cols'] = [{wch:14},{wch:14},{wch:14},{wch:30},{wch:12},{wch:20},{wch:14},{wch:28},{wch:16},{wch:12},{wch:28},{wch:20},{wch:16}];
+  ws2['!cols'] = [{wch:14},{wch:14},{wch:14},{wch:30},{wch:12},{wch:20},{wch:14},{wch:28},{wch:16},{wch:32},{wch:14},{wch:10},{wch:14},{wch:14},{wch:20},{wch:16},{wch:16}];
   XLSX.utils.book_append_sheet(wb, ws2, 'Facturadas');
 
   // ── Hoja 3: Pendientes del mes ────────────────────────────────────────────
