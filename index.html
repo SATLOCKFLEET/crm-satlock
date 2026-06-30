@@ -8074,8 +8074,7 @@ async function confirmarEnvio() {
         ipc_aplicado:           o.ipc_aplicado || 0,
         estado:                 'Pendiente',
         items_detalle:          o.items_detalle || null,
-      total:                  parseFloat(o.total) || (parseFloat(o.valor_unitario) * (o.cantidad || 1)) || 0,
-        // 'total' es GENERATED ALWAYS AS en Supabase — no incluir
+        // 'total' es GENERATED ALWAYS AS en Supabase — NO incluir en el insert
       }));
 
       const { error: ordErr } = await sb
