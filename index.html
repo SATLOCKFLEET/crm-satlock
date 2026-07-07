@@ -12909,6 +12909,7 @@ async function supplyMarcarEnProceso(id) {
   const s = _supplyData.find(x => x.id === id);
   if (s) s.estado = 'En proceso';
   supplyRenderGestion();
+  if (_supplySubtab === 'solicitudes') supplyRenderSolicitudes();
   showAlert('success', 'Solicitud marcada como En proceso.');
 }
 
@@ -12923,6 +12924,7 @@ async function supplyMarcarGestionada(id) {
   if (s) { s.estado = 'Gestionada'; s.gestionada_por = PERFIL.nombre; s.gestionada_at = new Date().toISOString(); }
   supplyRenderGestion();
   supplyRenderIndicadores();
+  if (_supplySubtab === 'solicitudes') supplyRenderSolicitudes();
   showAlert('success', 'Solicitud marcada como Gestionada.');
 }
 
@@ -12953,6 +12955,14 @@ function supplyRenderIndicadores() {
     const m = s.gestionada_at ? s.gestionada_at.slice(0,7) : 'Sin fecha';
     if (!porMes[m]) porMes[m] = 0;
     porMes[m]++;
+  });
+
+  // Seriales registrados
+  const serialesArr = [];
+  gestionadas.forEach(s => {
+    (s.solicitudes_supply_detalle||[]).forEach(d => {
+      if (d.serial) serialesArr.push({ consecutivo: s.consecutivo, descripcion: d.descripcion, serial: d.serial });
+    });
   });
 
   el.innerHTML = `
@@ -12997,6 +13007,31 @@ function supplyRenderIndicadores() {
               <span style="font-weight:700;color:#19428C;">${cnt}</span>
             </div>`).join('') || `<div style="color:#9AAABF;font-size:12px;">Sin datos</div>`}
         </div>
+      </div>
+    </div>
+
+    <!-- Seriales registrados -->
+    <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;overflow:hidden;margin-bottom:20px;">
+      <div style="padding:12px 16px;border-bottom:1px solid #EEF1F8;font-size:12px;font-weight:700;color:#19428C;">
+        Seriales registrados
+      </div>
+      <div style="padding:12px 16px;max-height:280px;overflow-y:auto;">
+        ${serialesArr.length ? `
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead><tr>
+            <th style="text-align:left;padding:4px 8px;color:#9AAABF;font-size:10px;text-transform:uppercase;">OSI</th>
+            <th style="text-align:left;padding:4px 8px;color:#9AAABF;font-size:10px;text-transform:uppercase;">Producto</th>
+            <th style="text-align:left;padding:4px 8px;color:#9AAABF;font-size:10px;text-transform:uppercase;">Serial</th>
+          </tr></thead>
+          <tbody>
+            ${serialesArr.map(r => `
+              <tr style="border-top:1px solid #EEF1F8;">
+                <td style="padding:5px 8px;font-weight:600;color:#19428C;">${r.consecutivo}</td>
+                <td style="padding:5px 8px;color:#3d5080;">${r.descripcion}</td>
+                <td style="padding:5px 8px;color:#3d5080;">${r.serial}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>` : `<div style="color:#9AAABF;font-size:12px;">Sin seriales registrados</div>`}
       </div>
     </div>
 
@@ -13489,8 +13524,8 @@ function supplyExportarExcel(id) {
     ['Dirección', s.direccion_cliente||'', 'Email', s.email_cliente||''],
     ['', '', '', ''],
     ['2. ESPECIFICACIONES TÉCNICAS', '', '', ''],
-    ['Cantidad', 'Ítem', 'Descripción', ''],
-    ...det.map(d => [d.cantidad, d.item, d.descripcion, '']),
+    ['Cantidad', 'Ítem', 'Descripción', 'Serial'],
+    ...det.map(d => [d.cantidad, d.item, d.descripcion, d.serial||'']),
     ['', '', '', ''],
     ['3. INFORMACIÓN PARA ENVÍO', '', '', ''],
     ['Requiere envío', s.requiere_envio?'SÍ':'NO', '', ''],
@@ -13655,6 +13690,7 @@ async function supplyEnviarCorreoDesdeVer(id) {
 function supplyAbrirGuia(id) {
   const s = _supplyData.find(x => x.id === id);
   if (!s) return;
+  const det = s.solicitudes_supply_detalle || [];
   document.getElementById('modal-supply-detalle')?.remove();
   const m = document.createElement('div');
   m.id = 'modal-supply-guia';
@@ -13667,6 +13703,22 @@ function supplyAbrirGuia(id) {
           style="background:none;border:none;font-size:20px;cursor:pointer;color:#9AAABF;">✕</button>
       </div>
       <div style="padding:18px 22px;">
+        ${det.length ? `
+        <div style="margin-bottom:16px;">
+          <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:6px;">Seriales de producto (opcional)</label>
+          <div style="border:1px solid #DDE3EE;border-radius:8px;overflow:hidden;">
+            ${det.map((d,i) => `
+              <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:${i<det.length-1?'1px solid #EEF1F8':'none'};">
+                <div style="flex:1;font-size:12px;color:#3d5080;">
+                  <div style="font-weight:600;">${d.item}</div>
+                  <div style="font-size:11px;color:#9AAABF;">${d.descripcion} · cant. ${d.cantidad}</div>
+                </div>
+                <input id="sg-serial-${i}" class="finput" type="text" value="${d.serial||''}"
+                  placeholder="Sin serial"
+                  style="width:160px;font-size:12px;padding:6px 8px;">
+              </div>`).join('')}
+          </div>
+        </div>` : ''}
         <div style="margin-bottom:12px;">
           <label style="font-size:11px;font-weight:700;color:#19428C;display:block;margin-bottom:4px;">Número de guía</label>
           <input id="sg-num-guia" class="finput" type="text" value="${s.numero_guia||''}"
@@ -13700,6 +13752,19 @@ async function supplyGuardarGuia(id) {
   if (error) { showAlert('danger', 'Error: ' + error.message); return; }
   const s = _supplyData.find(x => x.id === id);
   if (s) { s.numero_guia = numGuia; s.empresa_transportadora = empresaTr; }
+
+  // Guardar seriales por ítem (campo opcional)
+  const det = s?.solicitudes_supply_detalle || [];
+  for (let i = 0; i < det.length; i++) {
+    const val = document.getElementById(`sg-serial-${i}`)?.value.trim() || null;
+    if (val !== (det[i].serial || null)) {
+      const { error: errSerial } = await sb.from('solicitudes_supply_detalle')
+        .update({ serial: val }).eq('id', det[i].id);
+      if (errSerial) { showAlert('danger', 'Error guardando serial: ' + errSerial.message); return; }
+      det[i].serial = val;
+    }
+  }
+
   document.getElementById('modal-supply-guia')?.remove();
   showAlert('success', 'Guía registrada correctamente.');
   supplySwitchTab(_supplySubtab);
@@ -13712,12 +13777,12 @@ function supplyExportarIndicadores() {
   const rows = [];
   gestionadas.forEach(s => {
     (s.solicitudes_supply_detalle||[]).forEach(d => {
-      rows.push([s.consecutivo, s.fecha, s.nombre_cliente||'', s.nit||'', s.solicitante_nombre||'', d.item, d.descripcion, d.cantidad, s.gestionada_por||'', s.gestionada_at ? new Date(s.gestionada_at).toLocaleString('es-CO') : '']);
+      rows.push([s.consecutivo, s.fecha, s.nombre_cliente||'', s.nit||'', s.solicitante_nombre||'', d.item, d.descripcion, d.cantidad, d.serial||'', s.gestionada_por||'', s.gestionada_at ? new Date(s.gestionada_at).toLocaleString('es-CO') : '']);
     });
   });
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([['OSI','Fecha','Cliente','NIT','Solicitante','Ítem','Descripción','Cantidad','Gestionada por','Fecha gestión'],...rows]);
-  ws['!cols'] = [{wch:8},{wch:12},{wch:35},{wch:14},{wch:22},{wch:8},{wch:45},{wch:8},{wch:22},{wch:20}];
+  const ws = XLSX.utils.aoa_to_sheet([['OSI','Fecha','Cliente','NIT','Solicitante','Ítem','Descripción','Cantidad','Serial','Gestionada por','Fecha gestión'],...rows]);
+  ws['!cols'] = [{wch:8},{wch:12},{wch:35},{wch:14},{wch:22},{wch:8},{wch:45},{wch:8},{wch:16},{wch:22},{wch:20}];
   XLSX.utils.book_append_sheet(wb, ws, 'Indicadores');
   XLSX.writeFile(wb, `SupplyChain_Indicadores_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.xlsx`);
 }
