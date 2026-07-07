@@ -12774,7 +12774,7 @@ function supplyListaHTML(lista, estadoBadge, diasDesde) {
                 ${puedeEliminar(s) ? `<button onclick="supplyEliminar('${s.id}','${s.consecutivo}')"
                   style="font-family:inherit;font-size:11px;padding:4px 10px;background:#FCEBEB;color:#A32D2D;border:1px solid #F5BABA;border-radius:6px;cursor:pointer;">✕</button>` : ''}
                 ${puedeRegistrarGuia ? `<button onclick="supplyAbrirGuia('${s.id}')"
-                  style="font-family:inherit;font-size:11px;font-weight:600;padding:4px 10px;background:#534AB7;color:white;border:none;border-radius:6px;cursor:pointer;">📦 Guía</button>` : ''}
+                  style="font-family:inherit;font-size:11px;font-weight:600;padding:4px 10px;background:#534AB7;color:white;border:none;border-radius:6px;cursor:pointer;">📦 Guía y seriales</button>` : ''}
                 <button onclick="supplyExportarExcel('${s.id}')"
                   style="font-family:inherit;font-size:11px;padding:4px 10px;background:#E8F5EF;color:#1D6F42;border:1px solid #9FE1CB;border-radius:6px;cursor:pointer;">Excel</button>
                 <button onclick="supplyExportarPDF('${s.id}')"
@@ -13124,7 +13124,7 @@ function supplyVerDetalle(id) {
           style="font-family:inherit;font-size:12px;font-weight:700;padding:8px 16px;background:#19428C;color:white;border:none;border-radius:7px;cursor:pointer;">✓ Marcar gestionada</button>` : ""}
         ${["supply_chain","jefe_fleet","alta_gerencia","gerencia"].includes(PERFIL.rol) && s.estado === "Gestionada" ? `
         <button onclick="supplyAbrirGuia('${s.id}')"
-          style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#534AB7;color:white;border:none;border-radius:7px;cursor:pointer;">📦 Registrar guía</button>` : ""}
+          style="font-family:inherit;font-size:12px;font-weight:600;padding:8px 16px;background:#534AB7;color:white;border:none;border-radius:7px;cursor:pointer;">📦 Guía y seriales</button>` : ""}
       </div>
     </div>`;
   document.body.appendChild(m);
