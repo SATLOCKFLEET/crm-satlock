@@ -540,7 +540,7 @@ async function pintarListaCombos(container, combos, puedeEditar, contenedorPadre
     itemsCont.innerHTML = `<ul class="fs-lista-items">${detalle.items
       .map(
         (it) =>
-          `<li>${it.cantidad} × ${escapeHtml(it.fs_productos?.nombre || '—')} (${escapeHtml(it.fs_productos?.sku || '—')})</li>`
+          `<li>${escapeHtml(it.fs_productos?.nombre || '—')} (${escapeHtml(it.fs_productos?.sku || '—')}) <strong>x ${it.cantidad}</strong></li>`
       )
       .join('')}</ul>`;
   }
@@ -658,10 +658,32 @@ async function abrirFormularioCombo({ modo, combo = null, alGuardar }) {
     listaEl.innerHTML = itemsActuales
       .map((it, idx) => {
         const p = productos.find((pr) => pr.id === it.producto_id);
-        return `<li><span>${it.cantidad} × ${escapeHtml(p?.nombre || '—')}</span>
-          <button data-idx="${idx}" class="fs-btn-link fs-quitar-item">Quitar</button></li>`;
+        return `<li>
+          <span class="fs-item-nombre">${escapeHtml(p?.nombre || '—')} (${escapeHtml(p?.sku || '—')})</span>
+          <span class="fs-item-controles">
+            x <input type="number" min="1" step="1" value="${it.cantidad}" data-idx="${idx}" class="fs-item-cant">
+            <button data-idx="${idx}" class="fs-btn-link fs-quitar-item">Quitar</button>
+          </span>
+        </li>`;
       })
       .join('');
+
+    // La cantidad se edita aquí mismo, sin volver a buscar el producto.
+    // A propósito no se repinta la lista al escribir: si se repintara,
+    // el campo perdería el foco en cada tecla.
+    listaEl.querySelectorAll('.fs-item-cant').forEach((input) => {
+      input.addEventListener('change', () => {
+        const idx = Number(input.dataset.idx);
+        const n = Number(input.value);
+        if (!Number.isInteger(n) || n < 1) {
+          input.value = itemsActuales[idx].cantidad;
+          mostrarToast('La cantidad debe ser un número entero de 1 o más.', 'aviso');
+          return;
+        }
+        itemsActuales[idx].cantidad = n;
+      });
+    });
+
     listaEl.querySelectorAll('.fs-quitar-item').forEach((btn) => {
       btn.addEventListener('click', () => {
         itemsActuales.splice(Number(btn.dataset.idx), 1);
