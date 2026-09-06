@@ -58,3 +58,11 @@ export const UMBRAL_ESCALA_VOLUMEN = 10; // hasta 10 = escala 1; 11+ = escala 2
 
 // Zona horaria y formato usados en toda la app
 export const TIMEZONE = 'America/Bogota';
+
+// Fase 2: cuando exista la tabla de pedidos internos (fs_pedido_items),
+// poner esto en true. A partir de ahí el módulo bloquea la edición en
+// sitio de un combo que ya se usó en un negocio cerrado y obliga a
+// guardar una nueva versión, para que el negocio conserve el combo con
+// el que se vendió. Mientras esté en false, los combos se pueden editar
+// libremente porque todavía no hay negocios que dependan de ellos.
+export const PEDIDOS_INTERNOS_ACTIVOS = false;
