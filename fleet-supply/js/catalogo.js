@@ -13,6 +13,7 @@ import { sb } from './supabaseClient.js';
 import { perfilActual, tieneRol } from './auth.js';
 import { mostrarToast, confirmar, escapeHtml, estadoCargando, estadoVacio } from './ui.js';
 import { formatoCOP, formatoUSD } from './formato.js';
+import { mismoValor, registrarAuditoria } from './auditoria.js';
 import {
   ROLES_EDITAN_CATALOGO,
   LINEAS,
@@ -39,37 +40,6 @@ export async function cargarProductos({ soloActivos = true, texto = '' } = {}) {
     return [];
   }
   return data;
-}
-
-// Compara el valor que trae la base contra el que entrega el formulario.
-// Hace falta porque Supabase devuelve las columnas numeric como número
-// (1440000) mientras el formulario las entrega como texto ("1440000"):
-// con !== estricto eso se veía como un cambio y ensuciaba la auditoría.
-function mismoValor(a, b) {
-  if (a == null && b == null) return true;
-  if (a == null || b == null) return false;
-  if (typeof a === 'number' || typeof b === 'number') {
-    const na = Number(a);
-    const nb = Number(b);
-    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na === nb;
-  }
-  if (typeof a === 'boolean' || typeof b === 'boolean') return Boolean(a) === Boolean(b);
-  return String(a) === String(b);
-}
-
-async function registrarAuditoria(tabla, registroId, cambios) {
-  const usuarioId = perfilActual()?.id;
-  const filas = Object.entries(cambios).map(([campo, [anterior, nuevo]]) => ({
-    tabla,
-    registro_id: registroId,
-    campo,
-    valor_anterior: anterior == null ? null : String(anterior),
-    valor_nuevo: nuevo == null ? null : String(nuevo),
-    usuario_id: usuarioId,
-  }));
-  if (!filas.length) return;
-  const { error } = await sb.from('fs_auditoria').insert(filas);
-  if (error) console.error('Error registrando auditoría:', error);
 }
 
 export async function crearProducto(datos) {
