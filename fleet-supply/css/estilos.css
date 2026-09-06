@@ -118,6 +118,14 @@ textarea { min-height: 60px; resize: vertical; }
 .fs-combo-builder-add { display: flex; gap: 8px; margin-top: 12px; }
 .fs-combo-builder-add select { flex: 1; }
 
+.fs-card-combo-acciones { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--text3); }
+.fs-nota-toolbar { font-size: 12px; color: var(--text3); }
+.fs-ayuda-modo {
+  font-size: 12px; color: var(--text2); background: var(--sat-blue-light);
+  border-left: 3px solid var(--sat-blue); padding: 8px 12px; border-radius: var(--radius-sm);
+  margin-bottom: 14px;
+}
+
 /* ── MODAL ──────────────────────────────────────────── */
 .fs-modal-overlay {
   position: fixed; inset: 0; background: rgba(13,27,62,.45); display: none;
