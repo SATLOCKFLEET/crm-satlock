@@ -338,13 +338,13 @@ function pintarTablaProductos(container, productos, puedeEditar) {
           <tr data-id="${p.id}">
             <td>${escapeHtml(p.sku)}</td>
             <td>${escapeHtml(p.nombre)}</td>
-            <td>${p.categoria ? CATEGORIAS[p.categoria] : '—'}</td>
+            <td>${p.categoria ? (CATEGORIAS[p.categoria] || p.categoria) : '—'}</td>
             <td>${LINEAS[p.linea] || escapeHtml(p.linea)}</td>
-            <td>${p.marca ? MARCAS[p.marca] : '—'}</td>
-            <td>${CONTROL_INVENTARIO[p.control_inventario] || '—'}</td>
+            <td>${p.marca ? (MARCAS[p.marca] || p.marca) : '—'}</td>
+            <td>${CONTROL_INVENTARIO[p.control_inventario] || p.control_inventario || '—'}</td>
             <td>${p.precio_venta_hasta_10 != null ? formatoCOP(p.precio_venta_hasta_10) : '—'}</td>
             <td>${p.precio_venta_11_mas != null ? formatoCOP(p.precio_venta_11_mas) : '—'}</td>
-            <td>${p.ruta_habitual ? RUTAS[p.ruta_habitual] : '—'}</td>
+            <td>${p.ruta_habitual ? (RUTAS[p.ruta_habitual] || p.ruta_habitual) : '—'}</td>
             <td>${p.stock_minimo ?? '—'}</td>
             <td>${p.requiere_sim ? 'Sí' : '—'}</td>
             ${puedeEditar ? `<td><button class="fs-btn-link fs-editar-producto">Editar</button> · <button class="fs-btn-link fs-desactivar-producto">Desactivar</button></td>` : ''}
