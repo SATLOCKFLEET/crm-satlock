@@ -13,7 +13,14 @@ import { sb } from './supabaseClient.js';
 import { perfilActual, tieneRol } from './auth.js';
 import { mostrarToast, confirmar, escapeHtml, estadoCargando, estadoVacio } from './ui.js';
 import { formatoCOP, formatoUSD } from './formato.js';
-import { ROLES_EDITAN_CATALOGO, LINEAS, MARCAS, CONTROL_INVENTARIO, RUTAS } from './config.js';
+import {
+  ROLES_EDITAN_CATALOGO,
+  LINEAS,
+  MARCAS,
+  CONTROL_INVENTARIO,
+  RUTAS,
+  PEDIDOS_INTERNOS_ACTIVOS,
+} from './config.js';
 
 /* ───────────────────────── Datos: productos ───────────────────────── */
 
@@ -217,6 +224,97 @@ export async function guardarCombo({ nombre, items, notas, comboVigenteId = null
   return comboNuevo;
 }
 
+// ¿Este combo ya se usó en un negocio cerrado? Si sí, no se puede editar
+// en sitio: hay que guardar una nueva versión para que el negocio
+// conserve el combo con el que se vendió. La tabla de pedidos internos
+// llega en la Fase 2; hasta entonces ningún combo está comprometido.
+async function comboEnUso(comboId) {
+  if (!PEDIDOS_INTERNOS_ACTIVOS) return false;
+  const { count, error } = await sb
+    .from('fs_pedido_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('combo_id', comboId);
+  if (error) {
+    console.error(error);
+    return false;
+  }
+  return (count || 0) > 0;
+}
+
+// Texto legible de los ítems, para dejarlo en la bitácora.
+async function resumirItems(items) {
+  if (!items?.length) return '(sin ítems)';
+  const ids = [...new Set(items.map((it) => it.producto_id))];
+  const { data } = await sb.from('fs_productos').select('id,sku').in('id', ids);
+  const porId = Object.fromEntries((data || []).map((p) => [p.id, p.sku]));
+  return items.map((it) => `${porId[it.producto_id] || it.producto_id} x${it.cantidad}`).join(', ');
+}
+
+// Edita el combo en sitio, SIN crear versión nueva. Se usa mientras el
+// combo no esté comprometido con un negocio: sirve para corregir un
+// nombre, una nota o una cantidad sin llenar la tabla de versiones.
+export async function editarCombo({ comboId, nombre, notas, items }) {
+  if (!tieneRol(...ROLES_EDITAN_CATALOGO)) {
+    mostrarToast('No tienes permiso para editar combos.', 'error');
+    return null;
+  }
+  if (!nombre?.trim() || !items?.length) {
+    mostrarToast('El combo necesita un nombre y al menos un producto.', 'aviso');
+    return null;
+  }
+  if (await comboEnUso(comboId)) {
+    mostrarToast('Este combo ya se usó en un negocio: guarda una nueva versión en vez de editarlo.', 'aviso');
+    return null;
+  }
+
+  const anterior = await obtenerComboConItems(comboId);
+  if (!anterior) {
+    mostrarToast('No se encontró el combo.', 'error');
+    return null;
+  }
+
+  const { error: errHeader } = await sb
+    .from('fs_combos')
+    .update({ nombre: nombre.trim(), notas: notas || null })
+    .eq('id', comboId);
+  if (errHeader) {
+    console.error(errHeader);
+    mostrarToast('No se pudo guardar. ¿Ya existe otro combo con ese nombre y versión?', 'error');
+    return null;
+  }
+
+  // Se reemplazan las líneas del combo. El detalle anterior queda
+  // registrado en fs_auditoria antes de sustituirlo.
+  const resumenAntes = await resumirItems(
+    anterior.items.map((it) => ({ producto_id: it.producto_id, cantidad: it.cantidad }))
+  );
+  const resumenDespues = await resumirItems(items);
+
+  const { error: errDel } = await sb.from('fs_combo_items').delete().eq('combo_id', comboId);
+  if (errDel) {
+    console.error(errDel);
+    mostrarToast('No se pudieron actualizar los productos del combo.', 'error');
+    return null;
+  }
+  const { error: errIns } = await sb.from('fs_combo_items').insert(
+    items.map((it) => ({ combo_id: comboId, producto_id: it.producto_id, cantidad: it.cantidad }))
+  );
+  if (errIns) {
+    console.error(errIns);
+    mostrarToast('El combo quedó sin productos: vuelve a agregarlos.', 'error');
+    return null;
+  }
+
+  const diffs = {};
+  if (anterior.nombre !== nombre.trim()) diffs.nombre = [anterior.nombre, nombre.trim()];
+  if ((anterior.notas || '') !== (notas || '')) diffs.notas = [anterior.notas, notas];
+  if (resumenAntes !== resumenDespues) diffs.items = [resumenAntes, resumenDespues];
+  await registrarAuditoria('fs_combos', comboId, diffs);
+
+  mostrarToast('Combo actualizado.', 'exito');
+  return { id: comboId };
+}
+
 /* ───────────────────────── UI: pestaña Catálogo ───────────────────────── */
 
 export async function renderCatalogo(container) {
@@ -390,6 +488,7 @@ export async function renderCombos(container) {
   container.innerHTML = `
     <div class="fs-toolbar">
       ${puedeEditar ? '<button id="fs-btn-nuevo-combo" class="fs-btn-primary">+ Nuevo combo</button>' : ''}
+      <span class="fs-nota-toolbar">Los combos son plantillas reutilizables, no pedidos de cliente.</span>
     </div>
     <div id="fs-lista-combos"></div>
   `;
@@ -399,7 +498,9 @@ export async function renderCombos(container) {
 
   const btnNuevo = container.querySelector('#fs-btn-nuevo-combo');
   if (btnNuevo) {
-    btnNuevo.addEventListener('click', () => abrirFormularioCombo(null, () => renderCombos(container)));
+    btnNuevo.addEventListener('click', () =>
+      abrirFormularioCombo({ modo: 'nuevo', alGuardar: () => renderCombos(container) })
+    );
   }
 }
 
@@ -414,7 +515,15 @@ async function pintarListaCombos(container, combos, puedeEditar, contenedorPadre
     <div class="fs-card-combo" data-id="${c.id}">
       <div class="fs-card-combo-header">
         <div><strong>${escapeHtml(c.nombre)}</strong> <span class="fs-badge">v${c.version}</span></div>
-        ${puedeEditar ? '<button class="fs-btn-link fs-editar-combo">Nueva versión</button>' : ''}
+        ${
+          puedeEditar
+            ? `<div class="fs-card-combo-acciones">
+                 <button class="fs-btn-link fs-combo-editar">Editar</button> ·
+                 <button class="fs-btn-link fs-combo-duplicar">Duplicar</button> ·
+                 <button class="fs-btn-link fs-combo-version">Nueva versión</button>
+               </div>`
+            : ''
+        }
       </div>
       <div class="fs-card-combo-items" id="items-${c.id}">Cargando ítems...</div>
     </div>`
@@ -429,42 +538,102 @@ async function pintarListaCombos(container, combos, puedeEditar, contenedorPadre
       continue;
     }
     itemsCont.innerHTML = `<ul class="fs-lista-items">${detalle.items
-      .map((it) => `<li>${it.cantidad} × ${escapeHtml(it.fs_productos?.nombre || '—')} (${escapeHtml(it.fs_productos?.sku || '—')})</li>`)
+      .map(
+        (it) =>
+          `<li>${it.cantidad} × ${escapeHtml(it.fs_productos?.nombre || '—')} (${escapeHtml(it.fs_productos?.sku || '—')})</li>`
+      )
       .join('')}</ul>`;
   }
 
-  if (puedeEditar) {
-    container.querySelectorAll('.fs-editar-combo').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
-        const id = e.target.closest('.fs-card-combo').dataset.id;
-        const detalle = await obtenerComboConItems(id);
-        abrirFormularioCombo(detalle, () => renderCombos(contenedorPadre));
-      });
+  if (!puedeEditar) return;
+
+  const abrirCon = async (btn, modo) => {
+    const id = btn.closest('.fs-card-combo').dataset.id;
+    const detalle = await obtenerComboConItems(id);
+    if (!detalle) {
+      mostrarToast('No se encontró el combo.', 'error');
+      return;
+    }
+    abrirFormularioCombo({
+      modo,
+      combo: detalle,
+      alGuardar: () => renderCombos(contenedorPadre),
     });
-  }
+  };
+
+  container.querySelectorAll('.fs-combo-editar').forEach((btn) => {
+    btn.addEventListener('click', () => abrirCon(btn, 'editar'));
+  });
+  container.querySelectorAll('.fs-combo-duplicar').forEach((btn) => {
+    btn.addEventListener('click', () => abrirCon(btn, 'duplicar'));
+  });
+  container.querySelectorAll('.fs-combo-version').forEach((btn) => {
+    btn.addEventListener('click', () => abrirCon(btn, 'version'));
+  });
 }
 
-async function abrirFormularioCombo(comboExistente, alGuardar) {
+/*
+  Un solo formulario, cuatro modos:
+
+  nuevo     — combo desde cero, versión 1.
+  editar    — corrige el combo en sitio (nombre, notas, cantidades) sin
+              crear versión. Disponible mientras el combo no esté usado
+              por un negocio cerrado.
+  duplicar  — crea un combo NUEVO a partir de este, con todo editable.
+              Para los casos parecidos: se copia y se ajusta.
+  version   — conserva el nombre, sube a version+1 y retira la anterior.
+              Para cuando la plantilla cambia de verdad y quieres que
+              quede el rastro de cómo era antes.
+*/
+async function abrirFormularioCombo({ modo, combo = null, alGuardar }) {
   const productos = await cargarProductos({ soloActivos: true });
-  const itemsIniciales = comboExistente?.items?.map((it) => ({
-    producto_id: it.producto_id,
-    cantidad: it.cantidad,
-  })) || [];
+
+  const titulos = {
+    nuevo: 'Nuevo combo',
+    editar: `Editar "${combo ? escapeHtml(combo.nombre) : ''}"`,
+    duplicar: `Duplicar "${combo ? escapeHtml(combo.nombre) : ''}"`,
+    version: `Nueva versión de "${combo ? escapeHtml(combo.nombre) : ''}"`,
+  };
+  const ayudas = {
+    nuevo: 'Plantilla reutilizable. Se guarda como versión 1.',
+    editar: 'Corrige la plantilla sin crear una versión nueva.',
+    duplicar: 'Se crea un combo aparte. Puedes cambiarle todo, incluido el nombre.',
+    version: 'El nombre no cambia. La versión actual se retira y esta queda vigente.',
+  };
+  const botones = {
+    nuevo: 'Guardar combo',
+    editar: 'Guardar cambios',
+    duplicar: 'Crear copia',
+    version: 'Guardar nueva versión',
+  };
+
+  const nombreInicial =
+    modo === 'duplicar' ? `${combo.nombre} (copia)` : modo === 'nuevo' ? '' : combo.nombre;
+  const notasIniciales = modo === 'nuevo' ? '' : combo.notas || '';
+  const itemsIniciales =
+    modo === 'nuevo'
+      ? []
+      : (combo.items || []).map((it) => ({ producto_id: it.producto_id, cantidad: it.cantidad }));
 
   const overlay = document.createElement('div');
   overlay.className = 'fs-modal-overlay show';
   overlay.innerHTML = `
     <div class="fs-modal fs-modal-ancho">
-      <div class="fs-modal-title">${comboExistente ? `Nueva versión de "${escapeHtml(comboExistente.nombre)}"` : 'Nuevo combo'}</div>
+      <div class="fs-modal-title">${titulos[modo]}</div>
+      <div class="fs-ayuda-modo">${ayudas[modo]}</div>
       <div class="fs-form-grid">
-        <label class="fs-full">Nombre del combo<input id="c-nombre" value="${comboExistente ? escapeHtml(comboExistente.nombre) : ''}" ${comboExistente ? 'disabled' : ''}></label>
-        <label class="fs-full">Notas<textarea id="c-notas">${comboExistente ? escapeHtml(comboExistente.notas || '') : ''}</textarea></label>
+        <label class="fs-full">Nombre del combo
+          <input id="c-nombre" value="${escapeHtml(nombreInicial)}" ${modo === 'version' ? 'disabled' : ''}>
+        </label>
+        <label class="fs-full">Notas<textarea id="c-notas">${escapeHtml(notasIniciales)}</textarea></label>
       </div>
       <div class="fs-combo-builder">
         <div class="fs-combo-builder-add">
           <select id="c-select-producto">
             <option value="">Selecciona un producto...</option>
-            ${productos.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)} (${escapeHtml(p.sku)})</option>`).join('')}
+            ${productos
+              .map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)} (${escapeHtml(p.sku)})</option>`)
+              .join('')}
           </select>
           <input id="c-cantidad" type="number" min="1" value="1" style="width:70px">
           <button id="c-agregar-item" class="fs-btn-secundario">Agregar</button>
@@ -473,7 +642,7 @@ async function abrirFormularioCombo(comboExistente, alGuardar) {
       </div>
       <div class="fs-modal-actions">
         <button class="fs-btn-secundario" id="c-cancelar">Cancelar</button>
-        <button class="fs-btn-primary" id="c-guardar">Guardar combo</button>
+        <button class="fs-btn-primary" id="c-guardar">${botones[modo]}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -489,7 +658,8 @@ async function abrirFormularioCombo(comboExistente, alGuardar) {
     listaEl.innerHTML = itemsActuales
       .map((it, idx) => {
         const p = productos.find((pr) => pr.id === it.producto_id);
-        return `<li>${it.cantidad} × ${escapeHtml(p?.nombre || '—')} <button data-idx="${idx}" class="fs-btn-link fs-quitar-item">Quitar</button></li>`;
+        return `<li><span>${it.cantidad} × ${escapeHtml(p?.nombre || '—')}</span>
+          <button data-idx="${idx}" class="fs-btn-link fs-quitar-item">Quitar</button></li>`;
       })
       .join('');
     listaEl.querySelectorAll('.fs-quitar-item').forEach((btn) => {
@@ -519,12 +689,22 @@ async function abrirFormularioCombo(comboExistente, alGuardar) {
   overlay.querySelector('#c-guardar').addEventListener('click', async () => {
     const nombre = overlay.querySelector('#c-nombre').value.trim();
     const notas = overlay.querySelector('#c-notas').value.trim();
-    const resultado = await guardarCombo({
-      nombre,
-      notas,
-      items: itemsActuales,
-      comboVigenteId: comboExistente?.id || null,
-    });
+
+    let resultado = null;
+    if (modo === 'editar') {
+      resultado = await editarCombo({ comboId: combo.id, nombre, notas, items: itemsActuales });
+    } else if (modo === 'version') {
+      resultado = await guardarCombo({
+        nombre: combo.nombre,
+        notas,
+        items: itemsActuales,
+        comboVigenteId: combo.id,
+      });
+    } else {
+      // nuevo y duplicar terminan igual: un combo aparte, versión 1
+      resultado = await guardarCombo({ nombre, notas, items: itemsActuales, comboVigenteId: null });
+    }
+
     if (resultado) {
       overlay.remove();
       alGuardar();
