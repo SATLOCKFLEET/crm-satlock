@@ -21,7 +21,7 @@ import {
   RUTAS,
   CATEGORIAS,
   MONEDAS_COSTO,
-  PEDIDOS_INTERNOS_ACTIVOS,
+  NEGOCIOS_ACTIVOS,
 } from './config.js';
 
 /* ───────────────────────── Datos: productos ───────────────────────── */
@@ -226,14 +226,14 @@ export async function guardarCombo({ nombre, items, notas, comboVigenteId = null
   return comboNuevo;
 }
 
-// ¿Este combo ya se usó en un negocio cerrado? Si sí, no se puede editar
-// en sitio: hay que guardar una nueva versión para que el negocio
-// conserve el combo con el que se vendió. La tabla de pedidos internos
-// llega en la Fase 2; hasta entonces ningún combo está comprometido.
+// ¿Este combo ya se usó en un negocio? Si sí, no se puede editar en
+// sitio: hay que guardar una nueva versión para que el negocio conserve
+// el combo con el que se vendió. Se activa poniendo NEGOCIOS_ACTIVOS en
+// true cuando ya existan negocios cargados.
 async function comboEnUso(comboId) {
-  if (!PEDIDOS_INTERNOS_ACTIVOS) return false;
+  if (!NEGOCIOS_ACTIVOS) return false;
   const { count, error } = await sb
-    .from('fs_pedido_items')
+    .from('fs_negocio_linea')
     .select('id', { count: 'exact', head: true })
     .eq('combo_id', comboId);
   if (error) {
