@@ -26,11 +26,31 @@ export const LINEAS = {
   ambas: 'Ambas',
 };
 
-// Marcas de equipo
+// Marcas / proveedores de origen del producto
 export const MARCAS = {
   JimiIoT: 'JimiIoT',
   Geotab: 'Geotab',
+  Claro: 'Claro',
+  GlobalStar: 'GlobalStar',
   Otro: 'Otro',
+};
+
+// Categoría del producto. Además de servir para agrupar reportes, es lo
+// que permite reconocer una SIM y avisar cuando un combo lleve un equipo
+// que necesita conectividad sin la línea de SIM correspondiente.
+export const CATEGORIAS = {
+  equipo: 'Equipo GPS',
+  camara: 'Cámara',
+  sim: 'SIM card',
+  accesorio: 'Accesorio',
+  servicio: 'Servicio',
+};
+
+// Moneda en que factura el proveedor. La TRM y el colchón solo aplican
+// a los costos en USD; Claro y otros proveedores locales facturan en COP.
+export const MONEDAS_COSTO = {
+  USD: 'USD',
+  COP: 'COP',
 };
 
 // Tipo de control de inventario por producto
@@ -48,6 +68,8 @@ export const RUTAS = {
   m2m_importacion: 'M2M Dataglobal — con importación',
   jimiiot_china: 'JimiIoT China — compra directa',
   geotab_canada: 'Geotab Canadá',
+  claro_local: 'Claro — compra local',
+  globalstar_importacion: 'GlobalStar — con importación',
 };
 
 // Escalas de precio por volumen (regla de negocio: ≤10 unidades
