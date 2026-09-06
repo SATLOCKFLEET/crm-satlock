@@ -23,14 +23,17 @@
   <div class="fs-tabs">
     <button class="fs-tab active" id="tab-catalogo">Catálogo</button>
     <button class="fs-tab" id="tab-combos">Combos</button>
+    <button class="fs-tab" id="tab-config">Configuración</button>
   </div>
 
   <div class="fs-panel active" id="panel-catalogo"></div>
   <div class="fs-panel" id="panel-combos"></div>
+  <div class="fs-panel" id="panel-config"></div>
 
   <script type="module">
     import { iniciar, perfilActual, cerrarSesion } from './js/auth.js';
     import { renderCatalogo, renderCombos } from './js/catalogo.js';
+    import { renderConfiguracion } from './js/configuracion.js';
     import { cambiarTab } from './js/ui.js';
 
     async function arrancar() {
@@ -44,8 +47,10 @@
 
       const panelCatalogo = document.getElementById('panel-catalogo');
       const panelCombos = document.getElementById('panel-combos');
+      const panelConfig = document.getElementById('panel-config');
       const tabCatalogo = document.getElementById('tab-catalogo');
       const tabCombos = document.getElementById('tab-combos');
+      const tabConfig = document.getElementById('tab-config');
 
       tabCatalogo.addEventListener('click', () => {
         cambiarTab('panel-catalogo', tabCatalogo);
@@ -54,6 +59,10 @@
       tabCombos.addEventListener('click', () => {
         cambiarTab('panel-combos', tabCombos);
         renderCombos(panelCombos);
+      });
+      tabConfig.addEventListener('click', () => {
+        cambiarTab('panel-config', tabConfig);
+        renderConfiguracion(panelConfig);
       });
 
       // Pestaña inicial
