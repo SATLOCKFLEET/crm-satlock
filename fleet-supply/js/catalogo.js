@@ -32,6 +32,22 @@ export async function cargarProductos({ soloActivos = true, texto = '' } = {}) {
   return data;
 }
 
+// Compara el valor que trae la base contra el que entrega el formulario.
+// Hace falta porque Supabase devuelve las columnas numeric como número
+// (1440000) mientras el formulario las entrega como texto ("1440000"):
+// con !== estricto eso se veía como un cambio y ensuciaba la auditoría.
+function mismoValor(a, b) {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  if (typeof a === 'number' || typeof b === 'number') {
+    const na = Number(a);
+    const nb = Number(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na === nb;
+  }
+  if (typeof a === 'boolean' || typeof b === 'boolean') return Boolean(a) === Boolean(b);
+  return String(a) === String(b);
+}
+
 async function registrarAuditoria(tabla, registroId, cambios) {
   const usuarioId = perfilActual()?.id;
   const filas = Object.entries(cambios).map(([campo, [anterior, nuevo]]) => ({
@@ -80,7 +96,9 @@ export async function actualizarProducto(id, cambios) {
 
   const diffs = {};
   for (const campo of Object.keys(cambios)) {
-    if (actual[campo] !== cambios[campo]) diffs[campo] = [actual[campo], cambios[campo]];
+    if (!mismoValor(actual[campo], cambios[campo])) {
+      diffs[campo] = [actual[campo], cambios[campo]];
+    }
   }
 
   const { data, error } = await sb.from('fs_productos').update(cambios).eq('id', id).select().single();
@@ -327,6 +345,15 @@ function abrirFormularioProducto(producto, alGuardar) {
 
   overlay.querySelector('#f-cancelar').addEventListener('click', () => overlay.remove());
 
+  // Los campos de dinero se mandan como número, no como texto, para que
+  // la base y la auditoría trabajen siempre con el mismo tipo de dato.
+  const leerNumero = (selector) => {
+    const v = overlay.querySelector(selector).value.trim();
+    if (v === '') return null;
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+  };
+
   overlay.querySelector('#f-guardar').addEventListener('click', async () => {
     const datos = {
       sku: overlay.querySelector('#f-sku').value.trim(),
@@ -335,9 +362,9 @@ function abrirFormularioProducto(producto, alGuardar) {
       marca: overlay.querySelector('#f-marca').value || null,
       control_inventario: overlay.querySelector('#f-control').value,
       ruta_habitual: overlay.querySelector('#f-ruta').value || null,
-      costo_usd: overlay.querySelector('#f-costo').value || null,
-      precio_venta_hasta_10: overlay.querySelector('#f-precio10').value || null,
-      precio_venta_11_mas: overlay.querySelector('#f-precio11').value || null,
+      costo_usd: leerNumero('#f-costo'),
+      precio_venta_hasta_10: leerNumero('#f-precio10'),
+      precio_venta_11_mas: leerNumero('#f-precio11'),
       aplica_comodato: overlay.querySelector('#f-comodato').checked,
       notas: overlay.querySelector('#f-notas').value.trim() || null,
     };
