@@ -12,6 +12,7 @@ export const ROLES_FS = {
   FINANCIERA: 'financiera',
   GERENCIA: 'gerencia',
   SOLO_LECTURA: 'solo_lectura',
+  ADMIN: 'admin',
 };
 
 // Roles que pueden crear/editar el catálogo y los combos.
@@ -24,6 +25,17 @@ export const ROLES_EDITAN_CATALOGO = [ROLES_FS.JEFE_COMERCIAL];
 // actuará sobre el negocio cuando exista la reserva de stock, en la fase
 // de inventario).
 export const ROLES_EDITAN_NEGOCIOS = [ROLES_FS.JEFE_COMERCIAL];
+
+// Quién edita los maestros: proveedores, rutas y sus hitos. Es
+// Comercio Exterior porque es quien cotiza, coloca los pedidos y
+// conoce los tiempos reales de cada ruta.
+export const ROLES_EDITAN_CONFIG = [ROLES_FS.COMERCIO_EXTERIOR, ROLES_FS.ADMIN];
+
+// Los parámetros (TRM, colchón, porcentajes) los toca además
+// Financiera, porque de la TRM depende lo que se desembolsa.
+export const ROLES_EDITAN_PARAMETROS = [
+  ROLES_FS.COMERCIO_EXTERIOR, ROLES_FS.FINANCIERA, ROLES_FS.ADMIN,
+];
 
 // Líneas de negocio
 export const LINEAS = {
