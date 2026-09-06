@@ -56,6 +56,14 @@ export const RUTAS = {
 // aquí solo se deja el umbral centralizado para no repetirlo).
 export const UMBRAL_ESCALA_VOLUMEN = 10; // hasta 10 = escala 1; 11+ = escala 2
 
+// Factor de seguridad del stock mínimo sugerido:
+// consumo promedio diario (últimos 90 días) × días de lead time de la
+// ruta de planeación × este factor, redondeado hacia arriba. El valor
+// sugerido se muestra al lado del mínimo definido a mano, nunca lo
+// reemplaza.
+export const FACTOR_SEGURIDAD_STOCK = 1.4;
+export const DIAS_CONSUMO_PROMEDIO = 90;
+
 // Zona horaria y formato usados en toda la app
 export const TIMEZONE = 'America/Bogota';
 
