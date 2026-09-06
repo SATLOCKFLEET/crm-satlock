@@ -1,0 +1,145 @@
+/* ═══════════════════════════════════════════════════════
+   estilos.css — Fleet Supply
+   Paleta tomada del CRM Satlock Fleet (mismas variables) para
+   que el módulo nuevo se vea como parte de la misma aplicación.
+   Responsivo: usable en computador y en tablet.
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  --bg: #f0f2f7;
+  --surface: #ffffff;
+  --surface2: #e8ecf4;
+  --border: #d0d6e8;
+  --border2: #a8b4d0;
+  --text: #0d1b3e;
+  --text2: #3d5080;
+  --text3: #7a8db0;
+  --sat-orange: #E8460A;
+  --sat-orange-light: #fdeee8;
+  --sat-blue: #19428C;
+  --sat-blue-light: #e8edf7;
+  --green: #1D9E75;
+  --green-light: #E1F5EE;
+  --red: #E24B4A;
+  --red-light: #FCEBEB;
+  --amber: #BA7517;
+  --amber-light: #FAEEDA;
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── TOPBAR ─────────────────────────────────────────── */
+.fs-topbar {
+  background: var(--sat-blue);
+  border-top: 3px solid var(--sat-orange);
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.fs-topbar-title { font-size: 15px; font-weight: 500; color: #fff; }
+.fs-badge-modulo {
+  font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  background: var(--sat-orange-light); color: var(--sat-orange); padding: 3px 8px; border-radius: 4px;
+}
+.fs-user-pill { display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(255,255,255,.85); }
+.fs-btn-logout {
+  font-family: inherit; font-size: 11px; color: var(--red); background: var(--red-light);
+  border: .5px solid var(--red); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-weight: 500;
+}
+
+/* ── TABS ───────────────────────────────────────────── */
+.fs-tabs {
+  display: flex; gap: 4px; padding: 10px 20px 0; background: var(--surface);
+  border-bottom: .5px solid var(--border); flex-wrap: wrap;
+}
+.fs-tab {
+  font-family: inherit; font-size: 13px; font-weight: 500; color: var(--text2);
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  padding: 10px 14px; cursor: pointer;
+}
+.fs-tab.active { color: var(--sat-blue); border-bottom-color: var(--sat-orange); }
+
+.fs-panel { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
+.fs-panel.active { display: block; }
+
+/* ── TOOLBAR / INPUTS ───────────────────────────────── */
+.fs-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.fs-input, select, textarea, input[type="text"], input[type="number"] {
+  font-family: inherit; font-size: 13px; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface); color: var(--text); width: 100%;
+}
+textarea { min-height: 60px; resize: vertical; }
+
+.fs-btn-primary, .fs-btn-secundario, .fs-btn-link {
+  font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; border-radius: var(--radius-sm);
+}
+.fs-btn-primary { background: var(--sat-orange); color: #fff; border: none; padding: 10px 16px; }
+.fs-btn-primary:hover { opacity: .9; }
+.fs-btn-secundario { background: var(--surface2); color: var(--text); border: 1px solid var(--border); padding: 10px 16px; }
+.fs-btn-link { background: none; border: none; color: var(--sat-blue); padding: 0; font-size: 12px; }
+
+/* ── TABLA ──────────────────────────────────────────── */
+.fs-tabla { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+.fs-tabla th, .fs-tabla td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
+.fs-tabla th { background: var(--surface2); color: var(--text2); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.fs-tabla tbody tr:hover { background: var(--sat-blue-light); }
+
+.fs-loading, .fs-empty, .fs-empty-inline {
+  color: var(--text3); font-size: 13px; padding: 24px; text-align: center;
+}
+.fs-empty-inline { padding: 4px 0; }
+
+/* ── COMBOS ─────────────────────────────────────────── */
+.fs-card-combo {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 12px;
+}
+.fs-card-combo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.fs-badge { font-size: 10px; background: var(--sat-blue-light); color: var(--sat-blue); padding: 2px 7px; border-radius: 10px; margin-left: 6px; }
+.fs-lista-items { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text2); }
+.fs-lista-items-editable { list-style: none; margin: 10px 0 0; padding: 0; }
+.fs-lista-items-editable li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--border); font-size: 13px; }
+
+.fs-combo-builder-add { display: flex; gap: 8px; margin-top: 12px; }
+.fs-combo-builder-add select { flex: 1; }
+
+/* ── MODAL ──────────────────────────────────────────── */
+.fs-modal-overlay {
+  position: fixed; inset: 0; background: rgba(13,27,62,.45); display: none;
+  align-items: center; justify-content: center; padding: 20px; z-index: 1000;
+}
+.fs-modal-overlay.show { display: flex; }
+.fs-modal {
+  background: var(--surface); border-radius: var(--radius); padding: 24px; width: 100%; max-width: 480px;
+  max-height: 90vh; overflow-y: auto;
+}
+.fs-modal-ancho { max-width: 640px; }
+.fs-modal-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+.fs-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; margin-bottom: 12px; }
+.fs-form-grid label { display: flex; flex-direction: column; gap: 5px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--text3); }
+.fs-form-grid .fs-full { grid-column: 1 / -1; }
+.fs-checkbox { flex-direction: row !important; align-items: center; gap: 8px !important; }
+.fs-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+/* ── RESPONSIVE (tablet) ────────────────────────────── */
+@media (max-width: 720px) {
+  .fs-panel { padding: 14px; }
+  .fs-form-grid { grid-template-columns: 1fr; }
+  .fs-tabla { display: block; overflow-x: auto; white-space: nowrap; }
+  .fs-topbar { height: auto; padding: 10px 14px; }
+}
