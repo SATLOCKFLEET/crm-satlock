@@ -129,6 +129,33 @@ textarea { min-height: 60px; resize: vertical; }
   margin-bottom: 14px;
 }
 
+/* ── CONFIGURACIÓN: sub-pestañas ────────────────────── */
+.fs-subtabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.fs-subtab {
+  font-family: inherit; font-size: 12px; font-weight: 500; color: var(--text2);
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  padding: 8px 12px; cursor: pointer;
+}
+.fs-subtab.active { color: var(--sat-blue); border-bottom-color: var(--sat-blue); }
+
+/* ── CONFIGURACIÓN: rutas e hitos ───────────────────── */
+.fs-card-ruta {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 14px 16px; margin-bottom: 14px;
+}
+.fs-card-ruta-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.fs-card-ruta-sub { font-size: 11px; color: var(--text3); margin-top: 3px; }
+.fs-card-ruta-total { text-align: right; font-size: 13px; color: var(--text2); white-space: nowrap; }
+.fs-total-dias { font-size: 20px; font-weight: 600; color: var(--sat-blue); }
+.fs-card-ruta-acciones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+.fs-inactiva { color: var(--red); font-weight: 500; }
+
+.fs-tabla-hitos th, .fs-tabla-hitos td { padding: 5px 8px; font-size: 12px; }
+.fs-tabla-hitos input[type="text"], .fs-tabla-hitos input[type="number"] { padding: 5px 8px; font-size: 12px; }
+.fs-tabla-hitos input:disabled { background: var(--surface2); color: var(--text3); }
+
+.fs-par-desc { font-size: 12px; color: var(--text3); }
+
 /* ── MODAL ──────────────────────────────────────────── */
 .fs-modal-overlay {
   position: fixed; inset: 0; background: rgba(13,27,62,.45); display: none;
