@@ -19,6 +19,8 @@ import {
   MARCAS,
   CONTROL_INVENTARIO,
   RUTAS,
+  CATEGORIAS,
+  MONEDAS_COSTO,
   PEDIDOS_INTERNOS_ACTIVOS,
 } from './config.js';
 
@@ -353,7 +355,7 @@ function pintarTablaProductos(container, productos, puedeEditar) {
     <table class="fs-tabla">
       <thead>
         <tr>
-          <th>SKU</th><th>Nombre</th><th>Línea</th><th>Marca</th>
+          <th>SKU</th><th>Nombre</th><th>Categoría</th><th>Línea</th><th>Marca</th>
           <th>Control</th><th>Precio ≤10</th><th>Precio 11+</th><th>Ruta planeación</th>
           <th>Mín.</th><th>SIM</th>
           ${puedeEditar ? '<th></th>' : ''}
@@ -366,6 +368,7 @@ function pintarTablaProductos(container, productos, puedeEditar) {
           <tr data-id="${p.id}">
             <td>${escapeHtml(p.sku)}</td>
             <td>${escapeHtml(p.nombre)}</td>
+            <td>${p.categoria ? CATEGORIAS[p.categoria] : '—'}</td>
             <td>${LINEAS[p.linea] || escapeHtml(p.linea)}</td>
             <td>${p.marca ? MARCAS[p.marca] : '—'}</td>
             <td>${CONTROL_INVENTARIO[p.control_inventario] || '—'}</td>
@@ -420,6 +423,12 @@ function abrirFormularioProducto(producto, alGuardar) {
             ${Object.entries(MARCAS).map(([v, l]) => `<option value="${v}" ${existente && producto.marca === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </label>
+        <label>Categoría
+          <select id="f-categoria">
+            <option value="">—</option>
+            ${Object.entries(CATEGORIAS).map(([v, l]) => `<option value="${v}" ${existente && producto.categoria === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </label>
         <label>Control de inventario
           <select id="f-control">
             ${Object.entries(CONTROL_INVENTARIO).map(([v, l]) => `<option value="${v}" ${existente && producto.control_inventario === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -431,7 +440,12 @@ function abrirFormularioProducto(producto, alGuardar) {
             ${Object.entries(RUTAS).map(([v, l]) => `<option value="${v}" ${existente && producto.ruta_habitual === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </label>
-        <label>Costo (USD)<input id="f-costo" type="number" step="0.01" value="${existente ? producto.costo_usd ?? '' : ''}"></label>
+        <label>Costo del proveedor<input id="f-costo" type="number" step="0.01" value="${existente ? producto.costo_usd ?? '' : ''}"></label>
+        <label>Moneda del costo
+          <select id="f-moneda">
+            ${Object.entries(MONEDAS_COSTO).map(([v, l]) => `<option value="${v}" ${existente && (producto.costo_moneda || 'USD') === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </label>
         <label>Precio venta ≤10 (COP)<input id="f-precio10" type="number" step="1" value="${existente ? producto.precio_venta_hasta_10 ?? '' : ''}"></label>
         <label>Precio venta 11+ (COP)<input id="f-precio11" type="number" step="1" value="${existente ? producto.precio_venta_11_mas ?? '' : ''}"></label>
         <label>Stock mínimo<input id="f-minimo" type="number" min="0" step="1" value="${existente ? producto.stock_minimo ?? '' : ''}"></label>
@@ -464,9 +478,11 @@ function abrirFormularioProducto(producto, alGuardar) {
       nombre: overlay.querySelector('#f-nombre').value.trim(),
       linea: overlay.querySelector('#f-linea').value,
       marca: overlay.querySelector('#f-marca').value || null,
+      categoria: overlay.querySelector('#f-categoria').value || null,
       control_inventario: overlay.querySelector('#f-control').value,
       ruta_habitual: overlay.querySelector('#f-ruta').value || null,
       costo_usd: leerNumero('#f-costo'),
+      costo_moneda: overlay.querySelector('#f-moneda').value,
       precio_venta_hasta_10: leerNumero('#f-precio10'),
       precio_venta_11_mas: leerNumero('#f-precio11'),
       stock_minimo: leerNumero('#f-minimo'),
