@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es-CO">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fleet Supply — Satlock</title>
+<link rel="stylesheet" href="css/estilos.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+  <div class="fs-topbar">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="fs-badge-modulo">Fleet Supply</span>
+      <span class="fs-topbar-title">Comercial y abastecimiento</span>
+    </div>
+    <div class="fs-user-pill">
+      <span id="fs-user-nombre">Cargando...</span>
+      <button class="fs-btn-logout" id="fs-btn-logout">Salir</button>
+    </div>
+  </div>
+
+  <div class="fs-tabs">
+    <button class="fs-tab active" id="tab-catalogo">Catálogo</button>
+    <button class="fs-tab" id="tab-combos">Combos</button>
+  </div>
+
+  <div class="fs-panel active" id="panel-catalogo"></div>
+  <div class="fs-panel" id="panel-combos"></div>
+
+  <script type="module">
+    import { iniciar, perfilActual, cerrarSesion } from './js/auth.js';
+    import { renderCatalogo, renderCombos } from './js/catalogo.js';
+    import { cambiarTab } from './js/ui.js';
+
+    async function arrancar() {
+      const sesion = await iniciar();
+      if (!sesion) return; // auth.js ya mostró la pantalla de "sin acceso" o redirigió
+
+      const perfil = perfilActual();
+      document.getElementById('fs-user-nombre').textContent = `${perfil.nombre} · ${perfil.cargo || ''}`;
+
+      document.getElementById('fs-btn-logout').addEventListener('click', cerrarSesion);
+
+      const panelCatalogo = document.getElementById('panel-catalogo');
+      const panelCombos = document.getElementById('panel-combos');
+      const tabCatalogo = document.getElementById('tab-catalogo');
+      const tabCombos = document.getElementById('tab-combos');
+
+      tabCatalogo.addEventListener('click', () => {
+        cambiarTab('panel-catalogo', tabCatalogo);
+        renderCatalogo(panelCatalogo);
+      });
+      tabCombos.addEventListener('click', () => {
+        cambiarTab('panel-combos', tabCombos);
+        renderCombos(panelCombos);
+      });
+
+      // Pestaña inicial
+      await renderCatalogo(panelCatalogo);
+    }
+
+    arrancar();
+  </script>
+</body>
+</html>
