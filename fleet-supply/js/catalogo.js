@@ -354,7 +354,8 @@ function pintarTablaProductos(container, productos, puedeEditar) {
       <thead>
         <tr>
           <th>SKU</th><th>Nombre</th><th>Línea</th><th>Marca</th>
-          <th>Control</th><th>Precio ≤10</th><th>Precio 11+</th><th>Ruta habitual</th>
+          <th>Control</th><th>Precio ≤10</th><th>Precio 11+</th><th>Ruta planeación</th>
+          <th>Mín.</th><th>SIM</th>
           ${puedeEditar ? '<th></th>' : ''}
         </tr>
       </thead>
@@ -371,6 +372,8 @@ function pintarTablaProductos(container, productos, puedeEditar) {
             <td>${p.precio_venta_hasta_10 != null ? formatoCOP(p.precio_venta_hasta_10) : '—'}</td>
             <td>${p.precio_venta_11_mas != null ? formatoCOP(p.precio_venta_11_mas) : '—'}</td>
             <td>${p.ruta_habitual ? RUTAS[p.ruta_habitual] : '—'}</td>
+            <td>${p.stock_minimo ?? '—'}</td>
+            <td>${p.requiere_sim ? 'Sí' : '—'}</td>
             ${puedeEditar ? `<td><button class="fs-btn-link fs-editar-producto">Editar</button> · <button class="fs-btn-link fs-desactivar-producto">Desactivar</button></td>` : ''}
           </tr>`
           )
@@ -422,7 +425,7 @@ function abrirFormularioProducto(producto, alGuardar) {
             ${Object.entries(CONTROL_INVENTARIO).map(([v, l]) => `<option value="${v}" ${existente && producto.control_inventario === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </label>
-        <label>Ruta habitual
+        <label>Ruta para planeación (lead time)
           <select id="f-ruta">
             <option value="">—</option>
             ${Object.entries(RUTAS).map(([v, l]) => `<option value="${v}" ${existente && producto.ruta_habitual === v ? 'selected' : ''}>${l}</option>`).join('')}
@@ -431,7 +434,10 @@ function abrirFormularioProducto(producto, alGuardar) {
         <label>Costo (USD)<input id="f-costo" type="number" step="0.01" value="${existente ? producto.costo_usd ?? '' : ''}"></label>
         <label>Precio venta ≤10 (COP)<input id="f-precio10" type="number" step="1" value="${existente ? producto.precio_venta_hasta_10 ?? '' : ''}"></label>
         <label>Precio venta 11+ (COP)<input id="f-precio11" type="number" step="1" value="${existente ? producto.precio_venta_11_mas ?? '' : ''}"></label>
+        <label>Stock mínimo<input id="f-minimo" type="number" min="0" step="1" value="${existente ? producto.stock_minimo ?? '' : ''}"></label>
         <label class="fs-checkbox"><input id="f-comodato" type="checkbox" ${existente && producto.aplica_comodato ? 'checked' : ''}> Aplica comodato</label>
+        <label class="fs-checkbox"><input id="f-sim" type="checkbox" ${existente && producto.requiere_sim ? 'checked' : ''}> Necesita SIM card</label>
+        <div class="fs-full fs-ayuda-modo">La ruta no decide cómo se compra (eso lo define Comercio Exterior en cada orden): solo se usa para calcular días de cobertura y stock mínimo sugerido. Ante duda, elige la más lenta.</div>
         <label class="fs-full">Notas<textarea id="f-notas">${existente ? escapeHtml(producto.notas || '') : ''}</textarea></label>
       </div>
       <div class="fs-modal-actions">
@@ -463,7 +469,9 @@ function abrirFormularioProducto(producto, alGuardar) {
       costo_usd: leerNumero('#f-costo'),
       precio_venta_hasta_10: leerNumero('#f-precio10'),
       precio_venta_11_mas: leerNumero('#f-precio11'),
+      stock_minimo: leerNumero('#f-minimo'),
       aplica_comodato: overlay.querySelector('#f-comodato').checked,
+      requiere_sim: overlay.querySelector('#f-sim').checked,
       notas: overlay.querySelector('#f-notas').value.trim() || null,
     };
     if (!datos.sku || !datos.nombre) {
