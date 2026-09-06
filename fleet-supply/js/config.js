@@ -4,7 +4,9 @@
    No hay build tools: este archivo se importa con <script type="module">.
    ═══════════════════════════════════════════════════════ */
 
-// Roles de Fleet Supply (independientes de usuarios.rol, ver fs_usuarios_rol)
+// Roles de Fleet Supply (independientes de usuarios.rol, ver fs_usuarios_rol).
+// 'admin' es el súper usuario: va incluido en TODAS las listas de permisos
+// de abajo. Si se agrega una lista nueva, hay que acordarse de incluirlo.
 export const ROLES_FS = {
   JEFE_COMERCIAL: 'jefe_comercial',
   ALMACENISTA: 'almacenista',
@@ -18,13 +20,13 @@ export const ROLES_FS = {
 // Roles que pueden crear/editar el catálogo y los combos.
 // El resto (almacenista, comercio_exterior, financiera, gerencia,
 // solo_lectura) solo consulta en esta fase.
-export const ROLES_EDITAN_CATALOGO = [ROLES_FS.JEFE_COMERCIAL];
+export const ROLES_EDITAN_CATALOGO = [ROLES_FS.JEFE_COMERCIAL, ROLES_FS.ADMIN];
 
 // Quién puede crear y editar negocios. El Jefe Comercial es quien cierra
 // el negocio y define el combo; los demás consultan (el Almacenista
 // actuará sobre el negocio cuando exista la reserva de stock, en la fase
 // de inventario).
-export const ROLES_EDITAN_NEGOCIOS = [ROLES_FS.JEFE_COMERCIAL];
+export const ROLES_EDITAN_NEGOCIOS = [ROLES_FS.JEFE_COMERCIAL, ROLES_FS.ADMIN];
 
 // Quién edita los maestros: proveedores, rutas y sus hitos. Es
 // Comercio Exterior porque es quien cotiza, coloca los pedidos y
@@ -48,7 +50,6 @@ export const LINEAS = {
 export const MARCAS = {
   JimiIoT: 'JimiIoT',
   Geotab: 'Geotab',
-  Claro: 'Claro',
   GlobalStar: 'GlobalStar',
   M2M: 'M2M',
   Otro: 'Otro',
@@ -123,7 +124,6 @@ export const RUTAS = {
   m2m_importacion: 'M2M Dataglobal — con importación',
   jimiiot_china: 'JimiIoT China — compra directa',
   geotab_canada: 'Geotab Canadá',
-  claro_local: 'Claro — compra local',
   globalstar_importacion: 'GlobalStar — con importación',
 };
 
