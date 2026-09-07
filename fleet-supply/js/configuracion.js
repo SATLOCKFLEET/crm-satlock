@@ -19,8 +19,10 @@ import { formatoTRM } from './formato.js';
 import { calcularCambios, registrarAuditoria } from './auditoria.js';
 import {
   ROLES_EDITAN_CONFIG, ROLES_EDITAN_PARAMETROS, MONEDAS_COSTO,
-  PARAMETROS_INTERNOS, FACTOR_SEGURIDAD_STOCK, DIAS_CONSUMO_PROMEDIO,
+  PARAMETROS_INTERNOS, PARAMETROS_BOOLEANOS,
+  FACTOR_SEGURIDAD_STOCK, DIAS_CONSUMO_PROMEDIO,
 } from './config.js';
+import { obtenerTRM, etiquetaOrigenTRM, limpiarCacheTRM } from './trm.js';
 
 const MODOS = { local: 'Local', importacion: 'Importación' };
 const MEDIOS = { maritimo: 'Marítimo', aereo: 'Aéreo', terrestre: 'Terrestre', na: 'No aplica' };
@@ -634,15 +636,34 @@ async function renderParametros(container) {
   // Fuera los parámetros internos: el mapeo de columnas del importador
   // se guarda aquí pero es JSON, y esta pantalla valida números.
   const params = (data || []).filter((p) => !PARAMETROS_INTERNOS.includes(p.clave));
-  const trm = params.find((p) => p.clave === 'trm_del_dia');
+
+  // La TRM que el módulo está usando de verdad en este momento, con su
+  // procedencia. No se lee del parámetro: el parámetro es solo el
+  // valor fijado a mano, y lo normal es que esté en cero.
+  const t = await obtenerTRM(undefined, { forzar: true });
+  const claseCaja = t.origen === 'oficial'
+    ? 'fs-trm-panel'
+    : 'fs-trm-panel alerta';
 
   container.innerHTML = `
-    <div class="fs-ayuda-modo">
-      La TRM se ingresa a mano, como acordamos. Cámbiala aquí y queda aplicada
-      para todas las cotizaciones, con su registro de quién la cambió y cuándo.
-      ${trm && Number(trm.valor) > 0
-        ? `TRM actual: <strong>${formatoTRM(trm.valor)}</strong>`
-        : '<strong>Todavía no hay TRM cargada.</strong>'}
+    <div class="${claseCaja}">
+      <div class="fs-trm-valor">
+        ${t.valor > 0 ? formatoTRM(t.valor) : '—'}
+        <span class="fs-trm-origen">${escapeHtml(etiquetaOrigenTRM(t))}</span>
+      </div>
+      <div class="fs-trm-texto">
+        ${t.origen === 'oficial'
+          ? `TRM oficial traída de datos.gov.co (Superfinanciera), vigente del
+             <strong>${escapeHtml(t.desde || '')}</strong> al <strong>${escapeHtml(t.hasta || '')}</strong>.
+             Es la misma con la que se liquida en aduana.`
+          : `<strong>${escapeHtml(t.aviso || '')}</strong>`}
+        <div class="fs-par-desc" style="margin-top:6px">
+          Se consulta sola al costear un negocio o una orden. Lo que se costea queda
+          <strong>congelado</strong> en ese negocio o en esa orden: si la TRM cambia mañana,
+          lo ya cerrado no se mueve.
+        </div>
+      </div>
+      <button id="trm-consultar" class="fs-btn-secundario">Consultar ahora</button>
     </div>
     <table class="fs-tabla">
       <thead><tr><th style="width:230px">Parámetro</th><th style="width:150px">Valor</th><th>Qué significa</th></tr></thead>
@@ -657,6 +678,14 @@ async function renderParametros(container) {
     </table>
     ${puedeEditar ? '<div class="fs-modal-actions"><button id="par-guardar" class="fs-btn-primary">Guardar parámetros</button></div>' : ''}`;
 
+  // El botón de consultar va antes del corte por rol: cualquiera puede
+  // refrescar la TRM, no es un cambio de configuración.
+  container.querySelector('#trm-consultar').addEventListener('click', async () => {
+    limpiarCacheTRM();
+    mostrarToast('Consultando la TRM oficial...', 'info');
+    renderParametros(container);
+  });
+
   if (!puedeEditar) return;
 
   container.querySelector('#par-guardar').addEventListener('click', async () => {
@@ -670,7 +699,12 @@ async function renderParametros(container) {
         mostrarToast(`El parámetro ${clave} no puede quedar vacío.`, 'aviso');
         return;
       }
-      if (Number.isNaN(Number(valor))) {
+      if (PARAMETROS_BOOLEANOS.includes(clave)) {
+        if (!['true', 'false'].includes(valor.toLowerCase())) {
+          mostrarToast(`El parámetro ${clave} solo acepta true o false.`, 'aviso');
+          return;
+        }
+      } else if (Number.isNaN(Number(valor))) {
         mostrarToast(`El parámetro ${clave} debe ser un número.`, 'aviso');
         return;
       }
