@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Fleet Supply — Satlock</title>
 <link rel="stylesheet" href="css/estilos.css">
+<!-- Favicon en línea: evita el 404 que ensucia la consola del navegador
+     y hace reconocible la pestaña al lado del CRM. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2319428C'/%3E%3Crect y='24' width='32' height='8' rx='0' fill='%23E8460A'/%3E%3Ctext x='16' y='19' font-family='Segoe UI,sans-serif' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3EFS%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
 </head>
 <body>
@@ -20,53 +23,126 @@
     </div>
   </div>
 
-  <div class="fs-tabs">
-    <button class="fs-tab active" id="tab-catalogo">Catálogo</button>
-    <button class="fs-tab" id="tab-combos">Combos</button>
-    <button class="fs-tab" id="tab-config">Configuración</button>
-  </div>
-
-  <div class="fs-panel active" id="panel-catalogo"></div>
-  <div class="fs-panel" id="panel-combos"></div>
-  <div class="fs-panel" id="panel-config"></div>
+  <!-- Las pestañas y los paneles se generan desde el arreglo SECCIONES
+       de abajo, para que agregar una sección en la fase siguiente sea
+       una línea y no cuatro sitios distintos que se desincronizan. -->
+  <div class="fs-tabs" id="fs-tabs"></div>
+  <div id="fs-paneles"></div>
 
   <script type="module">
     import { iniciar, perfilActual, cerrarSesion } from './js/auth.js';
     import { renderCatalogo, renderCombos } from './js/catalogo.js';
     import { renderConfiguracion } from './js/configuracion.js';
-    import { cambiarTab } from './js/ui.js';
+    import { renderImportador } from './js/importador.js';
+    import { cambiarTab, enObra, escapeHtml } from './js/ui.js';
+
+    /*
+      Catálogo tiene dos vistas: el listado de productos y la carga
+      desde Excel. Van juntas porque son la misma información vista de
+      dos maneras, y separarlas en pestañas de primer nivel obligaba a
+      saltar de un lado a otro para revisar lo que se acabó de cargar.
+    */
+    async function renderCatalogoConImportador(panel) {
+      panel.innerHTML = `
+        <div class="fs-subtabs">
+          <button class="fs-subtab active" data-vista="productos">Productos</button>
+          <button class="fs-subtab" data-vista="importar">Cargar desde Excel</button>
+        </div>
+        <div id="cat-vista"></div>`;
+
+      const vista = panel.querySelector('#cat-vista');
+      const pintar = async (cual, boton) => {
+        panel.querySelectorAll('.fs-subtab').forEach((b) => b.classList.remove('active'));
+        boton.classList.add('active');
+        if (cual === 'importar') await renderImportador(vista);
+        else await renderCatalogo(vista);
+      };
+
+      panel.querySelectorAll('.fs-subtab').forEach((b) => {
+        b.addEventListener('click', () => pintar(b.dataset.vista, b));
+      });
+
+      await renderCatalogo(vista);
+    }
+
+    // id · rótulo · qué pinta. Las que no existen todavía muestran de
+    // qué se van a encargar y en qué fase llegan, para que una pestaña
+    // vacía no se confunda con una pantalla que falló.
+    const SECCIONES = [
+      { id: 'tablero', titulo: 'Tablero',
+        render: (p) => enObra(p, 'Tablero',
+          'Resumen de lo que está pasando: negocios por cerrar, stock bajo el mínimo, órdenes de compra en tránsito y los hitos que se vencen esta semana. Se construye al final, cuando ya existan los datos que tiene que resumir.',
+          'Fase 5') },
+
+      { id: 'negocios', titulo: 'Negocios',
+        render: (p) => enObra(p, 'Negocios',
+          'Pronóstico, pipeline y cierre del negocio: se escoge el cliente, se arma el combo por vehículo, se define venta o comodato con su plazo y el sistema explota el combo en unidades, reserva lo que hay en Fontibón y calcula lo que falta comprar.',
+          'Fase 3 — el módulo comercial') },
+
+      { id: 'catalogo', titulo: 'Catálogo', render: renderCatalogoConImportador },
+      { id: 'combos',   titulo: 'Combos',   render: renderCombos },
+
+      { id: 'inventario', titulo: 'Inventario',
+        render: (p) => enObra(p, 'Inventario',
+          'Existencias por bodega con control mixto: por serie o IMEI para equipos y por cantidad para accesorios. Muestra físico, reservado y disponible para prometer, y avisa cuando un SKU baja del mínimo.',
+          'Fase 4 — abastecimiento') },
+
+      { id: 'compras', titulo: 'Compras',
+        render: (p) => enObra(p, 'Compras',
+          'Órdenes de compra por ruta y proveedor, con la relación de muchos a muchos entre negocios y órdenes: una orden puede cubrir varios negocios y un negocio puede necesitar varias órdenes.',
+          'Fase 4 — abastecimiento') },
+
+      { id: 'cronograma', titulo: 'Cronograma',
+        render: (p) => enObra(p, 'Cronograma',
+          'Los hitos de cada orden de compra con sus tres fechas: los días estándar de la ruta, la fecha estimada y la fecha real. Aquí se marcan los hitos que no aplican cuando la carga entra por mensajería expresa.',
+          'Fase 4 — abastecimiento') },
+
+      { id: 'finanzas', titulo: 'Finanzas',
+        render: (p) => enObra(p, 'Finanzas',
+          'TRM presupuestada contra TRM real, costos de importación estimados por porcentaje y luego reales en la liquidación, y el costo final que queda cargado a cada unidad recibida.',
+          'Fase 5') },
+
+      { id: 'config', titulo: 'Configuración', render: renderConfiguracion },
+    ];
 
     async function arrancar() {
       const sesion = await iniciar();
-      if (!sesion) return; // auth.js ya mostró la pantalla de "sin acceso" o redirigió
+      if (!sesion) return; // auth.js ya mostró "sin acceso" o redirigió
 
       const perfil = perfilActual();
-      document.getElementById('fs-user-nombre').textContent = `${perfil.nombre} · ${perfil.cargo || ''}`;
-
+      document.getElementById('fs-user-nombre').textContent =
+        `${perfil.nombre} · ${perfil.cargo || ''}`;
       document.getElementById('fs-btn-logout').addEventListener('click', cerrarSesion);
 
-      const panelCatalogo = document.getElementById('panel-catalogo');
-      const panelCombos = document.getElementById('panel-combos');
-      const panelConfig = document.getElementById('panel-config');
-      const tabCatalogo = document.getElementById('tab-catalogo');
-      const tabCombos = document.getElementById('tab-combos');
-      const tabConfig = document.getElementById('tab-config');
+      const tabs = document.getElementById('fs-tabs');
+      const paneles = document.getElementById('fs-paneles');
 
-      tabCatalogo.addEventListener('click', () => {
-        cambiarTab('panel-catalogo', tabCatalogo);
-        renderCatalogo(panelCatalogo);
-      });
-      tabCombos.addEventListener('click', () => {
-        cambiarTab('panel-combos', tabCombos);
-        renderCombos(panelCombos);
-      });
-      tabConfig.addEventListener('click', () => {
-        cambiarTab('panel-config', tabConfig);
-        renderConfiguracion(panelConfig);
-      });
+      tabs.innerHTML = SECCIONES.map((s, i) =>
+        `<button class="fs-tab${i === 2 ? ' active' : ''}" id="tab-${s.id}">${escapeHtml(s.titulo)}</button>`
+      ).join('');
+      paneles.innerHTML = SECCIONES.map((s, i) =>
+        `<div class="fs-panel${i === 2 ? ' active' : ''}" id="panel-${s.id}"></div>`
+      ).join('');
 
-      // Pestaña inicial
-      await renderCatalogo(panelCatalogo);
+      // Cada sección se pinta al entrar, no al cargar la página: así
+      // abrir el módulo no dispara nueve consultas a la base.
+      for (const s of SECCIONES) {
+        const boton = document.getElementById(`tab-${s.id}`);
+        const panel = document.getElementById(`panel-${s.id}`);
+        boton.addEventListener('click', async () => {
+          cambiarTab(`panel-${s.id}`, boton);
+          try {
+            await s.render(panel);
+          } catch (err) {
+            console.error(err);
+            panel.innerHTML =
+              `<div class="fs-empty">No se pudo cargar esta sección: ${escapeHtml(err.message || err)}</div>`;
+          }
+        });
+      }
+
+      // Sección inicial: Catálogo, que es la que ya está en uso.
+      await renderCatalogoConImportador(document.getElementById('panel-catalogo'));
     }
 
     arrancar();
