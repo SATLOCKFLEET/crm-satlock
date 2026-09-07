@@ -277,6 +277,39 @@ textarea { min-height: 60px; resize: vertical; }
 .fs-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 
 /* ── RESPONSIVE (tablet) ────────────────────────────── */
+/* ═══════════════════ Panel de TRM (Configuración) ═══════════════════
+   Verde cuando la TRM viene de la fuente oficial; ámbar cuando es la
+   guardada o una fijada a mano, para que nadie costee con un número
+   viejo creyendo que es el de hoy.                                  */
+.fs-trm-panel {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: var(--green-light); border-left: 3px solid var(--green);
+  border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 14px;
+}
+.fs-trm-panel.alerta {
+  background: var(--amber-light); border-left-color: var(--amber);
+}
+.fs-trm-valor {
+  font-size: 26px; font-weight: 700; color: var(--text);
+  line-height: 1.1; white-space: nowrap;
+}
+.fs-trm-origen {
+  display: block; font-size: 11px; font-weight: 600; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .4px; margin-top: 2px;
+}
+.fs-trm-texto { flex: 1 1 320px; font-size: 12.5px; color: var(--text2); line-height: 1.5; }
+.fs-trm-panel .fs-btn-secundario { flex: 0 0 auto; }
+
+/* La procedencia de la TRM al lado del número, dentro del negocio. */
+.fs-nota-trm {
+  display: inline-block; margin-left: 6px; font-size: 11px;
+  color: var(--text3); font-style: italic;
+}
+
+@media (max-width: 720px) {
+  .fs-trm-panel { flex-direction: column; align-items: flex-start; }
+}
+
 @media (max-width: 720px) {
   .fs-panel { padding: 14px; }
   .fs-form-grid { grid-template-columns: 1fr; }
