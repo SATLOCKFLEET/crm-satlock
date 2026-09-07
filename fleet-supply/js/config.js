@@ -160,4 +160,4 @@ export const TIMEZONE = 'America/Bogota';
 // el negocio conserve el combo con el que se vendió. Mientras esté en
 // false los combos se editan libremente, porque todavía no hay negocios
 // que dependan de ellos.
-export const NEGOCIOS_ACTIVOS = false;
+export const NEGOCIOS_ACTIVOS = true;
