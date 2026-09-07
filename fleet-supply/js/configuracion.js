@@ -108,6 +108,7 @@ function tarjetaRuta(r, puedeEditar) {
           ${MODOS[r.modo] || r.modo} · ${MEDIOS[r.medio_transporte] || r.medio_transporte}
           ${r.activa ? '' : ' · <span class="fs-inactiva">inactiva</span>'}
         </div>
+        ${r.observaciones ? `<div class="fs-ruta-obs">${escapeHtml(r.observaciones)}</div>` : ''}
       </div>
       <div class="fs-card-ruta-total">
         <span class="fs-total-dias" data-ruta="${r.id}">${totalDias(hitos)}</span> días
@@ -118,7 +119,7 @@ function tarjetaRuta(r, puedeEditar) {
     <table class="fs-tabla fs-tabla-hitos">
       <thead><tr>
         <th style="width:32px">#</th><th>Hito</th>
-        <th style="width:90px">Días</th><th style="width:90px">Aéreo</th>
+        <th style="width:90px">Días</th>
         <th>Responsable</th><th style="width:80px">Confirmado</th>
         ${puedeEditar ? '<th style="width:60px"></th>' : ''}
       </tr></thead>
@@ -142,7 +143,6 @@ function filaHito(h, puedeEditar) {
     <td>${h.orden}</td>
     <td><input type="text" class="h-nombre" value="${escapeHtml(h.nombre)}" ${ro}></td>
     <td><input type="number" min="0" step="1" class="h-dias" value="${h.dias_estandar}" ${ro}></td>
-    <td><input type="number" min="0" step="1" class="h-aereo" value="${h.dias_aereo ?? ''}" placeholder="—" ${ro}></td>
     <td><input type="text" class="h-area" value="${escapeHtml(h.area_responsable || '')}" ${ro}></td>
     <td style="text-align:center"><input type="checkbox" class="h-conf" ${h.confirmado ? 'checked' : ''} ${ro}></td>
     ${puedeEditar ? '<td><button class="fs-btn-link h-quitar">Quitar</button></td>' : ''}
@@ -213,11 +213,9 @@ async function guardarHitosDeRuta(card, ruta) {
     const actual = ruta.fs_hito_plantilla.find((h) => h.id === hitoId);
     if (!actual) continue;
 
-    const aereoTxt = fila.querySelector('.h-aereo').value.trim();
     const nuevos = {
       nombre: fila.querySelector('.h-nombre').value.trim(),
       dias_estandar: Number(fila.querySelector('.h-dias').value) || 0,
-      dias_aereo: aereoTxt === '' ? null : Number(aereoTxt),
       area_responsable: fila.querySelector('.h-area').value.trim() || null,
       confirmado: fila.querySelector('.h-conf').checked,
     };
