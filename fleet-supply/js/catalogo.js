@@ -132,7 +132,8 @@ export async function obtenerComboConItems(comboId) {
 
 // Guarda un combo nuevo, o una nueva versión de uno existente.
 // items: [{ producto_id, cantidad }]
-export async function guardarCombo({ nombre, items, notas, comboVigenteId = null }) {
+export async function guardarCombo({ nombre, items, notas, comboVigenteId = null,
+  mensualidad10 = null, mensualidad11 = null }) {
   if (!tieneRol(...ROLES_EDITAN_CATALOGO)) {
     mostrarToast('No tienes permiso para guardar combos.', 'error');
     return null;
@@ -169,6 +170,8 @@ export async function guardarCombo({ nombre, items, notas, comboVigenteId = null
       version: siguienteVersion,
       vigente: true,
       notas: notas || null,
+      mensualidad_servicio_hasta_10: mensualidad10,
+      mensualidad_servicio_11_mas: mensualidad11,
       creado_por: perfilActual()?.id,
     })
     .select()
@@ -225,7 +228,8 @@ async function resumirItems(items) {
 // Edita el combo en sitio, SIN crear versión nueva. Se usa mientras el
 // combo no esté comprometido con un negocio: sirve para corregir un
 // nombre, una nota o una cantidad sin llenar la tabla de versiones.
-export async function editarCombo({ comboId, nombre, notas, items }) {
+export async function editarCombo({ comboId, nombre, notas, items,
+  mensualidad10 = null, mensualidad11 = null }) {
   if (!tieneRol(...ROLES_EDITAN_CATALOGO)) {
     mostrarToast('No tienes permiso para editar combos.', 'error');
     return null;
@@ -247,7 +251,12 @@ export async function editarCombo({ comboId, nombre, notas, items }) {
 
   const { error: errHeader } = await sb
     .from('fs_combos')
-    .update({ nombre: nombre.trim(), notas: notas || null })
+    .update({
+      nombre: nombre.trim(),
+      notas: notas || null,
+      mensualidad_servicio_hasta_10: mensualidad10,
+      mensualidad_servicio_11_mas: mensualidad11,
+    })
     .eq('id', comboId);
   if (errHeader) {
     console.error(errHeader);
@@ -280,6 +289,12 @@ export async function editarCombo({ comboId, nombre, notas, items }) {
   const diffs = {};
   if (anterior.nombre !== nombre.trim()) diffs.nombre = [anterior.nombre, nombre.trim()];
   if ((anterior.notas || '') !== (notas || '')) diffs.notas = [anterior.notas, notas];
+  if (!mismoValor(anterior.mensualidad_servicio_hasta_10, mensualidad10)) {
+    diffs.mensualidad_servicio_hasta_10 = [anterior.mensualidad_servicio_hasta_10, mensualidad10];
+  }
+  if (!mismoValor(anterior.mensualidad_servicio_11_mas, mensualidad11)) {
+    diffs.mensualidad_servicio_11_mas = [anterior.mensualidad_servicio_11_mas, mensualidad11];
+  }
   if (resumenAntes !== resumenDespues) diffs.items = [resumenAntes, resumenDespues];
   await registrarAuditoria('fs_combos', comboId, diffs);
 
@@ -508,7 +523,16 @@ async function pintarListaCombos(container, combos, puedeEditar, contenedorPadre
       (c) => `
     <div class="fs-card-combo" data-id="${c.id}">
       <div class="fs-card-combo-header">
-        <div><strong>${escapeHtml(c.nombre)}</strong> <span class="fs-badge">v${c.version}</span></div>
+        <div>
+          <strong>${escapeHtml(c.nombre)}</strong> <span class="fs-badge">v${c.version}</span>
+          <div class="fs-card-combo-mens">${
+            c.mensualidad_servicio_hasta_10 != null
+              ? `Servicio: ${formatoCOP(c.mensualidad_servicio_hasta_10)} / mes por vehículo` +
+                (c.mensualidad_servicio_11_mas != null
+                  ? ` · desde 11: ${formatoCOP(c.mensualidad_servicio_11_mas)}` : '')
+              : '<span class="fs-sin-mens">Sin mensualidad de servicio definida</span>'
+          }</div>
+        </div>
         ${
           puedeEditar
             ? `<div class="fs-card-combo-acciones">
@@ -604,6 +628,8 @@ async function abrirFormularioCombo({ modo, combo = null, alGuardar }) {
   const nombreInicial =
     modo === 'duplicar' ? `${combo.nombre} (copia)` : modo === 'nuevo' ? '' : combo.nombre;
   const notasIniciales = modo === 'nuevo' ? '' : combo.notas || '';
+  const mens10Inicial = modo === 'nuevo' ? '' : (combo.mensualidad_servicio_hasta_10 ?? '');
+  const mens11Inicial = modo === 'nuevo' ? '' : (combo.mensualidad_servicio_11_mas ?? '');
   const itemsIniciales =
     modo === 'nuevo'
       ? []
@@ -619,7 +645,18 @@ async function abrirFormularioCombo({ modo, combo = null, alGuardar }) {
         <label class="fs-full">Nombre del combo
           <input id="c-nombre" value="${escapeHtml(nombreInicial)}" ${modo === 'version' ? 'disabled' : ''}>
         </label>
+        <label>Mensualidad de servicio ≤10 (COP)
+          <input id="c-mens10" type="number" step="1" value="${mens10Inicial}">
+        </label>
+        <label>Mensualidad de servicio 11+ (COP)
+          <input id="c-mens11" type="number" step="1" value="${mens11Inicial}" placeholder="igual que ≤10">
+        </label>
         <label class="fs-full">Notas<textarea id="c-notas">${escapeHtml(notasIniciales)}</textarea></label>
+      </div>
+      <div class="fs-ayuda-modo">La mensualidad de servicio es por vehículo y se ingresa a mano: no sale de los SKUs.
+        Si no varía por volumen, llena solo la de ≤10 y deja la otra vacía.
+        <div class="fs-referencia-precio"><strong>Referencia JimiIoT</strong> (valores antes de IVA, según los canales de la cámara):
+          2 canales $75.000 · 3 canales $80.000 · 4 canales $85.000 · 5 canales $90.000</div>
       </div>
       <div class="fs-combo-builder">
         <div class="fs-combo-builder-add">
@@ -705,20 +742,30 @@ async function abrirFormularioCombo({ modo, combo = null, alGuardar }) {
   overlay.querySelector('#c-guardar').addEventListener('click', async () => {
     const nombre = overlay.querySelector('#c-nombre').value.trim();
     const notas = overlay.querySelector('#c-notas').value.trim();
+    const leerMens = (sel) => {
+      const v = overlay.querySelector(sel).value.trim();
+      if (v === '') return null;
+      const n = Number(v);
+      return Number.isNaN(n) ? null : n;
+    };
+    const mensualidad10 = leerMens('#c-mens10');
+    const mensualidad11 = leerMens('#c-mens11');
 
     let resultado = null;
     if (modo === 'editar') {
-      resultado = await editarCombo({ comboId: combo.id, nombre, notas, items: itemsActuales });
+      resultado = await editarCombo({
+        comboId: combo.id, nombre, notas, items: itemsActuales, mensualidad10, mensualidad11,
+      });
     } else if (modo === 'version') {
       resultado = await guardarCombo({
-        nombre: combo.nombre,
-        notas,
-        items: itemsActuales,
-        comboVigenteId: combo.id,
+        nombre: combo.nombre, notas, items: itemsActuales, comboVigenteId: combo.id,
+        mensualidad10, mensualidad11,
       });
     } else {
       // nuevo y duplicar terminan igual: un combo aparte, versión 1
-      resultado = await guardarCombo({ nombre, notas, items: itemsActuales, comboVigenteId: null });
+      resultado = await guardarCombo({
+        nombre, notas, items: itemsActuales, comboVigenteId: null, mensualidad10, mensualidad11,
+      });
     }
 
     if (resultado) {
