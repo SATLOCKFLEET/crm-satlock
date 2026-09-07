@@ -700,6 +700,8 @@ async function abrirFormularioCombo({ modo, combo = null, alGuardar }) {
         </div>
         <ul id="c-lista-items" class="fs-lista-items-editable"></ul>
       </div>
+      <h4 class="fs-h4">Lo que vale este combo por vehículo</h4>
+      <div id="c-totales"></div>
       <div class="fs-modal-actions">
         <button class="fs-btn-secundario" id="c-cancelar">Cancelar</button>
         <button class="fs-btn-primary" id="c-guardar">${botones[modo]}</button>
@@ -750,8 +752,72 @@ async function abrirFormularioCombo({ modo, combo = null, alGuardar }) {
         pintarItems();
       });
     });
+    pintarTotalesCombo();
   }
+
+  /*
+    Costo, precio y margen del combo POR VEHÍCULO, en las dos escalas.
+    Sirve para ver de una si el combo deja margen antes de guardarlo.
+    Solo suma la parte de VENTA: en comodato el equipo no se vende, así
+    que ahí el margen no se mide contra un precio de venta sino contra
+    la mensualidad, que depende del plazo que pacte cada negocio.
+    Todo antes de IVA.
+  */
+  function pintarTotalesCombo() {
+    const cont = overlay.querySelector('#c-totales');
+    if (!cont) return;
+    if (!itemsActuales.length) {
+      cont.innerHTML = '<div class="fs-empty-inline">Agrega productos para ver costo, precio y margen.</div>';
+      return;
+    }
+
+    let costo = 0;
+    let v10 = 0;
+    let v11 = 0;
+    let sinPrecio = 0;
+    let sinCosto = 0;
+    for (const it of itemsActuales) {
+      const p = productos.find((pr) => pr.id === it.producto_id);
+      if (!p) continue;
+      const c = Number(p.costo_usd || 0);
+      if (!c) sinCosto++;
+      // El costo se muestra en la moneda del proveedor: convertirlo acá
+      // exigiría la TRM, y la TRM del combo no significa nada — el
+      // combo es una plantilla, no una venta con fecha.
+      costo += (p.costo_moneda === 'COP' ? 0 : c) * it.cantidad;
+      const p10 = p.precio_venta_hasta_10;
+      const p11 = p.precio_venta_11_mas;
+      if (p10 == null || p11 == null) sinPrecio++;
+      v10 += Number(p10 || 0) * it.cantidad;
+      v11 += Number(p11 || 0) * it.cantidad;
+    }
+
+    const mens10 = Number(overlay.querySelector('#c-mens10').value || 0);
+    const mens11raw = overlay.querySelector('#c-mens11').value;
+    const mens11 = mens11raw === '' ? mens10 : Number(mens11raw || 0);
+
+    cont.innerHTML = `
+      <table class="fs-tabla">
+        <thead><tr><th>Escala</th><th>Venta del combo</th><th>Mensualidad servicio</th>
+          <th>Costo USD del combo</th></tr></thead>
+        <tbody>
+          <tr><td>Hasta 10 vehículos</td><td>${formatoCOP(v10)}</td>
+              <td>${formatoCOP(mens10)}</td><td>${formatoUSD(costo)}</td></tr>
+          <tr><td>11 vehículos o más</td><td>${formatoCOP(v11)}</td>
+              <td>${formatoCOP(mens11)}</td><td>${formatoUSD(costo)}</td></tr>
+        </tbody>
+      </table>
+      <div class="fs-nota-toolbar">
+        Valores por vehículo y antes de IVA. El costo va en dólares porque el combo es una
+        plantilla sin fecha: el margen en pesos se calcula en el negocio, con la TRM de ese día.
+        ${sinPrecio ? `<br><span class="fs-faltante">${sinPrecio} producto(s) sin precio de venta en el catálogo.</span>` : ''}
+        ${sinCosto ? `<br><span class="fs-faltante">${sinCosto} producto(s) sin costo cargado.</span>` : ''}
+      </div>`;
+  }
+
   pintarItems();
+  overlay.querySelector('#c-mens10').addEventListener('input', pintarTotalesCombo);
+  overlay.querySelector('#c-mens11').addEventListener('input', pintarTotalesCombo);
 
   overlay.querySelector('#c-agregar-item').addEventListener('click', () => {
     const productoId = overlay.querySelector('#c-select-producto').value;
