@@ -11,10 +11,16 @@
 
 import { sb } from './supabaseClient.js';
 import { tieneRol } from './auth.js';
-import { mostrarToast, confirmar, escapeHtml, estadoCargando, estadoVacio } from './ui.js';
+import {
+  mostrarToast, confirmar, escapeHtml, estadoCargando, estadoVacio,
+  hacerOrdenable, hacerFiltrable,
+} from './ui.js';
 import { formatoTRM } from './formato.js';
 import { calcularCambios, registrarAuditoria } from './auditoria.js';
-import { ROLES_EDITAN_CONFIG, ROLES_EDITAN_PARAMETROS, MONEDAS_COSTO } from './config.js';
+import {
+  ROLES_EDITAN_CONFIG, ROLES_EDITAN_PARAMETROS, MONEDAS_COSTO,
+  PARAMETROS_INTERNOS, FACTOR_SEGURIDAD_STOCK, DIAS_CONSUMO_PROMEDIO,
+} from './config.js';
 
 const MODOS = { local: 'Local', importacion: 'Importación' };
 const MEDIOS = { maritimo: 'Marítimo', aereo: 'Aéreo', terrestre: 'Terrestre', na: 'No aplica' };
@@ -26,6 +32,8 @@ export async function renderConfiguracion(container) {
     <div class="fs-subtabs">
       <button class="fs-subtab active" data-sec="rutas">Rutas y hitos</button>
       <button class="fs-subtab" data-sec="proveedores">Proveedores</button>
+      <button class="fs-subtab" data-sec="etapas">Etapas del pipeline</button>
+      <button class="fs-subtab" data-sec="minimos">Mínimos de stock</button>
       <button class="fs-subtab" data-sec="parametros">Parámetros</button>
     </div>
     <div id="fs-cfg-cuerpo"></div>
@@ -34,6 +42,8 @@ export async function renderConfiguracion(container) {
   const pintar = (sec) => {
     if (sec === 'rutas') renderRutas(cuerpo);
     else if (sec === 'proveedores') renderProveedores(cuerpo);
+    else if (sec === 'etapas') renderEtapas(cuerpo);
+    else if (sec === 'minimos') renderMinimos(cuerpo);
     else renderParametros(cuerpo);
   };
 
@@ -381,6 +391,235 @@ function formProveedor(prov, alGuardar) {
   });
 }
 
+/* ═══════════════════ ETAPAS DEL PIPELINE ═══════════════════
+   Las cinco etapas venían sembradas por SQL y no había manera de
+   tocarlas sin entrar a la base. Aquí se pueden renombrar, reordenar
+   y ajustar la probabilidad con la que cada etapa pondera el
+   pronóstico. Una etapa no se borra: se desactiva, para no dejar
+   huérfanos los negocios que ya pasaron por ella.
+   ═══════════════════════════════════════════════════════════ */
+
+async function renderEtapas(container) {
+  estadoCargando(container, 'Cargando etapas...');
+  const puedeEditar = tieneRol(...ROLES_EDITAN_CONFIG);
+  const { data, error } = await sb.from('fs_etapa_pipeline').select('*').order('orden');
+  if (error) {
+    console.error(error);
+    estadoVacio(container, 'No se pudieron cargar las etapas del pipeline.');
+    return;
+  }
+  const etapas = data || [];
+
+  container.innerHTML = `
+    <div class="fs-ayuda-modo">
+      El pronóstico pondera cada negocio por la probabilidad de su etapa: un negocio
+      de $100 millones en <em>Cotizado</em> al 30% suma $30 millones al pronóstico.
+      Ajusta los porcentajes a como se comporta el embudo de Fleet en la realidad.
+      Una etapa que ya no se use se <strong>desactiva</strong>, no se borra: los
+      negocios que pasaron por ella conservan su historia.
+    </div>
+    <table class="fs-tabla">
+      <thead><tr>
+        <th style="width:80px">Orden</th>
+        <th>Nombre</th>
+        <th style="width:150px">Probabilidad</th>
+        <th style="width:90px">Activa</th>
+      </tr></thead>
+      <tbody>
+        ${etapas.map((e) => `
+          <tr data-id="${e.id}">
+            <td><input type="number" class="et-orden" min="1" value="${e.orden}" ${puedeEditar ? '' : 'disabled'}></td>
+            <td><input type="text" class="et-nombre" value="${escapeHtml(e.nombre)}" ${puedeEditar ? '' : 'disabled'}></td>
+            <td><input type="number" class="et-prob" min="0" max="100" value="${e.probabilidad_default}" ${puedeEditar ? '' : 'disabled'}></td>
+            <td style="text-align:center">
+              <input type="checkbox" class="et-activa" ${e.activa ? 'checked' : ''} ${puedeEditar ? '' : 'disabled'}>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+    ${puedeEditar ? `
+      <div class="fs-modal-actions">
+        <button id="et-agregar" class="fs-btn-secundario">Agregar etapa</button>
+        <button id="et-guardar" class="fs-btn-primary">Guardar etapas</button>
+      </div>` : ''}`;
+
+  if (!puedeEditar) return;
+
+  container.querySelector('#et-agregar').addEventListener('click', async () => {
+    const nombre = window.prompt('Nombre de la etapa nueva:');
+    if (!nombre || !nombre.trim()) return;
+    const siguiente = etapas.reduce((m, e) => Math.max(m, e.orden), 0) + 1;
+    const { error: err } = await sb.from('fs_etapa_pipeline')
+      .insert({ nombre: nombre.trim(), orden: siguiente, probabilidad_default: 50, activa: true });
+    if (err) {
+      console.error(err);
+      mostrarToast('No se pudo crear la etapa.', 'error');
+      return;
+    }
+    mostrarToast('Etapa creada.', 'exito');
+    renderEtapas(container);
+  });
+
+  container.querySelector('#et-guardar').addEventListener('click', async () => {
+    let cambiadas = 0;
+    for (const fila of container.querySelectorAll('tbody tr')) {
+      const previa = etapas.find((e) => e.id === fila.dataset.id);
+      const datos = {
+        orden: Number(fila.querySelector('.et-orden').value),
+        nombre: fila.querySelector('.et-nombre').value.trim(),
+        probabilidad_default: Number(fila.querySelector('.et-prob').value),
+        activa: fila.querySelector('.et-activa').checked,
+      };
+      if (!datos.nombre) {
+        mostrarToast('Ninguna etapa puede quedar sin nombre.', 'aviso');
+        return;
+      }
+      if (!Number.isInteger(datos.orden) || datos.orden < 1) {
+        mostrarToast(`El orden de "${datos.nombre}" debe ser un entero mayor que cero.`, 'aviso');
+        return;
+      }
+      if (datos.probabilidad_default < 0 || datos.probabilidad_default > 100) {
+        mostrarToast(`La probabilidad de "${datos.nombre}" tiene que estar entre 0 y 100.`, 'aviso');
+        return;
+      }
+      const diffs = calcularCambios(previa, datos);
+      if (!Object.keys(diffs).length) continue;
+
+      const { error: err } = await sb.from('fs_etapa_pipeline').update(datos).eq('id', previa.id);
+      if (err) {
+        console.error(err);
+        mostrarToast(`No se pudo guardar "${datos.nombre}".`, 'error');
+        return;
+      }
+      await registrarAuditoria('fs_etapa_pipeline', previa.id, diffs);
+      cambiadas++;
+    }
+    mostrarToast(cambiadas ? `${cambiadas} etapa(s) actualizadas.` : 'No había cambios.',
+      cambiadas ? 'exito' : 'info');
+    renderEtapas(container);
+  });
+}
+
+/* ═══════════════════ MÍNIMOS DE STOCK ═══════════════════
+   El mínimo manual vive en el producto (fs_productos.stock_minimo) y
+   es el que dispara la alerta de reposición. Al lado se muestra el
+   sugerido que calcula el sistema por bodega, para poder comparar.
+
+   Aviso honesto: el sugerido sale del consumo de los últimos
+   DIAS_CONSUMO_PROMEDIO días por el lead time de la ruta y el factor
+   de seguridad. Todavía no hay historia de consumo en el módulo, así
+   que hoy viene vacío. Hasta que la haya, el mínimo lo pone una
+   persona; no se inventa un número que parezca calculado.
+   ═══════════════════════════════════════════════════════ */
+
+async function renderMinimos(container) {
+  estadoCargando(container, 'Cargando mínimos...');
+  const puedeEditar = tieneRol(...ROLES_EDITAN_CONFIG);
+
+  const { data, error } = await sb.from('fs_productos')
+    .select('id,sku,nombre,marca,control_inventario,ruta_habitual,stock_minimo,fs_stock(cantidad_fisica,cantidad_reservada,disponible,stock_minimo_sugerido)')
+    .eq('activo', true)
+    .order('sku');
+  if (error) {
+    console.error(error);
+    estadoVacio(container, 'No se pudieron cargar los productos.');
+    return;
+  }
+  const productos = data || [];
+  if (!productos.length) {
+    estadoVacio(container, 'Todavía no hay productos en el catálogo. Cárgalos en Catálogo → Cargar desde Excel.');
+    return;
+  }
+
+  const suma = (p, campo) => (p.fs_stock || []).reduce((n, s) => n + (s[campo] ?? 0), 0);
+  const haySugerido = productos.some((p) => (p.fs_stock || []).some((s) => s.stock_minimo_sugerido != null));
+
+  container.innerHTML = `
+    <div class="fs-ayuda-modo">
+      El <strong>mínimo</strong> es el que dispara la alerta de reposición: cuando el
+      disponible baja de ahí, el SKU entra a la lista de compras. Lo pones tú, por SKU.
+      ${haySugerido
+        ? 'Al lado está el sugerido que calcula el sistema, para comparar.'
+        : `El <strong>sugerido</strong> aparecerá cuando el módulo tenga historia de
+           consumo: se calcula con el consumo de los últimos ${DIAS_CONSUMO_PROMEDIO} días,
+           los días de la ruta y un factor de seguridad de ${FACTOR_SEGURIDAD_STOCK}.
+           Mientras no haya movimientos registrados, esa columna sale vacía y el mínimo
+           lo defines a mano.`}
+    </div>
+
+    <div class="fs-toolbar">
+      <input type="text" id="min-buscar" class="fs-input" style="max-width:320px"
+             placeholder="Buscar por SKU, nombre o marca...">
+      <span class="fs-conteo-filas" id="min-conteo"></span>
+    </div>
+
+    <table class="fs-tabla" id="min-tabla">
+      <thead><tr>
+        <th data-orden="texto" style="width:130px">SKU</th>
+        <th data-orden="texto">Nombre</th>
+        <th data-orden="texto" style="width:110px">Marca</th>
+        <th data-orden="numero" style="width:90px">Físico</th>
+        <th data-orden="numero" style="width:100px">Disponible</th>
+        <th data-orden="numero" style="width:110px">Sugerido</th>
+        <th style="width:110px">Mínimo</th>
+      </tr></thead>
+      <tbody>
+        ${productos.map((p) => {
+          const fisico = suma(p, 'cantidad_fisica');
+          const disp = suma(p, 'disponible');
+          const sug = (p.fs_stock || []).reduce(
+            (n, s) => (s.stock_minimo_sugerido == null ? n : n + s.stock_minimo_sugerido), null);
+          const bajo = p.stock_minimo != null && disp < p.stock_minimo;
+          return `<tr data-id="${p.id}">
+            <td>${escapeHtml(p.sku)}</td>
+            <td>${escapeHtml(p.nombre)}</td>
+            <td>${escapeHtml(p.marca || '—')}</td>
+            <td data-orden="${fisico}">${fisico}</td>
+            <td data-orden="${disp}">${bajo ? `<span class="fs-inactiva">${disp}</span>` : disp}</td>
+            <td data-orden="${sug ?? -1}">${sug ?? '—'}</td>
+            <td><input type="number" class="min-valor" min="0" style="width:90px"
+                       value="${p.stock_minimo ?? ''}" ${puedeEditar ? '' : 'disabled'}></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    ${puedeEditar ? '<div class="fs-modal-actions"><button id="min-guardar" class="fs-btn-primary">Guardar mínimos</button></div>' : ''}`;
+
+  const tabla = container.querySelector('#min-tabla');
+  hacerOrdenable(tabla);
+  hacerFiltrable(container.querySelector('#min-buscar'), tabla, container.querySelector('#min-conteo'));
+
+  if (!puedeEditar) return;
+
+  container.querySelector('#min-guardar').addEventListener('click', async () => {
+    let cambiados = 0;
+    for (const fila of container.querySelectorAll('#min-tabla tbody tr')) {
+      const previo = productos.find((p) => p.id === fila.dataset.id);
+      const crudo = fila.querySelector('.min-valor').value.trim();
+      const valor = crudo === '' ? null : Number(crudo);
+      if (valor != null && (!Number.isInteger(valor) || valor < 0)) {
+        mostrarToast(`El mínimo de ${previo.sku} debe ser un entero de cero o más.`, 'aviso');
+        return;
+      }
+      const diffs = calcularCambios({ stock_minimo: previo.stock_minimo }, { stock_minimo: valor });
+      if (!Object.keys(diffs).length) continue;
+
+      const { error: err } = await sb.from('fs_productos')
+        .update({ stock_minimo: valor }).eq('id', previo.id);
+      if (err) {
+        console.error(err);
+        mostrarToast(`No se pudo guardar el mínimo de ${previo.sku}.`, 'error');
+        return;
+      }
+      await registrarAuditoria('fs_productos', previo.id, diffs);
+      cambiados++;
+    }
+    mostrarToast(cambiados ? `${cambiados} mínimo(s) actualizados.` : 'No había cambios.',
+      cambiados ? 'exito' : 'info');
+    if (cambiados) renderMinimos(container);
+  });
+}
+
 /* ═══════════════════════ PARÁMETROS ═══════════════════════ */
 
 async function renderParametros(container) {
@@ -392,7 +631,9 @@ async function renderParametros(container) {
     estadoVacio(container, 'No se pudieron cargar los parámetros.');
     return;
   }
-  const params = data || [];
+  // Fuera los parámetros internos: el mapeo de columnas del importador
+  // se guarda aquí pero es JSON, y esta pantalla valida números.
+  const params = (data || []).filter((p) => !PARAMETROS_INTERNOS.includes(p.clave));
   const trm = params.find((p) => p.clave === 'trm_del_dia');
 
   container.innerHTML = `
