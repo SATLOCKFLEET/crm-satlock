@@ -52,13 +52,15 @@ function proximosMeses(n, desde) {
 /* ═══════════════════ Datos ═══════════════════ */
 
 async function cargarTodo() {
-  const [{ data: negocios, error: e1 }, { data: etapas }, { data: hoyRow }] = await Promise.all([
+  const [{ data: negocios, error: e1 }, { data: etapas }] = await Promise.all([
     sb.from('fs_negocio_vista').select('*'),
     sb.from('fs_etapa_pipeline').select('*').eq('activa', true).order('orden'),
-    // La fecha la da la base, no el navegador: así el "mes actual" es el
-    // mismo para todos y no depende del reloj de cada computador.
-    sb.from('fs_parametro').select('valor').eq('clave', 'trm_del_dia').maybeSingle(),
   ]);
+  // Antes acá se leía el parámetro trm_del_dia, con un comentario que
+  // decía que servía para la fecha. Ni servía para la fecha ni se usaba
+  // en ninguna parte del tablero: era una consulta de más. Y ahora sería
+  // peor, porque trm_del_dia pasó a ser el valor fijado a mano y lo
+  // normal es que esté en cero.
   if (e1) throw e1;
 
   // Demanda de SKU de los negocios que aún no están cerrados, para que
@@ -66,7 +68,7 @@ async function cargarTodo() {
   const { data: lineas } = await sb.from('fs_negocio_linea')
     .select('negocio_id,cantidad,producto_id,fs_productos(sku,nombre,marca)');
 
-  return { negocios: negocios || [], etapas: etapas || [], lineas: lineas || [], trm: hoyRow?.valor };
+  return { negocios: negocios || [], etapas: etapas || [], lineas: lineas || [] };
 }
 
 /* ═══════════════════ Pantalla ═══════════════════ */
