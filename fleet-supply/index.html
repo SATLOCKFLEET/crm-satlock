@@ -36,6 +36,7 @@
     import { renderImportador } from './js/importador.js';
     import { renderNegocios } from './js/negocios.js';
     import { renderTablero } from './js/tablero.js';
+    import { renderCompras } from './js/compras.js';
     import { cambiarTab, enObra, escapeHtml } from './js/ui.js';
 
     /*
@@ -83,10 +84,7 @@
           'Existencias por bodega con control mixto: por serie o IMEI para equipos y por cantidad para accesorios. Muestra físico, reservado y disponible para prometer, y avisa cuando un SKU baja del mínimo.',
           'Fase 4 — abastecimiento') },
 
-      { id: 'compras', titulo: 'Compras',
-        render: (p) => enObra(p, 'Compras',
-          'Órdenes de compra por ruta y proveedor, con la relación de muchos a muchos entre negocios y órdenes: una orden puede cubrir varios negocios y un negocio puede necesitar varias órdenes.',
-          'Fase 4 — abastecimiento') },
+      { id: 'compras', titulo: 'Compras', render: renderCompras },
 
       { id: 'cronograma', titulo: 'Cronograma',
         render: (p) => enObra(p, 'Cronograma',
