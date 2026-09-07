@@ -21,7 +21,7 @@
 import { sb } from './supabaseClient.js';
 import { tieneRol, perfilActual } from './auth.js';
 import { mostrarToast, escapeHtml, estadoCargando } from './ui.js';
-import { formatoCOP, fechaHoyBogota } from './formato.js';
+import { formatoCOP, fechaHoyBogota, normalizarSku } from './formato.js';
 import { registrarAuditoria } from './auditoria.js';
 import { ROLES_EDITAN_CATALOGO } from './config.js';
 
@@ -160,6 +160,7 @@ function aBooleano(valor) {
   return null;
 }
 
+
 function aValorPermitido(campo, valor) {
   if (esVacio(valor)) return null;
   const tabla = VALORES[campo];
@@ -251,6 +252,7 @@ export function analizarFilas(filas, mapa) {
   const vistos = new Map();
   const listos = [];
   const errores = [];
+  const ajustados = [];   // SKU a los que se les corrigió el formato
 
   filas.forEach((fila, idx) => {
     const nFila = idx + 2; // +2: encabezado y base 1, como lo ve Excel
@@ -266,19 +268,27 @@ export function analizarFilas(filas, mapa) {
       return;
     }
 
-    // La comparación ignora mayúsculas y espacios: "jc450" y "JC450"
-    // son el mismo producto para cualquiera que mire el archivo, y si
-    // se dejaran pasar quedarían como dos SKU distintos en la base.
-    const claveSku = sku.toUpperCase().replace(/\s+/g, '');
-    if (vistos.has(claveSku)) {
-      errores.push({ fila: nFila, sku,
-        motivo: `Código repetido en el archivo (ya venía en la fila ${vistos.get(claveSku)}).` });
+    const n = normalizarSku(sku);
+    if (!n.valido) {
+      errores.push({ fila: nFila, sku: n.original,
+        motivo: n.sku.length > 30
+          ? `El código tiene ${n.sku.length} caracteres. El SKU es un código corto, no la descripción: ¿quedó la descripción en la columna del SKU?`
+          : 'El código tiene símbolos que no se permiten. Solo letras, números y . - _ / +' });
       return;
     }
-    vistos.set(claveSku, nFila);
+    // Se compara y se guarda ya normalizado: "jc450", "JC 450" y
+    // "JC450" son el mismo producto, y dejarlos entrar distintos
+    // crearía tres SKU con tres stocks y tres listas de precio.
+    if (vistos.has(n.sku)) {
+      errores.push({ fila: nFila, sku: n.original,
+        motivo: `Código repetido en el archivo (ya venía en la fila ${vistos.get(n.sku)}).` });
+      return;
+    }
+    vistos.set(n.sku, nFila);
+    if (n.cambiado) ajustados.push({ fila: nFila, antes: n.original, despues: n.sku });
 
     const producto = {
-      sku,
+      sku: n.sku,
       nombre,
       categoria: aValorPermitido('categoria', val(fila, 'categoria')),
       linea: aValorPermitido('linea', val(fila, 'linea')),
@@ -328,7 +338,7 @@ export function analizarFilas(filas, mapa) {
     listos.push({ fila: nFila, producto, comodatos, faltantes });
   });
 
-  return { listos, errores };
+  return { listos, errores, ajustados };
 }
 
 /* ───────────────────── Escritura ───────────────────── */
@@ -516,16 +526,42 @@ async function actualizarPrecios(listos, porSku, hoy) {
 
 /* ───────────────────── Plantilla ───────────────────── */
 
+/*
+  El orden de las columnas no le importa al importador —empareja por el
+  nombre del encabezado, no por la posición— pero sí le importa a quien
+  llena 497 filas a mano. Está agrupado para eso:
+
+  1. Identificación: lo que ya se sabe de cada SKU.
+  2. Clasificación: los campos que se repiten en tandas largas (todas
+     las cámaras JimiIoT comparten marca, categoría y control), para
+     llenar uno y arrastrar hacia abajo.
+  3. Números propios de cada SKU.
+  4. Los cuatro precios de la escala ≤10, juntos.
+  5. Los cuatro de la escala 11+, juntos.
+     Van por escala y no por plazo porque así llega la lista de precios:
+     cuatro valores para menos de 10 unidades y cuatro para 11 en
+     adelante. Se copia un bloque completo sin saltar de columna.
+  6. Al final lo opcional y el rastro del catálogo viejo del CRM, que se
+     consulta pero no se llena.
+*/
 async function descargarPlantilla() {
   const XLSX = await cargarSheetJS();
   const encabezados = [
-    'sku', 'nombre', 'categoria', 'linea', 'marca', 'control_inventario',
-    'costo_usd', 'costo_moneda', 'ruta_habitual', 'aplica_comodato',
-    'requiere_sim', 'stock_minimo', 'notas',
-    'precio_venta_hasta_10', 'precio_venta_11_mas',
-    'comodato_12_hasta_10', 'comodato_12_11_mas',
-    'comodato_24_hasta_10', 'comodato_24_11_mas',
-    'comodato_36_hasta_10', 'comodato_36_11_mas',
+    // 1. identificación
+    'sku', 'nombre',
+    // 2. clasificación (se repite en tandas)
+    'categoria', 'marca', 'linea', 'control_inventario', 'ruta_habitual',
+    'costo_moneda', 'aplica_comodato', 'requiere_sim',
+    // 3. números por SKU
+    'costo_usd', 'stock_minimo',
+    // 4. precios escala ≤10
+    'precio_venta_hasta_10', 'comodato_12_hasta_10',
+    'comodato_24_hasta_10', 'comodato_36_hasta_10',
+    // 5. precios escala 11+
+    'precio_venta_11_mas', 'comodato_12_11_mas',
+    'comodato_24_11_mas', 'comodato_36_11_mas',
+    // 6. opcional y referencia del catálogo viejo
+    'notas', 'item_legado', 'tipo_inventario_legado', 'tipo_item_legado',
   ];
   const ejemplo = {
     sku: 'JC450', nombre: 'Cámara GPS JimiIoT JC450', categoria: 'camara',
@@ -652,7 +688,7 @@ function pintarMapeo(cuerpo, ctx) {
 
 async function pintarVistaPrevia(cuerpo, ctx) {
   estadoCargando(cuerpo, 'Analizando...');
-  const { listos, errores } = analizarFilas(ctx.filas, ctx.mapa);
+  const { listos, errores, ajustados } = analizarFilas(ctx.filas, ctx.mapa);
 
   const skus = listos.map((l) => l.producto.sku);
   const existentes = await traerExistentes(skus);
@@ -671,7 +707,20 @@ async function pintarVistaPrevia(cuerpo, ctx) {
       <div class="fs-resumen-caja ${incompletos ? 'aviso' : ''}"><span>${incompletos}</span>con datos faltantes</div>
       <div class="fs-resumen-caja ${errores.length ? 'error' : ''}"><span>${errores.length}</span>con errores</div>
       <div class="fs-resumen-caja"><span>${conComodato}</span>traen comodato</div>
+      ${ajustados.length ? `<div class="fs-resumen-caja aviso"><span>${ajustados.length}</span>códigos ajustados de forma</div>` : ''}
     </div>
+
+    ${ajustados.length ? `
+      <h4 class="fs-h4">Códigos a los que se les ajustó la forma</h4>
+      <div class="fs-nota-toolbar">
+        El SKU se guarda siempre en mayúsculas, sin espacios y sin acentos, para que
+        el mismo producto no entre dos veces escrito distinto. Se cambió solo la forma,
+        no el código. Si alguno no debería quedar así, corrígelo en el Excel y vuelve a subir.
+      </div>
+      <table class="fs-tabla">
+        <thead><tr><th style="width:70px">Fila</th><th>Venía como</th><th>Se guarda como</th></tr></thead>
+        <tbody>${ajustados.map((a) => `<tr><td>${a.fila}</td><td>${escapeHtml(a.antes)}</td><td><strong>${escapeHtml(a.despues)}</strong></td></tr>`).join('')}</tbody>
+      </table>` : ''}
 
     ${errores.length ? `
       <h4 class="fs-h4">Filas con errores — estas NO se van a cargar</h4>
