@@ -35,6 +35,7 @@ import { calcularCambios, registrarAuditoria } from './auditoria.js';
 import {
   ROLES_EDITAN_NEGOCIOS, NATURALEZAS, MODALIDADES, PLAZOS_COMODATO,
   PLAZO_UNICO_GEOTAB, UMBRAL_ESCALA_VOLUMEN, RUTAS, ESTADOS_EJECUCION,
+  esRutaImportacion,
 } from './config.js';
 
 /* ═══════════════════ Reglas de cálculo ═══════════════════ */
@@ -49,14 +50,52 @@ export function escalaPorVehiculos(vehiculos) {
 }
 
 /*
-  Costo del SKU en pesos. Los proveedores del exterior facturan en USD
-  y los locales en COP; solo los primeros pasan por la TRM.
+  Costo del SKU en pesos, completo. Tres pasos, y cada uno tiene su
+  razón:
+
+  1. La moneda. Solo lo que se factura en USD pasa por la TRM; lo que
+     el proveedor factura en pesos entra tal cual.
+  2. El colchón sobre la TRM. Se cotiza con la TRM un poco arriba
+     porque entre cotizar y pagar el dólar se mueve, y quedarse corto
+     se come el margen.
+  3. Los costos de importación, SOLO si el producto viene por una ruta
+     de importación. En la ruta local el proveedor colombiano ya
+     factura la mercancía nacionalizada: sumarle el porcentaje ahí
+     sería cobrar el flete y la aduana dos veces.
+
+  Devuelve el desglose además del total, porque un costo que aparece
+  como un solo número y nadie sabe de dónde salió no se puede discutir
+  con Financiera.
 */
+export function costearProducto(producto, { trm = 0, colchonPct = 0, importacionPct = 0 } = {}) {
+  const base = Number(producto?.costo_usd ?? 0);
+  const enCOP = producto?.costo_moneda === 'COP';
+  const importado = esRutaImportacion(producto?.ruta_habitual);
+
+  if (!base) {
+    return { total: 0, base: 0, enCOP, importado, trmEfectiva: null, sinCosto: true };
+  }
+
+  const trmEfectiva = enCOP ? null : Number(trm || 0) * (1 + Number(colchonPct || 0) / 100);
+  const enPesos = enCOP ? base : base * trmEfectiva;
+  const conImportacion = importado ? enPesos * (1 + Number(importacionPct || 0) / 100) : enPesos;
+
+  return {
+    total: Math.round(conImportacion),
+    base,
+    enCOP,
+    importado,
+    trmEfectiva,
+    sinTRM: !enCOP && !Number(trm),
+    antesDeImportacion: Math.round(enPesos),
+    sinCosto: false,
+  };
+}
+
+// Se conserva la firma vieja para no romper nada que la llame; internamente
+// usa la de arriba.
 export function costoEnCOP(producto, trm) {
-  const costo = Number(producto?.costo_usd ?? 0);
-  if (!costo) return 0;
-  if (producto.costo_moneda === 'COP') return costo;
-  return Math.round(costo * Number(trm || 0));
+  return costearProducto(producto, { trm }).total;
 }
 
 /*
@@ -124,10 +163,22 @@ export function totalesDeLineas(lineas, vehiculos, mensualidadServicioUnitaria) 
 
 /* ═══════════════════ Datos ═══════════════════ */
 
-async function leerTRM() {
-  const { data } = await sb.from('fs_parametro').select('valor').eq('clave', 'trm_del_dia').maybeSingle();
-  const trm = Number(data?.valor || 0);
-  return Number.isFinite(trm) && trm > 0 ? trm : null;
+/*
+  Los tres supuestos con los que se costea: TRM del día, colchón sobre
+  la TRM y porcentaje de costos de importación. Se leen juntos porque
+  los tres se guardan en el negocio para poder reconstruir el costo
+  después, aunque mañana alguien cambie los parámetros.
+*/
+async function leerSupuestos() {
+  const { data } = await sb.from('fs_parametro').select('clave,valor')
+    .in('clave', ['trm_del_dia', 'colchon_trm_pct', 'costos_importacion_pct']);
+  const m = new Map((data || []).map((r) => [r.clave, Number(r.valor)]));
+  const trm = m.get('trm_del_dia');
+  return {
+    trm: Number.isFinite(trm) && trm > 0 ? trm : 0,
+    colchonPct: Number.isFinite(m.get('colchon_trm_pct')) ? m.get('colchon_trm_pct') : 0,
+    importacionPct: Number.isFinite(m.get('costos_importacion_pct')) ? m.get('costos_importacion_pct') : 0,
+  };
 }
 
 async function cargarNegocios() {
@@ -355,8 +406,8 @@ function pintarTabla(cuerpo, negocios, puedeEditar, contenedorRaiz, alGuardar) {
 
 async function abrirFormulario(negocio, alGuardar) {
   const existente = !!negocio;
-  const [etapas, combos, trmParam] = await Promise.all([
-    cargarEtapas(), cargarCombosVigentes(), leerTRM(),
+  const [etapas, combos, sup] = await Promise.all([
+    cargarEtapas(), cargarCombosVigentes(), leerSupuestos(),
   ]);
 
   // Estado del formulario mientras se arma. Las líneas viven acá hasta
@@ -365,7 +416,13 @@ async function abrirFormulario(negocio, alGuardar) {
   const est = {
     cliente: null,
     lineas: [],
-    trm: existente ? Number(negocio.trm_usada || trmParam || 0) : (trmParam || 0),
+    trm: existente ? Number(negocio.trm_usada || sup.trm || 0) : sup.trm,
+    // Un negocio ya guardado conserva los porcentajes con los que se
+    // costeó; uno nuevo toma los de hoy.
+    colchonPct: existente && negocio.colchon_trm_pct_usado != null
+      ? Number(negocio.colchon_trm_pct_usado) : sup.colchonPct,
+    importacionPct: existente && negocio.costos_importacion_pct_usado != null
+      ? Number(negocio.costos_importacion_pct_usado) : sup.importacionPct,
     comboId: existente ? negocio.combo_id : null,
     comboVersion: existente ? negocio.combo_version : null,
     servicioUnit: existente ? Number(negocio.mensualidad_servicio_unitaria_cop || 0) : 0,
@@ -501,12 +558,31 @@ async function abrirFormulario(negocio, alGuardar) {
   const escalaActual = () => escalaPorVehiculos($('#n-veh').value);
   const pintarEscala = () => {
     const esc = escalaActual();
+    const trmEf = est.trm * (1 + (est.colchonPct || 0) / 100);
+    // Se lee de la RUTA del producto, no del recosteo: las líneas con
+    // precio congelado no pasan por reprecificar(), así que no tienen
+    // desglose, y el aviso decía "ninguna importada" con líneas
+    // importadas en pantalla.
+    const importadas = est.lineas.filter((l) => esRutaImportacion(l.producto?.ruta_habitual)).length;
+
     $('#n-escala-aviso').innerHTML = `
       <div class="fs-ayuda-modo" style="margin:0">
         Con <strong>${$('#n-veh').value || 0} vehículo(s)</strong> aplica la escala
         <strong>${esc === '11+' ? '11 unidades o más' : 'hasta 10 unidades'}</strong>.
         La decide el número de vehículos, no las unidades de cada SKU.
-        ${est.trm ? `TRM usada para costear: <strong>${est.trm.toLocaleString('es-CO')}</strong>.` : ''}
+        <div class="fs-referencia-precio">
+          <strong>Cómo se está costeando</strong><br>
+          ${est.trm
+            ? `TRM ${est.trm.toLocaleString('es-CO')} + ${est.colchonPct}% de colchón =
+               <strong>${Math.round(trmEf).toLocaleString('es-CO')}</strong> por dólar.`
+            : '<span class="fs-faltante">No hay TRM cargada: los costos en dólares van a salir en cero.</span>'}
+          ${importadas
+            ? `<br>${importadas} línea(s) de ruta importada llevan además
+               <strong>+${est.importacionPct}%</strong> de costos de importación
+               (flete, aduana, agente). Las de ruta local no: el proveedor colombiano
+               ya factura la mercancía nacionalizada.`
+            : '<br>Ninguna línea viene por ruta de importación, así que no se suma el porcentaje de importación.'}
+        </div>
       </div>`;
   };
 
@@ -522,7 +598,11 @@ async function abrirFormulario(negocio, alGuardar) {
     for (const l of pendientes) {
       l._precioFijado = false;
       l.escala_aplicada = esc;
-      l.costo_unitario_cop = costoEnCOP(l.producto, est.trm);
+      const cst = costearProducto(l.producto, {
+        trm: est.trm, colchonPct: est.colchonPct, importacionPct: est.importacionPct,
+      });
+      l.costo_unitario_cop = cst.total;
+      l._costo = cst;   // el desglose, para poder mostrarlo
       if (l.modalidad === 'comodato') {
         const plazo = l.plazo_comodato || (l.producto?.marca === 'Geotab' ? PLAZO_UNICO_GEOTAB : 24);
         l.plazo_comodato = plazo;
@@ -585,7 +665,10 @@ async function abrirFormulario(negocio, alGuardar) {
                       ? (l.mensualidad_comodato_cop != null ? formatoCOP(l.mensualidad_comodato_cop)
                         : '<span class="fs-faltante">sin precio</span>')
                       : '—'}</td>
-                <td>${l.costo_unitario_cop ? formatoCOP(l.costo_unitario_cop) : '<span class="fs-faltante">sin costo</span>'}</td>
+                <td>${l.costo_unitario_cop
+                      ? `${formatoCOP(l.costo_unitario_cop)}${esRutaImportacion(l.producto?.ruta_habitual)
+                          ? `<br><small class="fs-par-desc">incluye +${est.importacionPct}% import.</small>` : ''}`
+                      : '<span class="fs-faltante">sin costo</span>'}</td>
                 <td><button class="fs-btn-link l-quitar" title="Quitar">✕</button></td>
               </tr>`;
             }).join('')}
@@ -770,6 +853,30 @@ async function abrirFormulario(negocio, alGuardar) {
       return;
     }
 
+    /*
+      Cerrar con líneas en costo 0 es el error más caro que permite esta
+      pantalla, porque el costo se CONGELA en la línea: corregir el
+      catálogo después no arregla este negocio, y el margen que va a ver
+      Gerencia queda inflado para siempre. Se avisa nombrando los SKU y
+      obligando a confirmar, no se bloquea: puede haber un caso legítimo
+      (un Geotab a 36 meses de verdad cuesta 0).
+    */
+    if (nat === 'cerrado') {
+      const sinCosto = est.lineas.filter((l) => !Number(l.costo_unitario_cop));
+      if (sinCosto.length) {
+        const skus = sinCosto.map((l) => l.producto?.sku || '?').join(', ');
+        const razon = !est.trm
+          ? 'No hay TRM cargada, así que ningún costo en dólares se pudo convertir.'
+          : 'Esos SKU no tienen costo en el catálogo.';
+        const ok = confirmar(
+          `${sinCosto.length} línea(s) van con costo 0: ${skus}.\n\n${razon}\n\n`
+          + 'El costo se congela al cerrar: si lo corriges después en el catálogo, '
+          + 'ESTE negocio va a seguir con costo 0 y su margen va a quedar inflado.\n\n'
+          + '¿Cerrar de todas formas?');
+        if (!ok) return;
+      }
+    }
+
     const cab = {
       empresa: est.cliente ? nombreCliente(est.cliente) : negocio.empresa,
       nit: est.cliente ? (est.cliente.nit_formateado || est.cliente.nit_normalizado) : negocio.nit,
@@ -785,6 +892,8 @@ async function abrirFormulario(negocio, alGuardar) {
       combo_version: est.comboVersion || null,
       mensualidad_servicio_unitaria_cop: est.servicioUnit || null,
       trm_usada: est.trm || null,
+      colchon_trm_pct_usado: est.colchonPct ?? null,
+      costos_importacion_pct_usado: est.importacionPct ?? null,
       observaciones: $('#n-obs').value.trim() || null,
       responsable_id: perfilActual()?.id ?? null,
     };
