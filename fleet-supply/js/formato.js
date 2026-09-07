@@ -69,8 +69,8 @@ export function fechaHoyBogota() {
   return `${obj.year}-${obj.month}-${obj.day}`;
 }
 
-// TRM: se ingresa manualmente (decisión confirmada), esto solo la
-// formatea para mostrarla junto al colchón aplicado.
+// TRM: la trae trm.js de la fuente oficial (antes se digitaba a mano).
+// Esto solo la formatea para mostrarla junto al colchón aplicado.
 export function formatoTRM(valor) {
   const n = Number(valor);
   if (Number.isNaN(n)) return '—';
