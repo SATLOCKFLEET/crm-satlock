@@ -95,6 +95,18 @@ function totalDias(hitos) {
   return hitos.reduce((s, h) => s + (Number(h.dias_estandar) || 0), 0);
 }
 
+// Días si el embarque se salta los hitos omitibles (una carga pequeña
+// que entra sin nacionalizar, por ejemplo).
+function diasSinOmitibles(hitos) {
+  return hitos.reduce((s, h) => s + (h.omitible ? 0 : Number(h.dias_estandar) || 0), 0);
+}
+
+function textoEscenarioCorto(hitos) {
+  const corto = diasSinOmitibles(hitos);
+  if (corto === totalDias(hitos)) return '';
+  return `${corto} días si se omiten los hitos marcados`;
+}
+
 function tarjetaRuta(r, puedeEditar) {
   const hitos = r.fs_hito_plantilla;
   const confirmados = hitos.filter((h) => h.confirmado).length;
@@ -112,6 +124,7 @@ function tarjetaRuta(r, puedeEditar) {
       </div>
       <div class="fs-card-ruta-total">
         <span class="fs-total-dias" data-ruta="${r.id}">${totalDias(hitos)}</span> días
+        <div class="fs-card-ruta-sub fs-total-corto" data-ruta="${r.id}">${textoEscenarioCorto(hitos)}</div>
         <div class="fs-card-ruta-sub">${confirmados} de ${hitos.length} confirmados</div>
       </div>
     </div>
@@ -120,7 +133,7 @@ function tarjetaRuta(r, puedeEditar) {
       <thead><tr>
         <th style="width:32px">#</th><th>Hito</th>
         <th style="width:90px">Días</th>
-        <th>Responsable</th><th style="width:80px">Confirmado</th>
+        <th>Responsable</th><th style="width:78px">Puede<br>omitirse</th><th style="width:80px">Confirmado</th>
         ${puedeEditar ? '<th style="width:60px"></th>' : ''}
       </tr></thead>
       <tbody>
@@ -144,6 +157,7 @@ function filaHito(h, puedeEditar) {
     <td><input type="text" class="h-nombre" value="${escapeHtml(h.nombre)}" ${ro}></td>
     <td><input type="number" min="0" step="1" class="h-dias" value="${h.dias_estandar}" ${ro}></td>
     <td><input type="text" class="h-area" value="${escapeHtml(h.area_responsable || '')}" ${ro}></td>
+    <td style="text-align:center"><input type="checkbox" class="h-omit" ${h.omitible ? 'checked' : ''} ${ro}></td>
     <td style="text-align:center"><input type="checkbox" class="h-conf" ${h.confirmado ? 'checked' : ''} ${ro}></td>
     ${puedeEditar ? '<td><button class="fs-btn-link h-quitar">Quitar</button></td>' : ''}
   </tr>`;
@@ -155,11 +169,19 @@ function cablearRuta(lista, ruta, puedeEditar, refrescar) {
 
   // El total se recalcula mientras escribes: es el dato que importa.
   const recalcular = () => {
-    const suma = [...card.querySelectorAll('.h-dias')]
-      .reduce((s, i) => s + (Number(i.value) || 0), 0);
-    card.querySelector(`.fs-total-dias[data-ruta="${ruta.id}"]`).textContent = suma;
+    let total = 0;
+    let corto = 0;
+    card.querySelectorAll('tbody tr').forEach((fila) => {
+      const dias = Number(fila.querySelector('.h-dias').value) || 0;
+      total += dias;
+      if (!fila.querySelector('.h-omit')?.checked) corto += dias;
+    });
+    card.querySelector(`.fs-total-dias[data-ruta="${ruta.id}"]`).textContent = total;
+    const el = card.querySelector(`.fs-total-corto[data-ruta="${ruta.id}"]`);
+    if (el) el.textContent = corto === total ? '' : `${corto} días si se omiten los hitos marcados`;
   };
   card.querySelectorAll('.h-dias').forEach((i) => i.addEventListener('input', recalcular));
+  card.querySelectorAll('.h-omit').forEach((i) => i.addEventListener('change', recalcular));
 
   if (!puedeEditar) return;
 
@@ -217,6 +239,7 @@ async function guardarHitosDeRuta(card, ruta) {
       nombre: fila.querySelector('.h-nombre').value.trim(),
       dias_estandar: Number(fila.querySelector('.h-dias').value) || 0,
       area_responsable: fila.querySelector('.h-area').value.trim() || null,
+      omitible: fila.querySelector('.h-omit').checked,
       confirmado: fila.querySelector('.h-conf').checked,
     };
 
