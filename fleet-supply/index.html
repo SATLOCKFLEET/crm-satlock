@@ -34,6 +34,7 @@
     import { renderCatalogo, renderCombos } from './js/catalogo.js';
     import { renderConfiguracion } from './js/configuracion.js';
     import { renderImportador } from './js/importador.js';
+    import { renderNegocios } from './js/negocios.js';
     import { cambiarTab, enObra, escapeHtml } from './js/ui.js';
 
     /*
@@ -74,10 +75,7 @@
           'Resumen de lo que está pasando: negocios por cerrar, stock bajo el mínimo, órdenes de compra en tránsito y los hitos que se vencen esta semana. Se construye al final, cuando ya existan los datos que tiene que resumir.',
           'Fase 5') },
 
-      { id: 'negocios', titulo: 'Negocios',
-        render: (p) => enObra(p, 'Negocios',
-          'Pronóstico, pipeline y cierre del negocio: se escoge el cliente, se arma el combo por vehículo, se define venta o comodato con su plazo y el sistema explota el combo en unidades, reserva lo que hay en Fontibón y calcula lo que falta comprar.',
-          'Fase 3 — el módulo comercial') },
+      { id: 'negocios', titulo: 'Negocios', render: renderNegocios },
 
       { id: 'catalogo', titulo: 'Catálogo', render: renderCatalogoConImportador },
       { id: 'combos',   titulo: 'Combos',   render: renderCombos },
