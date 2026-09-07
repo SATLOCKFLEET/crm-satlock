@@ -14,7 +14,7 @@ import { perfilActual, tieneRol } from './auth.js';
 import {
   mostrarToast, confirmar, escapeHtml, estadoCargando, estadoVacio, hacerOrdenable,
 } from './ui.js';
-import { formatoCOP, formatoUSD } from './formato.js';
+import { formatoCOP, formatoUSD, normalizarSku } from './formato.js';
 import { mismoValor, registrarAuditoria } from './auditoria.js';
 import {
   ROLES_EDITAN_CATALOGO,
@@ -413,7 +413,10 @@ function abrirFormularioProducto(producto, alGuardar) {
     <div class="fs-modal">
       <div class="fs-modal-title">${existente ? 'Editar producto' : 'Nuevo producto'}</div>
       <div class="fs-form-grid">
-        <label>SKU<input id="f-sku" value="${existente ? escapeHtml(producto.sku) : ''}" ${existente ? 'disabled' : ''}></label>
+        <label>SKU<input id="f-sku" value="${existente ? escapeHtml(producto.sku) : ''}" ${existente ? 'disabled' : ''}
+                 placeholder="Ej: JC450" maxlength="30">
+          ${existente ? '' : '<small class="fs-par-desc">Mayúsculas, sin espacios ni acentos. Se usa el código del fabricante cuando existe.</small>'}
+        </label>
         <label>Nombre<input id="f-nombre" value="${existente ? escapeHtml(producto.nombre) : ''}"></label>
         <label>Línea
           <select id="f-linea">
@@ -480,7 +483,9 @@ function abrirFormularioProducto(producto, alGuardar) {
 
   overlay.querySelector('#f-guardar').addEventListener('click', async () => {
     const datos = {
-      sku: overlay.querySelector('#f-sku').value.trim(),
+      // Se normaliza igual que en el importador: el SKU es la identidad
+      // del producto y solo puede existir escrito de una manera.
+      sku: normalizarSku(overlay.querySelector('#f-sku').value).sku,
       nombre: overlay.querySelector('#f-nombre').value.trim(),
       linea: overlay.querySelector('#f-linea').value,
       marca: overlay.querySelector('#f-marca').value || null,
