@@ -214,6 +214,50 @@ textarea { min-height: 60px; resize: vertical; }
   background: var(--surface2); color: var(--text3); padding: 4px 10px; border-radius: 10px;
 }
 
+/* ── GANTT (CSS puro, sin librería) ─────────────────── */
+.fs-gantt {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow-x: auto; padding: 0 0 8px;
+}
+.fs-gantt-cab, .fs-gantt-fila {
+  display: grid; grid-template-columns: 230px 1fr; min-width: 720px;
+  border-bottom: 1px solid var(--border);
+}
+.fs-gantt-cab { background: var(--surface2); font-size: 11px; font-weight: 600;
+  color: var(--text2); text-transform: uppercase; letter-spacing: .04em; }
+.fs-gantt-fila { cursor: pointer; }
+.fs-gantt-fila:hover { background: var(--sat-blue-light); }
+.fs-gantt-rotulo { padding: 9px 12px; font-size: 12px; border-right: 1px solid var(--border); }
+.fs-gantt-pista { position: relative; min-height: 40px; padding: 9px 0; }
+.fs-gantt-cab .fs-gantt-pista { min-height: 26px; padding: 6px 0; }
+
+.fs-gantt-mes { position: absolute; top: 4px; font-size: 10px; color: var(--text3);
+  transform: translateX(-50%); white-space: nowrap; }
+.fs-gantt-hoy { position: absolute; top: 0; bottom: 0; width: 0;
+  border-left: 1px dashed var(--sat-orange); }
+.fs-gantt-base { position: absolute; top: 6px; bottom: 6px; width: 0;
+  border-left: 2px solid var(--border2); }
+
+.fs-gantt-barra {
+  position: absolute; top: 12px; height: 16px; border-radius: 8px;
+  border: 1px solid; box-sizing: border-box;
+}
+.fs-gantt-hito {
+  position: absolute; top: 3px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--surface); border: 1.5px solid var(--text2);
+  transform: translateX(-50%);
+}
+.fs-gantt-hito.cumplido { background: var(--text2); }
+.fs-gantt-hito.tarde { border-color: var(--red); background: var(--red); }
+.fs-gantt-fin { position: absolute; top: 14px; font-size: 10px; color: var(--text2);
+  margin-left: 6px; white-space: nowrap; }
+.fs-gantt-chip { font-size: 10px; font-weight: 600; padding: 1px 7px;
+  border-radius: 10px; margin-left: 4px; white-space: nowrap; }
+
+@media (max-width: 720px) {
+  .fs-gantt-cab, .fs-gantt-fila { grid-template-columns: 150px 1fr; }
+}
+
 /* ── MODAL ──────────────────────────────────────────── */
 .fs-modal-overlay {
   position: fixed; inset: 0; background: rgba(13,27,62,.45); display: none;
