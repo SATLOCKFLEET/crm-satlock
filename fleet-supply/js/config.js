@@ -49,6 +49,12 @@ export const ROLES_EDITAN_PARAMETROS = [
 // todo sea un número y estos no lo son.
 export const PARAMETROS_INTERNOS = ['mapeo_importador_catalogo'];
 
+// Parámetros que son interruptores, no números. La pantalla de
+// Parámetros valida números, así que estos necesitan su propia regla:
+// sin esto, guardar "true" daba "debe ser un número" y no dejaba
+// guardar nada más de la tabla.
+export const PARAMETROS_BOOLEANOS = ['trm_automatica'];
+
 // Líneas de negocio
 export const LINEAS = {
   fleet: 'Fleet',
