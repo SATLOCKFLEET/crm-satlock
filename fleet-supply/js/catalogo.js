@@ -11,7 +11,9 @@
 
 import { sb } from './supabaseClient.js';
 import { perfilActual, tieneRol } from './auth.js';
-import { mostrarToast, confirmar, escapeHtml, estadoCargando, estadoVacio } from './ui.js';
+import {
+  mostrarToast, confirmar, escapeHtml, estadoCargando, estadoVacio, hacerOrdenable,
+} from './ui.js';
 import { formatoCOP, formatoUSD } from './formato.js';
 import { mismoValor, registrarAuditoria } from './auditoria.js';
 import {
@@ -336,13 +338,26 @@ function pintarTablaProductos(container, productos, puedeEditar) {
     estadoVacio(container, 'No hay productos en el catálogo todavía.');
     return;
   }
+  // Cuántos quedaron con datos por completar, para decirlo arriba en
+  // vez de dejar que se descubra fila por fila.
+  const incompletos = productos.filter((p) => p.incompleto).length;
+
   container.innerHTML = `
-    <table class="fs-tabla">
+    ${incompletos ? `<div class="fs-ayuda-modo">
+      Hay <strong>${incompletos} SKU con datos por completar</strong> (marcados con
+      <span class="fs-faltante">qué les falta</span> al lado del código). Entraron así
+      a propósito: la carga no se detiene por un dato que todavía no se conoce.
+    </div>` : ''}
+    <table class="fs-tabla" id="cat-tabla">
       <thead>
         <tr>
-          <th>SKU</th><th>Nombre</th><th>Categoría</th><th>Línea</th><th>Marca</th>
-          <th>Control</th><th>Precio ≤10<br><small>sin IVA</small></th><th>Precio 11+<br><small>sin IVA</small></th><th>Ruta planeación</th>
-          <th>Mín.</th><th>SIM</th>
+          <th data-orden="texto">SKU</th><th data-orden="texto">Nombre</th>
+          <th data-orden="texto">Categoría</th><th data-orden="texto">Línea</th>
+          <th data-orden="texto">Marca</th><th data-orden="texto">Control</th>
+          <th data-orden="numero">Precio ≤10<br><small>sin IVA</small></th>
+          <th data-orden="numero">Precio 11+<br><small>sin IVA</small></th>
+          <th data-orden="texto">Ruta planeación</th>
+          <th data-orden="numero">Mín.</th><th>SIM</th>
           ${puedeEditar ? '<th></th>' : ''}
         </tr>
       </thead>
@@ -351,7 +366,8 @@ function pintarTablaProductos(container, productos, puedeEditar) {
           .map(
             (p) => `
           <tr data-id="${p.id}">
-            <td>${escapeHtml(p.sku)}</td>
+            <td data-orden="${escapeHtml(p.sku)}">${escapeHtml(p.sku)}${
+              p.incompleto ? `<br><span class="fs-faltante">falta: ${escapeHtml(p.faltantes || '')}</span>` : ''}</td>
             <td>${escapeHtml(p.nombre)}</td>
             <td>${p.categoria ? (CATEGORIAS[p.categoria] || p.categoria) : '—'}</td>
             <td>${LINEAS[p.linea] || escapeHtml(p.linea)}</td>
@@ -368,6 +384,8 @@ function pintarTablaProductos(container, productos, puedeEditar) {
           .join('')}
       </tbody>
     </table>`;
+
+  hacerOrdenable(container.querySelector('#cat-tabla'));
 
   if (puedeEditar) {
     container.querySelectorAll('.fs-editar-producto').forEach((btn) => {
@@ -416,6 +434,7 @@ function abrirFormularioProducto(producto, alGuardar) {
         </label>
         <label>Control de inventario
           <select id="f-control">
+            <option value="" ${existente && !producto.control_inventario ? 'selected' : ''}>Sin definir</option>
             ${Object.entries(CONTROL_INVENTARIO).map(([v, l]) => `<option value="${v}" ${existente && producto.control_inventario === v ? 'selected' : ''}>${l}</option>`).join('')}
           </select>
         </label>
@@ -466,7 +485,10 @@ function abrirFormularioProducto(producto, alGuardar) {
       linea: overlay.querySelector('#f-linea').value,
       marca: overlay.querySelector('#f-marca').value || null,
       categoria: overlay.querySelector('#f-categoria').value || null,
-      control_inventario: overlay.querySelector('#f-control').value,
+      // Puede quedar sin definir: un SKU importado sin ese dato no se
+      // puede adivinar. Clasificar un GPS como "cantidad" por error se
+      // descubre en bodega, cuando se recibe sin IMEI.
+      control_inventario: overlay.querySelector('#f-control').value || null,
       ruta_habitual: overlay.querySelector('#f-ruta').value || null,
       costo_usd: leerNumero('#f-costo'),
       costo_moneda: overlay.querySelector('#f-moneda').value,
