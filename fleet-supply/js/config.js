@@ -151,6 +151,11 @@ export const UMBRAL_ESCALA_VOLUMEN = 10; // hasta 10 = escala 1; 11+ = escala 2
 export const FACTOR_SEGURIDAD_STOCK = 1.4;
 export const DIAS_CONSUMO_PROMEDIO = 90;
 
+// Meses que proyecta el forecast del tablero. El parámetro
+// meses_forecast de fs_parametro manda si existe; esto es el valor por
+// defecto para no dejar la pantalla en blanco si falta.
+export const MESES_FORECAST_DEFECTO = 6;
+
 // Zona horaria y formato usados en toda la app
 export const TIMEZONE = 'America/Bogota';
 
