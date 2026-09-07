@@ -151,6 +151,10 @@ textarea { min-height: 60px; resize: vertical; }
 .fs-total-dias { font-size: 20px; font-weight: 600; color: var(--sat-blue); }
 .fs-card-ruta-acciones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 .fs-inactiva { color: var(--red); font-weight: 500; }
+.fs-ruta-obs {
+  font-size: 11px; color: var(--text3); margin-top: 6px; padding: 6px 8px;
+  background: var(--surface2); border-radius: var(--radius-sm); line-height: 1.4;
+}
 
 .fs-tabla-hitos th, .fs-tabla-hitos td { padding: 5px 8px; font-size: 12px; }
 .fs-tabla-hitos input[type="text"], .fs-tabla-hitos input[type="number"] { padding: 5px 8px; font-size: 12px; }
