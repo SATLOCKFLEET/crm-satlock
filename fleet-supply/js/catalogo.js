@@ -341,7 +341,7 @@ function pintarTablaProductos(container, productos, puedeEditar) {
       <thead>
         <tr>
           <th>SKU</th><th>Nombre</th><th>Categoría</th><th>Línea</th><th>Marca</th>
-          <th>Control</th><th>Precio ≤10</th><th>Precio 11+</th><th>Ruta planeación</th>
+          <th>Control</th><th>Precio ≤10<br><small>sin IVA</small></th><th>Precio 11+<br><small>sin IVA</small></th><th>Ruta planeación</th>
           <th>Mín.</th><th>SIM</th>
           ${puedeEditar ? '<th></th>' : ''}
         </tr>
@@ -436,6 +436,8 @@ function abrirFormularioProducto(producto, alGuardar) {
         <label>Stock mínimo<input id="f-minimo" type="number" min="0" step="1" value="${existente ? producto.stock_minimo ?? '' : ''}"></label>
         <label class="fs-checkbox"><input id="f-comodato" type="checkbox" ${existente && producto.aplica_comodato ? 'checked' : ''}> Aplica comodato</label>
         <label class="fs-checkbox"><input id="f-sim" type="checkbox" ${existente && producto.requiere_sim ? 'checked' : ''}> Necesita SIM card</label>
+        <div class="fs-full fs-ayuda-modo"><strong>Todos los valores de dinero van antes de IVA.</strong>
+          El impuesto se aplica al facturar, no se guarda aquí.</div>
         <div class="fs-full fs-ayuda-modo">La ruta no decide cómo se compra (eso lo define Comercio Exterior en cada orden): solo se usa para calcular días de cobertura y stock mínimo sugerido. Ante duda, elige la más lenta.</div>
         <label class="fs-full">Notas<textarea id="f-notas">${existente ? escapeHtml(producto.notas || '') : ''}</textarea></label>
       </div>
@@ -654,7 +656,7 @@ async function abrirFormularioCombo({ modo, combo = null, alGuardar }) {
         <label class="fs-full">Notas<textarea id="c-notas">${escapeHtml(notasIniciales)}</textarea></label>
       </div>
       <div class="fs-ayuda-modo">La mensualidad de servicio es por vehículo y se ingresa a mano: no sale de los SKUs.
-        Si no varía por volumen, llena solo la de ≤10 y deja la otra vacía.
+        Va <strong>antes de IVA</strong>. Si no varía por volumen, llena solo la de ≤10 y deja la otra vacía.
         <div class="fs-referencia-precio"><strong>Referencia JimiIoT</strong> (valores antes de IVA, según los canales de la cámara):
           2 canales $75.000 · 3 canales $80.000 · 4 canales $85.000 · 5 canales $90.000</div>
       </div>
