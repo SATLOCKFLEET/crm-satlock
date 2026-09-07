@@ -30,11 +30,11 @@ import {
   mostrarToast, confirmar, escapeHtml, estadoCargando,
   hacerOrdenable, hacerFiltrable,
 } from './ui.js';
-import { formatoCOP, fechaHoyBogota } from './formato.js';
+import { formatoCOP, formatoFecha, fechaHoyBogota } from './formato.js';
 import { calcularCambios, registrarAuditoria } from './auditoria.js';
 import {
   ROLES_EDITAN_NEGOCIOS, NATURALEZAS, MODALIDADES, PLAZOS_COMODATO,
-  PLAZO_UNICO_GEOTAB, UMBRAL_ESCALA_VOLUMEN,
+  PLAZO_UNICO_GEOTAB, UMBRAL_ESCALA_VOLUMEN, RUTAS, ESTADOS_EJECUCION,
 } from './config.js';
 
 /* ═══════════════════ Reglas de cálculo ═══════════════════ */
@@ -294,7 +294,8 @@ function pintarTabla(cuerpo, negocios, puedeEditar, contenedorRaiz, alGuardar) {
         <th data-orden="numero" style="width:130px">Venta</th>
         <th data-orden="numero" style="width:120px">MRR</th>
         <th data-orden="numero" style="width:90px">Margen</th>
-        ${puedeEditar ? '<th style="width:90px"></th>' : ''}
+        <th data-orden="texto" style="width:130px">Abastecimiento</th>
+        ${puedeEditar ? '<th style="width:170px"></th>' : ''}
       </tr></thead>
       <tbody>
         ${negocios.map((n) => {
@@ -312,7 +313,15 @@ function pintarTabla(cuerpo, negocios, puedeEditar, contenedorRaiz, alGuardar) {
             <td data-orden="${n.valor_total_venta_cop || 0}">${n.valor_total_venta_cop ? formatoCOP(n.valor_total_venta_cop) : '—'}</td>
             <td data-orden="${n.mrr_total_cop || 0}">${n.mrr_total_cop ? formatoCOP(n.mrr_total_cop) : '—'}</td>
             <td data-orden="${n.margen_pct ?? -999}">${n.margen_pct != null ? `${n.margen_pct}%` : '—'}</td>
-            ${puedeEditar ? '<td><button class="fs-btn-link neg-editar">Abrir</button></td>' : ''}
+            <td>${n.naturaleza === 'cerrado'
+                  ? (ESTADOS_EJECUCION[n.estado_ejecucion] || n.estado_ejecucion)
+                  : '—'}</td>
+            ${puedeEditar ? `<td>
+                <button class="fs-btn-link neg-editar">Abrir</button>
+                ${n.naturaleza === 'cerrado' ? `
+                  · <button class="fs-btn-link neg-reservar">Reservar</button>
+                  · <button class="fs-btn-link neg-liberar">Liberar</button>` : ''}
+              </td>` : ''}
           </tr>`;
         }).join('')}
       </tbody>
@@ -326,6 +335,18 @@ function pintarTabla(cuerpo, negocios, puedeEditar, contenedorRaiz, alGuardar) {
       const id = e.target.closest('tr').dataset.id;
       const { data } = await sb.from('fs_negocio').select('*').eq('id', id).single();
       if (data) abrirFormulario(data, alGuardar);
+    });
+  });
+
+  const porFila = (e) => negocios.find((n) => n.id === e.target.closest('tr').dataset.id);
+  cuerpo.querySelectorAll('.neg-reservar').forEach((b) => {
+    b.addEventListener('click', async (e) => {
+      if (await reservarDesdeListado(porFila(e))) alGuardar();
+    });
+  });
+  cuerpo.querySelectorAll('.neg-liberar').forEach((b) => {
+    b.addEventListener('click', async (e) => {
+      if (await liberarDesdeListado(porFila(e))) alGuardar();
     });
   });
 }
@@ -820,6 +841,15 @@ async function abrirFormulario(negocio, alGuardar) {
 
       mostrarToast(existente ? 'Negocio actualizado.' : 'Negocio creado.', 'exito');
       ov.remove();
+
+      // Cerrar el negocio es lo que dispara la reserva. Se hace después
+      // de guardar y solo si todavía no tiene reservas, para que volver a
+      // guardar un negocio ya cerrado no intente reservar dos veces.
+      if (nat === 'cerrado') {
+        const yaReservado = await tieneReservas(negocioId);
+        if (!yaReservado) await reservarYMostrar(negocioId, cab.empresa);
+      }
+
       alGuardar();
     } catch (err) {
       console.error(err);
@@ -829,4 +859,158 @@ async function abrirFormulario(negocio, alGuardar) {
 
   aplicarNaturaleza();
   await refrescarTodo();
+}
+
+/* ═══════════════════ Reserva de stock ═══════════════════
+   La reserva NO se calcula acá. Se llama a fs_reservar_negocio, que
+   corre en la base con bloqueo de fila. Si se hiciera en el navegador,
+   dos negocios cerrados al mismo tiempo leerían el mismo disponible y
+   los dos lo tomarían: quedarían más unidades prometidas que físicas y
+   nadie se enteraría hasta que faltaran equipos en bodega.
+   ═══════════════════════════════════════════════════════ */
+
+/*
+  ¿Este negocio ya tiene reservas vivas? Reservado menos liberado.
+  Sirve para no intentar reservar dos veces al volver a guardar.
+*/
+export async function tieneReservas(negocioId) {
+  const { data, error } = await sb.from('fs_movimiento_inventario')
+    .select('tipo,cantidad').eq('negocio_id', negocioId).in('tipo', ['reserva', 'liberacion']);
+  if (error) {
+    console.error(error);
+    return false;
+  }
+  const neto = (data || []).reduce(
+    (n, m) => n + (m.tipo === 'reserva' ? m.cantidad : -m.cantidad), 0);
+  return neto > 0;
+}
+
+async function reservarYMostrar(negocioId, empresa) {
+  const { data, error } = await sb.rpc('fs_reservar_negocio', { p_negocio: negocioId });
+
+  if (error) {
+    console.error(error);
+    // Importante ser explícito: el negocio SÍ quedó guardado, la reserva
+    // no. Si no se dice, el usuario asume que el stock quedó apartado.
+    mostrarModalSimple('El negocio quedó guardado, pero NO se reservó stock', `
+      <div class="fs-ayuda-modo" style="background:var(--red-light);border-left-color:var(--red)">
+        <strong>${escapeHtml(error.message || String(error))}</strong>
+      </div>
+      <p>El negocio está cerrado y guardado, pero el inventario no se apartó.
+      Corrige lo que dice el mensaje y vuelve a intentar la reserva desde el
+      botón <strong>Reservar</strong> en el listado.</p>`);
+    return;
+  }
+
+  const filas = data || [];
+  const totReq = filas.reduce((n, f) => n + f.requerido, 0);
+  const totRes = filas.reduce((n, f) => n + f.reservado, 0);
+  const totFalta = filas.reduce((n, f) => n + f.faltante, 0);
+  const conFalta = filas.filter((f) => f.faltante > 0);
+  const ultima = conFalta.reduce(
+    (m, f) => (f.fecha_estimada && (!m || f.fecha_estimada > m) ? f.fecha_estimada : m), null);
+
+  mostrarModalSimple(`Reserva del negocio de ${escapeHtml(empresa || '')}`, `
+    <div class="fs-resumen">
+      <div class="fs-resumen-caja"><span>${totReq}</span>unidades del negocio</div>
+      <div class="fs-resumen-caja"><span>${totRes}</span>salen de Fontibón</div>
+      <div class="fs-resumen-caja ${totFalta ? 'aviso' : ''}"><span>${totFalta}</span>hay que comprar</div>
+    </div>
+
+    <table class="fs-tabla">
+      <thead><tr><th>SKU</th><th style="width:80px">Pide</th><th style="width:90px">Reservado</th>
+        <th style="width:90px">A comprar</th><th style="width:150px">Ruta</th>
+        <th style="width:110px">Disponible</th></tr></thead>
+      <tbody>
+        ${filas.map((f) => `<tr>
+          <td>${escapeHtml(f.sku)}<br><small class="fs-par-desc">${escapeHtml(f.producto || '')}</small></td>
+          <td>${f.requerido}</td>
+          <td>${f.reservado || '—'}</td>
+          <td>${f.faltante ? `<span class="fs-faltante">${f.faltante}</span>` : '—'}</td>
+          <td>${f.ruta ? (RUTAS[f.ruta] || f.ruta) : '<span class="fs-faltante">sin ruta</span>'}</td>
+          <td>${f.faltante && f.fecha_estimada
+                ? `${formatoFecha(f.fecha_estimada)}<br><small class="fs-par-desc">${f.dias_ruta} días</small>`
+                : '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+
+    <div class="fs-ayuda-modo">
+      ${totFalta === 0
+        ? 'Todo el negocio se cubre con lo que hay en Fontibón. No hay nada que comprar.'
+        : `Se crearon ${conFalta.length} requerimiento(s) de compra por el faltante.
+           ${ultima ? `Según los días de cada ruta, lo último estaría disponible alrededor del
+           <strong>${formatoFecha(ultima)}</strong>.` : ''}
+           Son estimaciones de planeación: la ruta real y sus fechas las define Comercio Exterior
+           en la orden de compra.`}
+    </div>`);
+}
+
+/*
+  Reserva a mano desde el listado. Existe para dos casos: un negocio que
+  se cerró antes de que existiera esta función, y uno cuya reserva falló
+  y hay que reintentar después de corregir.
+*/
+async function reservarDesdeListado(negocio) {
+  if (await tieneReservas(negocio.id)) {
+    mostrarToast('Este negocio ya tiene stock reservado. Si quieres rehacerlo, libéralo primero.', 'aviso');
+    return false;
+  }
+  if (!confirmar(`Se va a apartar inventario para el negocio ${negocio.codigo}. ¿Continuar?`)) return false;
+  await reservarYMostrar(negocio.id, negocio.empresa);
+  return true;
+}
+
+async function liberarDesdeListado(negocio) {
+  if (!await tieneReservas(negocio.id)) {
+    mostrarToast('Este negocio no tiene reservas vivas.', 'aviso');
+    return false;
+  }
+  const motivo = window.prompt(
+    `¿Por qué se libera la reserva del negocio ${negocio.codigo}?\n`
+    + '(queda en el histórico del movimiento)');
+  if (motivo === null) return false;
+
+  const { data, error } = await sb.rpc('fs_liberar_negocio',
+    { p_negocio: negocio.id, p_motivo: motivo || null });
+  if (error) {
+    console.error(error);
+    mostrarToast(`No se pudo liberar: ${error.message || error}`, 'error');
+    return false;
+  }
+
+  const filas = data || [];
+  const avisos = [...new Set(filas.map((f) => f.aviso).filter(Boolean))];
+  mostrarModalSimple(`Reserva liberada — ${escapeHtml(negocio.codigo)}`, `
+    ${avisos.length ? `<div class="fs-ayuda-modo" style="background:var(--amber-light);border-left-color:var(--amber)">
+      ${avisos.map((a) => `<strong>${escapeHtml(a)}</strong>`).join('<br>')}
+    </div>` : ''}
+    <table class="fs-tabla">
+      <thead><tr><th>SKU</th><th style="width:120px">Liberado</th></tr></thead>
+      <tbody>${filas.length
+        ? filas.map((f) => `<tr><td>${escapeHtml(f.sku)}<br><small class="fs-par-desc">${escapeHtml(f.producto || '')}</small></td><td>${f.liberado}</td></tr>`).join('')
+        : '<tr><td colspan="2">No había unidades reservadas.</td></tr>'}</tbody>
+    </table>
+    <div class="fs-ayuda-modo">
+      Las unidades volvieron a estar disponibles y los requerimientos pendientes quedaron
+      cancelados. No se borró ningún movimiento: la reserva y la liberación quedan las dos
+      en el histórico.
+    </div>`);
+  return true;
+}
+
+/* Modal de solo lectura, para los resúmenes. */
+function mostrarModalSimple(titulo, htmlCuerpo) {
+  const ov = document.createElement('div');
+  ov.className = 'fs-modal-overlay show';
+  ov.innerHTML = `
+    <div class="fs-modal fs-modal-ancho">
+      <div class="fs-modal-title">${titulo}</div>
+      ${htmlCuerpo}
+      <div class="fs-modal-actions">
+        <button class="fs-btn-primary" data-cerrar>Entendido</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('[data-cerrar]').addEventListener('click', () => ov.remove());
 }
