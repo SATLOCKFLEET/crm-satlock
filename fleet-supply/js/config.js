@@ -137,6 +137,20 @@ export const RUTAS = {
   globalstar_importacion: 'GlobalStar — con importación',
 };
 
+// Rutas que implican traer la mercancía del exterior. Coincide con
+// fs_ruta.modo = 'importacion'.
+//
+// Importa para costear: en la ruta local el proveedor colombiano ya
+// factura la mercancía nacionalizada, así que su precio YA está puesto
+// en Colombia. Sumarle el porcentaje de costos de importación sería
+// contar el flete y la aduana dos veces. En las rutas de importación
+// el costo del proveedor es el valor en origen y esos gastos sí faltan.
+export const RUTAS_IMPORTACION = [
+  'm2m_importacion', 'jimiiot_china', 'geotab_canada', 'globalstar_importacion',
+];
+
+export const esRutaImportacion = (ruta) => RUTAS_IMPORTACION.includes(ruta);
+
 // Escalas de precio por volumen (regla de negocio: ≤10 unidades
 // usa una escala, ≥11 usa otra, automático según cantidad del
 // negocio — esto se usa desde negocios.js en una fase posterior;
