@@ -7777,8 +7777,89 @@ async function guardarSolicitud() {
       // ── MODO EDICIÓN: UPDATE cabecera + reemplazar detalle + borrar órdenes ──
       const solExistente = solicitudes.find(x => x.consecutivo === consec);
 
-      // 1. Borrar órdenes programadas anteriores
-      await sb.from('ordenes_programadas').delete().eq('solicitud_id', consec);
+      // 0. LA GUARDA DE IDENTIDAD.
+      //
+      // Esto es la causa raíz del caso Cafeteros. El UPDATE de abajo va
+      // con .eq('consecutivo', consec) y escribe la empresa y el NIT que
+      // estén en el formulario. Abrir una solicitud ajena en edición y
+      // teclear encima otro cliente NO crea una solicitud nueva: recicla
+      // la fila. El consecutivo se queda igual, el cliente cambia, y las
+      // órdenes del cliente original se borran en el paso siguiente.
+      //
+      // Así se perdió la facturación de FEDERACION NACIONAL DE CAFETEROS
+      // (consecutivo 000064, del 2-jun-2026): la fila terminó siendo de
+      // otro cliente y sus 36 órdenes del día 18 desaparecieron.
+      //
+      // Editar la plata, las fechas o los ítems es normal. Cambiarle el
+      // DUEÑO a una solicitud que ya tiene programación, no: eso es una
+      // solicitud nueva.
+      const { data: dueñoActual, error: dueñoErr } = await sb
+        .from('solicitudes_facturacion')
+        .select('empresa, nit')
+        .eq('consecutivo', consec)
+        .maybeSingle();
+      if (dueñoErr) {
+        showAlert('danger', 'No se pudo verificar a quién pertenece esta solicitud, así que no se guarda. Intenta de nuevo.');
+        return;
+      }
+
+      const norm = (v) => String(v || '').trim().toUpperCase().replace(/\s+/g, ' ');
+      const cambiaEmpresa = dueñoActual && norm(dueñoActual.empresa) !== norm(solicitud.empresa);
+      const cambiaNit     = dueñoActual && norm(dueñoActual.nit)     !== norm(solicitud.nit);
+
+      if (cambiaEmpresa || cambiaNit) {
+        const { count: cuantasOrdenes } = await sb
+          .from('ordenes_programadas')
+          .select('id', { count: 'exact', head: true })
+          .eq('solicitud_id', consec);
+
+        if ((cuantasOrdenes || 0) > 0) {
+          showAlert('danger',
+            `La solicitud ${consec} es de ${dueñoActual.empresa} (NIT ${dueñoActual.nit}) y tiene ` +
+            `${cuantasOrdenes} orden(es) en la Agenda de facturación. No se le puede cambiar el cliente: ` +
+            'guardar así borraría la facturación programada de ' + dueñoActual.empresa + '. ' +
+            'Si necesitas facturarle a ' + solicitud.empresa + ', crea una solicitud nueva.');
+          return;
+        }
+
+        // Sin órdenes todavía: probablemente solo se está corrigiendo el
+        // nombre o el NIT. Se deja pasar, pero avisando qué va a cambiar.
+        if (!confirm(
+              `Vas a cambiarle el cliente a la solicitud ${consec}.\n\n` +
+              `De:  ${dueñoActual.empresa} (NIT ${dueñoActual.nit})\n` +
+              `A:   ${solicitud.empresa} (NIT ${solicitud.nit})\n\n` +
+              'Si no estabas corrigiendo un dato mal escrito, cancela y crea una solicitud nueva.')) {
+          return;
+        }
+      }
+
+      // 1. Órdenes programadas: conservar lo YA FACTURADO, rehacer el resto.
+      //
+      // Antes acá se borraban TODAS las órdenes y no se volvían a crear
+      // nunca, porque solo confirmarEnvio las genera. Editar una
+      // solicitud ya enviada le borraba la programación completa en
+      // silencio, y como el estado además volvía a 'Pendiente', la
+      // solicitud quedaba habilitada para eliminarse. Por ahí
+      // desapareció una factura recurrente entera sin dejar rastro.
+      const { data: ordenesPrevias, error: ordLeeErr } = await sb
+        .from('ordenes_programadas')
+        .select('id, fecha_factura, estado, num_factura')
+        .eq('solicitud_id', consec);
+      if (ordLeeErr) throw ordLeeErr;
+
+      const yaFacturadas     = (ordenesPrevias || []).filter(o => o.estado === 'Facturada');
+      const fechasFacturadas = new Set(yaFacturadas.map(o => String(o.fecha_factura).slice(0,10)));
+      const idsFacturados    = new Set(yaFacturadas.map(o => o.id));
+
+      // Una orden en estado Facturada es el registro de una factura
+      // REAL emitida, con su número. Esa no se borra ni se reemplaza:
+      // se van solo las pendientes y las omitidas.
+      const { error: delOrdErr } = await sb
+        .from('ordenes_programadas')
+        .delete()
+        .eq('solicitud_id', consec)
+        .neq('estado', 'Facturada');
+      if (delOrdErr) throw delOrdErr;
 
       // 2. Borrar detalle anterior
       if (solExistente?._uuid) {
@@ -7832,6 +7913,39 @@ async function guardarSolicitud() {
         if (detErr) throw detErr;
       }
 
+      // 4b. Rehacer la programación con el detalle nuevo.
+      // Se salta cualquier mes que ya tenga factura emitida, para no
+      // programar dos veces lo mismo ni chocar con un id conservado.
+      const regeneradas = OrdenesProgramadasService
+        .generarOrdenes({ ...solicitud, consecutivo: consec, detalle: detalleCopia })
+        .filter(o => !fechasFacturadas.has(String(o.fecha_factura).slice(0,10)))
+        .filter(o => !idsFacturados.has(o.id));
+
+      if (regeneradas.length > 0) {
+        const filasOrd = regeneradas.map(o => ({
+          id:                     o.id,
+          solicitud_id:           o.solicitud_id,
+          empresa:                o.empresa,
+          nit:                    o.nit,
+          ejecutivo:              o.ejecutivo,
+          item:                   o.item,
+          descripcion:            o.descripcion,
+          modalidad:              o.modalidad,
+          frecuencia_recurrencia: o.frecuencia_recurrencia || null,
+          cuota_num:              o.cuota_num,
+          cuotas_total:           o.cuotas_total || null,
+          fecha_factura:          o.fecha_factura ? String(o.fecha_factura).slice(0,10) : null,
+          cantidad:               o.cantidad,
+          valor_unitario:         o.valor_unitario,
+          ipc_aplicado:           o.ipc_aplicado || 0,
+          estado:                 'Pendiente',
+          items_detalle:          o.items_detalle || null,
+          // 'total' es GENERATED ALWAYS AS en Supabase — NO incluir
+        }));
+        const { error: insOrdErr } = await sb.from('ordenes_programadas').insert(filasOrd);
+        if (insOrdErr) throw insOrdErr;
+      }
+
       // 5. Actualizar memoria local
       const idx = solicitudes.findIndex(x => x.consecutivo === consec);
       const solActualizada = { ...solicitudes[idx], ...solicitud, detalle: detalleCopia, _uuid: solExistente?._uuid };
@@ -7841,12 +7955,20 @@ async function guardarSolicitud() {
       solicitudGuardada = { ...solActualizada, consecutivo: consec };
 
       window._editandoConsecutivo = null;
+      ocultarBannerEdicion();
       renderHistorial();
       renderEstado();
       habilitarBotonesPostGuardado(solicitudGuardada);
       limpiarSoloFormulario();
       verDetalle(consec);
-      showAlert('success', `Solicitud ${consec} actualizada correctamente.`);
+      // El mensaje dice qué pasó con la programación: antes decía solo
+      // "actualizada correctamente" mientras borraba 36 órdenes.
+      const resumenProg = [
+        regeneradas.length  ? `${regeneradas.length} orden(es) reprogramada(s)` : null,
+        yaFacturadas.length ? `${yaFacturadas.length} ya facturada(s) intacta(s)` : null,
+      ].filter(Boolean).join(' · ');
+      showAlert('success',
+        `Solicitud ${consec} actualizada correctamente.${resumenProg ? ' ' + resumenProg + '.' : ''}`);
 
     } else {
       // ── MODO CREACIÓN: INSERT normal ─────────────────────────────────────────
@@ -8395,11 +8517,53 @@ function filtrarHistorial() {
 async function eliminarSolicitud(consecutivo) {
   const s = solicitudes.find(x => x.consecutivo === consecutivo);
   if (!s) return;
+
+  // El candado ya no es el estado, son los DATOS.
+  //
+  // El estado no servía de candado: editar una solicitud lo devuelve a
+  // 'Pendiente', así que una solicitud que ya había facturado durante
+  // meses quedaba habilitada para borrarse con un clic. Ahora se le
+  // pregunta a la base qué órdenes tiene y si alguna ya se facturó.
+  const { data: ords, error: ordErr } = await sb
+    .from('ordenes_programadas')
+    .select('id, estado, num_factura, fecha_factura')
+    .eq('solicitud_id', consecutivo);
+  if (ordErr) {
+    showAlert('danger', 'No se pudo verificar la programación de esta solicitud, así que no se elimina. Intenta de nuevo.');
+    return;
+  }
+
+  const facturadas = (ords || []).filter(o => o.estado === 'Facturada');
+  if (facturadas.length > 0) {
+    const nums = facturadas.map(o => o.num_factura).filter(Boolean).slice(0, 5).join(', ');
+    showAlert('danger',
+      `No se puede eliminar ${consecutivo}: ya tiene ${facturadas.length} factura(s) emitida(s)` +
+      (nums ? ` (${nums})` : '') + '. Borrarla destruiría historia contable.');
+    return;
+  }
+
+  if ((ords || []).length > 0) {
+    showAlert('danger',
+      `La solicitud ${consecutivo} tiene ${ords.length} orden(es) programada(s) en la Agenda de facturación. ` +
+      'Si de verdad hay que eliminarla, omite primero esas órdenes desde la Agenda y vuelve.');
+    return;
+  }
+
   if (s.estado !== 'Pendiente') {
     showAlert('danger', 'Solo se pueden eliminar solicitudes en estado Pendiente.');
     return;
   }
-  if (!confirm(`¿Eliminar la solicitud ${consecutivo} de ${s.empresa}? Esta acción no se puede deshacer.`)) return;
+
+  // Confirmar escribiendo el consecutivo. Un "OK" se da sin leer, y
+  // acá no hay bitácora que permita saber después quién lo hizo.
+  const escrito = window.prompt(
+    `Vas a ELIMINAR la solicitud ${consecutivo} de ${s.empresa}.\n\n` +
+    'No se puede deshacer y no queda registro de quién lo hizo.\n\n' +
+    `Escribe ${consecutivo} para confirmar:`);
+  if ((escrito || '').trim() !== consecutivo) {
+    showAlert('info', 'Eliminación cancelada.');
+    return;
+  }
 
   try {
     // Eliminar detalle primero (FK constraint) y luego cabecera
@@ -8655,8 +8819,12 @@ async function editarDesdeModal() {
   billingItems = (s.detalle || []).map(d => ({ ...d, id: Date.now() + Math.random() }));
   renderBilling();
 
+  // Este cambio de pestaña es parte de entrar a edición: el token evita
+  // que facSwitchTab, que ahora limpia la bandera, la borre justo aquí.
+  window._entrandoAEdicion = true;
   switchTabDirect('nueva');
-  showAlert('info', `Editando solicitud ${consecutivo}. Corrija lo necesario y vuelva a guardar.`);
+  mostrarBannerEdicion(consecutivo, s.empresa, s.nit);
+  showAlert('info', `Editando solicitud ${consecutivo} de ${s.empresa}. Corrija lo necesario y vuelva a guardar.`);
 }
 
 function switchTabDirect(tab) {
@@ -8970,9 +9138,42 @@ function showAlert(type, msg) {
   toast._timer = setTimeout(() => { toast.style.opacity = '0'; }, 4500);
 }
 
+/* Banner de edición.
+   El badge chiquito decía "000064 (editando)" y se pasa por alto. Esto
+   es una franja que no se puede ignorar, con el cliente por nombre y un
+   botón para salirse. Se inyecta desde JS para no depender del HTML. */
+function mostrarBannerEdicion(consecutivo, empresa, nit) {
+  const panel = document.getElementById('fac-panel-nueva');
+  if (!panel) return;
+  ocultarBannerEdicion();
+  const b = document.createElement('div');
+  b.id = 'fac-banner-edicion';
+  b.style.cssText = 'background:#FDEEE8;border:1px solid #E8460A;border-left:5px solid #E8460A;' +
+    'border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;' +
+    'align-items:center;gap:14px;flex-wrap:wrap;font-size:13px;';
+  b.innerHTML =
+    '<div style="flex:1 1 320px;line-height:1.5">' +
+      '<strong style="color:#B03408">Estás EDITANDO la solicitud ' + consecutivo + '</strong><br>' +
+      '<span style="color:#555">' + (empresa || '') +
+      (nit ? ' · NIT ' + nit : '') + '</span><br>' +
+      '<span style="color:#555">Lo que guardes reemplaza esta solicitud. ' +
+      'Si querías crear una nueva, sal de la edición.</span>' +
+    '</div>' +
+    '<button type="button" onclick="limpiarFormulario()" ' +
+      'style="font-family:inherit;font-size:12px;padding:7px 14px;background:#E8460A;color:#fff;' +
+      'border:none;border-radius:6px;cursor:pointer;flex:0 0 auto;">Salir de la edición</button>';
+  panel.insertBefore(b, panel.firstChild);
+}
+
+function ocultarBannerEdicion() {
+  const b = document.getElementById('fac-banner-edicion');
+  if (b) b.remove();
+}
+
 /* "Solicitud nueva" — limpia todo y bloquea los 3 botones */
 function limpiarFormulario() {
   window._editandoConsecutivo = null;
+  ocultarBannerEdicion();
   limpiarSoloFormulario();
   const el = document.getElementById('consecutivo');
   if (el) el.value = '';
@@ -9290,6 +9491,29 @@ function renderFacturacion(container){
 }
 
 function facSwitchTab(tab, btn){
+  /* LA BANDERA PEGAJOSA.
+     _editandoConsecutivo es global y solo se limpiaba al guardar bien o
+     al pulsar "Solicitud nueva". Cambiar de pestaña y volver la dejaba
+     ARMADA: guardarSolicitud lee esa bandera para decidir si crea o
+     actualiza, así que llenar el formulario creyendo que era nuevo
+     hacía un UPDATE sobre la solicitud que se había abierto antes, con
+     su consecutivo y su cliente. Sin aviso ninguno.
+     Acá se desarma en cuanto el usuario navega. */
+  if (window._entrandoAEdicion) {
+    window._entrandoAEdicion = false;          // token de un solo uso
+  } else if (window._editandoConsecutivo) {
+    const abandonada = window._editandoConsecutivo;
+    window._editandoConsecutivo = null;
+    ocultarBannerEdicion();
+    const elC = document.getElementById('consecutivo');
+    if (elC) elC.value = '';
+    const bC = document.getElementById('consecutivo-badge');
+    if (bC) bC.textContent = '— se asigna al guardar —';
+    if (typeof showAlert === 'function') {
+      showAlert('info', `Se salió de la edición de ${abandonada} sin guardar. Lo que escribas ahora será una solicitud nueva.`);
+    }
+  }
+
   ['nueva','historial','estado'].forEach(t => {
     const p = document.getElementById('fac-panel-'+t);
     if(p) p.style.display = t===tab ? 'block' : 'none';
