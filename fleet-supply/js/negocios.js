@@ -31,6 +31,7 @@ import {
   hacerOrdenable, hacerFiltrable,
 } from './ui.js';
 import { formatoCOP, formatoFecha, fechaHoyBogota } from './formato.js';
+import { obtenerTRM, etiquetaOrigenTRM } from './trm.js';
 import { calcularCambios, registrarAuditoria } from './auditoria.js';
 import {
   ROLES_EDITAN_NEGOCIOS, NATURALEZAS, MODALIDADES, PLAZOS_COMODATO,
@@ -168,14 +169,23 @@ export function totalesDeLineas(lineas, vehiculos, mensualidadServicioUnitaria) 
   la TRM y porcentaje de costos de importación. Se leen juntos porque
   los tres se guardan en el negocio para poder reconstruir el costo
   después, aunque mañana alguien cambie los parámetros.
+
+  La TRM ya no se teclea: la trae trm.js de la fuente oficial. Los dos
+  porcentajes sí siguen siendo decisión de Financiera y viven en los
+  parámetros.
 */
 async function leerSupuestos() {
-  const { data } = await sb.from('fs_parametro').select('clave,valor')
-    .in('clave', ['trm_del_dia', 'colchon_trm_pct', 'costos_importacion_pct']);
+  const [{ data }, trmInfo] = await Promise.all([
+    sb.from('fs_parametro').select('clave,valor')
+      .in('clave', ['colchon_trm_pct', 'costos_importacion_pct']),
+    obtenerTRM(),
+  ]);
   const m = new Map((data || []).map((r) => [r.clave, Number(r.valor)]));
-  const trm = m.get('trm_del_dia');
   return {
-    trm: Number.isFinite(trm) && trm > 0 ? trm : 0,
+    trm: Number(trmInfo.valor) > 0 ? Number(trmInfo.valor) : 0,
+    trmOrigen: trmInfo.origen,
+    trmEtiqueta: etiquetaOrigenTRM(trmInfo),
+    trmAviso: trmInfo.aviso,
     colchonPct: Number.isFinite(m.get('colchon_trm_pct')) ? m.get('colchon_trm_pct') : 0,
     importacionPct: Number.isFinite(m.get('costos_importacion_pct')) ? m.get('costos_importacion_pct') : 0,
   };
@@ -417,6 +427,11 @@ async function abrirFormulario(negocio, alGuardar) {
     cliente: null,
     lineas: [],
     trm: existente ? Number(negocio.trm_usada || sup.trm || 0) : sup.trm,
+    // La procedencia de la TRM, para poder decirla en pantalla. En un
+    // negocio ya guardado no aplica: esa TRM quedó congelada y no se
+    // volvió a consultar la fuente.
+    trmEtiqueta: existente ? null : sup.trmEtiqueta,
+    trmAviso: existente ? null : sup.trmAviso,
     // Un negocio ya guardado conserva los porcentajes con los que se
     // costeó; uno nuevo toma los de hoy.
     colchonPct: existente && negocio.colchon_trm_pct_usado != null
@@ -452,9 +467,13 @@ async function abrirFormulario(negocio, alGuardar) {
       <div class="fs-modal-title">${existente ? `Negocio ${escapeHtml(negocio.codigo)}` : 'Nuevo negocio'}</div>
 
       ${est.trm ? '' : `<div class="fs-ayuda-modo" style="background:var(--amber-light);border-left-color:var(--amber)">
-        <strong>No hay TRM cargada.</strong> Sin TRM no se puede costear lo que se compra en dólares:
-        el costo y el margen van a salir en cero. Cárgala en Configuración → Parámetros.
+        <strong>No hay TRM.</strong> No se pudo consultar la TRM oficial y no hay ninguna guardada,
+        así que el costo y el margen van a salir en cero. Revisa tu conexión, o fija una a mano
+        en Configuración → Parámetros.
       </div>`}
+      ${est.trm && est.trmAviso ? `<div class="fs-ayuda-modo" style="background:var(--amber-light);border-left-color:var(--amber)">
+        <strong>Atención con la TRM.</strong> ${escapeHtml(est.trmAviso)}
+      </div>` : ''}
 
       <div class="fs-form-grid">
         <label class="fs-full">Cliente
@@ -574,8 +593,11 @@ async function abrirFormulario(negocio, alGuardar) {
           <strong>Cómo se está costeando</strong><br>
           ${est.trm
             ? `TRM ${est.trm.toLocaleString('es-CO')} + ${est.colchonPct}% de colchón =
-               <strong>${Math.round(trmEf).toLocaleString('es-CO')}</strong> por dólar.`
-            : '<span class="fs-faltante">No hay TRM cargada: los costos en dólares van a salir en cero.</span>'}
+               <strong>${Math.round(trmEf).toLocaleString('es-CO')}</strong> por dólar.
+               ${existente
+                 ? '<span class="fs-nota-trm">TRM congelada al armar este negocio.</span>'
+                 : `<span class="fs-nota-trm">${escapeHtml(est.trmEtiqueta || '')}</span>`}`
+            : '<span class="fs-faltante">No hay TRM: los costos en dólares van a salir en cero.</span>'}
           ${importadas
             ? `<br>${importadas} línea(s) de ruta importada llevan además
                <strong>+${est.importacionPct}%</strong> de costos de importación
