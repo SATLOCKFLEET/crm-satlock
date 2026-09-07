@@ -30,6 +30,7 @@ import {
 } from './ui.js';
 import { formatoCOP, formatoUSD, formatoFecha } from './formato.js';
 import { ROLES_FS, RUTAS, esRutaImportacion } from './config.js';
+import { obtenerTRM, etiquetaOrigenTRM } from './trm.js';
 
 const ESTADOS_OC = {
   borrador: 'Borrador',
@@ -85,12 +86,19 @@ async function cargarCoberturaOrdenes() {
   return porOC;
 }
 
+// La TRM la trae trm.js de la fuente oficial; los dos porcentajes
+// siguen siendo decisión de Financiera y viven en los parámetros.
 async function leerSupuestos() {
-  const { data } = await sb.from('fs_parametro').select('clave,valor')
-    .in('clave', ['trm_del_dia', 'colchon_trm_pct', 'costos_importacion_pct']);
+  const [{ data }, trmInfo] = await Promise.all([
+    sb.from('fs_parametro').select('clave,valor')
+      .in('clave', ['colchon_trm_pct', 'costos_importacion_pct']),
+    obtenerTRM(),
+  ]);
   const m = new Map((data || []).map((r) => [r.clave, Number(r.valor)]));
   return {
-    trm: m.get('trm_del_dia') || 0,
+    trm: Number(trmInfo.valor) > 0 ? Number(trmInfo.valor) : 0,
+    trmEtiqueta: etiquetaOrigenTRM(trmInfo),
+    trmAviso: trmInfo.aviso,
     colchonPct: m.get('colchon_trm_pct') ?? 0,
     importacionPct: m.get('costos_importacion_pct') ?? 0,
   };
@@ -173,7 +181,8 @@ async function renderBandeja(cont) {
       orden consolidada</strong>. Una orden es <strong>un proveedor y una ruta</strong>, y puede
       cubrir cuantos negocios haga falta. También puedes comprar unidades de más para
       reponer stock mínimo: esas no quedan asignadas a ningún negocio.
-      ${sup.trm ? '' : '<br><span class="fs-faltante">No hay TRM cargada: sin ella no se puede costear la orden.</span>'}
+      ${sup.trm ? '' : '<br><span class="fs-faltante">No hay TRM: no se pudo consultar la oficial y no hay ninguna guardada. Sin ella no se puede costear la orden.</span>'}
+      ${sup.trm && sup.trmAviso ? `<br><span class="fs-faltante">${escapeHtml(sup.trmAviso)}</span>` : ''}
     </div>
 
     <div class="fs-resumen">
@@ -337,7 +346,7 @@ async function abrirFormularioOC(sel, sup, alGuardar) {
       <div class="fs-form-grid">
         <label>TRM presupuestada
           <input type="number" id="oc-trm" step="0.01" value="${sup.trm || ''}">
-          <small class="fs-par-desc">Viene de la TRM del día. Editable.</small>
+          <small class="fs-par-desc">TRM oficial ${sup.trmEtiqueta ? '(' + escapeHtml(sup.trmEtiqueta) + ')' : ''}. Editable: lo que quede acá es lo que se congela en la orden.</small>
         </label>
         <label>Colchón sobre la TRM (%)
           <input type="number" id="oc-colchon" step="0.1" value="${sup.colchonPct}">
