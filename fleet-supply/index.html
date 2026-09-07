@@ -37,6 +37,7 @@
     import { renderNegocios } from './js/negocios.js';
     import { renderTablero } from './js/tablero.js';
     import { renderCompras } from './js/compras.js';
+    import { renderCronograma } from './js/cronograma.js';
     import { cambiarTab, enObra, escapeHtml } from './js/ui.js';
 
     /*
@@ -86,10 +87,7 @@
 
       { id: 'compras', titulo: 'Compras', render: renderCompras },
 
-      { id: 'cronograma', titulo: 'Cronograma',
-        render: (p) => enObra(p, 'Cronograma',
-          'Los hitos de cada orden de compra con sus tres fechas: los días estándar de la ruta, la fecha estimada y la fecha real. Aquí se marcan los hitos que no aplican cuando la carga entra por mensajería expresa.',
-          'Fase 4 — abastecimiento') },
+      { id: 'cronograma', titulo: 'Cronograma', render: renderCronograma },
 
       { id: 'finanzas', titulo: 'Finanzas',
         render: (p) => enObra(p, 'Finanzas',
