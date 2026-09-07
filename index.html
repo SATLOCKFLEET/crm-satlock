@@ -11173,20 +11173,49 @@ function renderPortalFacturacion(container){
 async function pfac_inicializarPortal(){
   if(!document.getElementById('pfac-cal-grid')) return;
 
-  // Cargar órdenes programadas desde Supabase
+  // Cargar órdenes programadas desde Supabase, POR PÁGINAS.
+  //
+  // Antes esto era una sola consulta sin acotar. PostgREST corta en un
+  // máximo de filas por defecto (1000), y como el orden es por fecha
+  // ascendente, lo que se caía del corte eran las fechas MÁS LEJANAS:
+  // las órdenes futuras simplemente no llegaban al navegador y en la
+  // agenda se veían como si se hubieran borrado. Con 2.774 órdenes en
+  // la tabla, se estaban perdiendo de vista casi 1.800.
+  //
+  // Se pide en páginas hasta que una venga incompleta, que es la señal
+  // de que ya no hay más. El tamaño de página se deja igual al tope
+  // conocido para no multiplicar las idas al servidor.
   try {
-    const { data, error } = await sb
-      .from('ordenes_programadas')
-      .select(`
-        *, items_detalle,
-        solicitudes_facturacion!solicitud_id (
-          contacto, telefono, email_facturacion, ciudad, observaciones,
-          req_orden_compra, req_prefactura, req_aprobacion, req_ensamble
-        )
-      `)
-      .order('fecha_factura', { ascending: true });
+    const PAGINA = 1000;
+    let data = [];
+    for (let desde = 0; ; desde += PAGINA) {
+      const { data: pagina, error } = await sb
+        .from('ordenes_programadas')
+        .select(`
+          *, items_detalle,
+          solicitudes_facturacion!solicitud_id (
+            contacto, telefono, email_facturacion, ciudad, observaciones,
+            req_orden_compra, req_prefactura, req_aprobacion, req_ensamble
+          )
+        `)
+        // El desempate por id no es adorno: sin un orden total, dos
+        // órdenes de la misma fecha pueden caer en dos páginas
+        // distintas y una se repite mientras otra se pierde.
+        .order('fecha_factura', { ascending: true })
+        .order('id', { ascending: true })
+        .range(desde, desde + PAGINA - 1);
 
-    if (error) throw error;
+      if (error) throw error;
+      const lote = pagina || [];
+      data = data.concat(lote);
+      if (lote.length < PAGINA) break;
+      // Cinturón de seguridad: si algún día la paginación se rompe,
+      // que el navegador no se quede girando para siempre.
+      if (desde > 200000) {
+        console.warn('pfac: se alcanzó el límite de paginación, puede faltar información.');
+        break;
+      }
+    }
 
     pfac_ordenes = (data || []).map(o => {
       const sol = o.solicitudes_facturacion || {};
