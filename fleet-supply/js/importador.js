@@ -55,12 +55,12 @@ const CAMPOS = {
   tipo_item_legado:       ['tipoitem', 'tipoitemlegado'],
   precio_venta_hasta_10:  ['precioventahasta10', 'precioventa10', 'venta10', 'valorventahasta10', 'preciovenerta10'],
   precio_venta_11_mas:    ['precioventa11mas', 'precioventa11', 'venta11', 'valorventa11mas'],
-  comodato_12_hasta_10:   ['comodato12hasta10', 'comodato1210', 'comodato12'],
-  comodato_12_11_mas:     ['comodato1211mas', 'comodato1211'],
-  comodato_24_hasta_10:   ['comodato24hasta10', 'comodato2410', 'comodato24'],
-  comodato_24_11_mas:     ['comodato2411mas', 'comodato2411'],
-  comodato_36_hasta_10:   ['comodato36hasta10', 'comodato3610', 'comodato36'],
-  comodato_36_11_mas:     ['comodato3611mas', 'comodato3611'],
+  comodato_12_hasta_10:   ['comodato12hasta10', 'comodato1210', 'comodato12', '12mesesde1a10unidades', '12mesesde1a10unidad'],
+  comodato_12_11_mas:     ['comodato1211mas', 'comodato1211', '12mesesde11unidadesenadelante', '12meses11unidadesenadelante'],
+  comodato_24_hasta_10:   ['comodato24hasta10', 'comodato2410', 'comodato24', '24mesesde1a10unidades', '24mesesde1a10unidad'],
+  comodato_24_11_mas:     ['comodato2411mas', 'comodato2411', '24mesesde11unidadesenadelante', '24meses11unidadesenadelante'],
+  comodato_36_hasta_10:   ['comodato36hasta10', 'comodato3610', 'comodato36', '36mesesde1a10unidades', '36mesesde1a10unidad'],
+  comodato_36_11_mas:     ['comodato3611mas', 'comodato3611', '36mesesde11unidadesenadelante', '36meses11unidadesenadelante'],
 };
 
 const OBLIGATORIOS = ['sku', 'nombre'];
