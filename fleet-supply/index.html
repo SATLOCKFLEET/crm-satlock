@@ -35,6 +35,7 @@
     import { renderConfiguracion } from './js/configuracion.js';
     import { renderImportador } from './js/importador.js';
     import { renderNegocios } from './js/negocios.js';
+    import { renderTablero } from './js/tablero.js';
     import { cambiarTab, enObra, escapeHtml } from './js/ui.js';
 
     /*
@@ -70,10 +71,7 @@
     // qué se van a encargar y en qué fase llegan, para que una pestaña
     // vacía no se confunda con una pantalla que falló.
     const SECCIONES = [
-      { id: 'tablero', titulo: 'Tablero',
-        render: (p) => enObra(p, 'Tablero',
-          'Resumen de lo que está pasando: negocios por cerrar, stock bajo el mínimo, órdenes de compra en tránsito y los hitos que se vencen esta semana. Se construye al final, cuando ya existan los datos que tiene que resumir.',
-          'Fase 5') },
+      { id: 'tablero', titulo: 'Tablero', render: renderTablero },
 
       { id: 'negocios', titulo: 'Negocios', render: renderNegocios },
 
