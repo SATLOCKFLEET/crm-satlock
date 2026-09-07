@@ -82,3 +82,33 @@ export function formatoPorcentaje(valor) {
   if (Number.isNaN(n)) return '—';
   return `${n.toFixed(1)}%`;
 }
+
+/*
+  El SKU es la identidad del producto, así que se guarda en una sola
+  forma: mayúsculas, sin espacios y sin acentos. Si no, 'JC450',
+  'jc450' y 'JC 450' entran como tres productos distintos, con tres
+  stocks y tres listas de precio.
+
+  Lo que se corrige solo (es formato, no contenido):
+    minúsculas → mayúsculas · espacios → guion · acentos → sin tilde
+  Lo que NO se corrige y se reporta como error: cualquier otro símbolo
+  y los códigos de más de 30 caracteres, que casi siempre son una
+  descripción puesta en la columna equivocada.
+*/
+const FORMA_SKU = /^[A-Z0-9][A-Z0-9._/+-]{0,29}$/;
+
+export function normalizarSku(crudo) {
+  const original = String(crudo ?? '').trim();
+  const limpio = original
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // fuera acentos
+    .toUpperCase()
+    .replace(/\s+/g, '-')                              // espacios → guion
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return {
+    sku: limpio,
+    valido: FORMA_SKU.test(limpio),
+    cambiado: limpio !== original,
+    original,
+  };
+}
