@@ -28,16 +28,26 @@ export const ROLES_EDITAN_CATALOGO = [ROLES_FS.JEFE_COMERCIAL, ROLES_FS.ADMIN];
 // de inventario).
 export const ROLES_EDITAN_NEGOCIOS = [ROLES_FS.JEFE_COMERCIAL, ROLES_FS.ADMIN];
 
-// Quién edita los maestros: proveedores, rutas y sus hitos. Es
+// Quién edita los maestros: proveedores, rutas y sus hitos.
 // Comercio Exterior porque es quien cotiza, coloca los pedidos y
-// conoce los tiempos reales de cada ruta.
-export const ROLES_EDITAN_CONFIG = [ROLES_FS.COMERCIO_EXTERIOR, ROLES_FS.ADMIN];
+// conoce los tiempos reales de cada ruta —Carolina es la que ajusta
+// los días de los hitos—, y el Jefe Comercial porque es dueño del
+// módulo y define los mínimos de stock.
+export const ROLES_EDITAN_CONFIG = [
+  ROLES_FS.COMERCIO_EXTERIOR, ROLES_FS.JEFE_COMERCIAL, ROLES_FS.ADMIN,
+];
 
 // Los parámetros (TRM, colchón, porcentajes) los toca además
 // Financiera, porque de la TRM depende lo que se desembolsa.
 export const ROLES_EDITAN_PARAMETROS = [
   ROLES_FS.COMERCIO_EXTERIOR, ROLES_FS.FINANCIERA, ROLES_FS.ADMIN,
 ];
+
+// Parámetros que usa el sistema por dentro y que nadie edita a mano.
+// Se guardan en fs_parametro para no crear una tabla por cada cosa,
+// pero no salen en la pantalla de Parámetros: esa pantalla valida que
+// todo sea un número y estos no lo son.
+export const PARAMETROS_INTERNOS = ['mapeo_importador_catalogo'];
 
 // Líneas de negocio
 export const LINEAS = {
