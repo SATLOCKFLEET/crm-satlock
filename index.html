@@ -8873,6 +8873,113 @@ function renderEstado() {
 }
 
 /* ═══════════════════════════════════════════════════════
+   RESPALDO DE FACTURACIÓN
+   ═══════════════════════════════════════════════════════
+   Supabase Free no tiene respaldos ni recuperación a un punto en el
+   tiempo. Cuando se sobrescribió la solicitud 000064 (FEDERACION
+   NACIONAL DE CAFETEROS) no había de dónde recuperarla: tocó
+   reconstruirla desde un correo que por suerte alguien tenía en
+   enviados. Esto baja las tres tablas de facturación a un Excel con la
+   sesión que ya tiene el usuario — sin credenciales y sin instalar
+   nada.
+
+   Lee POR PÁGINAS a propósito: una consulta sin acotar se corta en 1000
+   filas y un respaldo incompleto es peor que no tener respaldo, porque
+   uno cree que está cubierto.                                        */
+async function facDescargarRespaldo(btn) {
+  const rotulo = btn ? btn.textContent : '';
+  const paso = (t) => { if (btn) btn.textContent = t; };
+  if (btn) btn.disabled = true;
+
+  try {
+    const traerTodo = async (tabla) => {
+      const PAGINA = 1000;
+      let filas = [];
+      for (let desde = 0; ; desde += PAGINA) {
+        const { data, error } = await sb.from(tabla).select('*').range(desde, desde + PAGINA - 1);
+        if (error) throw new Error(`${tabla}: ${error.message}`);
+        const lote = data || [];
+        filas = filas.concat(lote);
+        paso(`Leyendo ${tabla}... ${filas.length}`);
+        if (lote.length < PAGINA) break;
+        if (desde > 200000) break;
+      }
+      return filas;
+    };
+
+    const tablas = {
+      Solicitudes:        await traerTodo('solicitudes_facturacion'),
+      Detalle:            await traerTodo('solicitudes_facturacion_detalle'),
+      OrdenesProgramadas: await traerTodo('ordenes_programadas'),
+    };
+
+    paso('Armando el archivo...');
+    const wb = XLSX.utils.book_new();
+
+    // Hoja de portada: para saber de un vistazo si el respaldo sirve.
+    const resumen = [
+      { Dato: 'Respaldo generado', Valor: new Date().toLocaleString('es-CO') },
+      { Dato: 'Generado por',      Valor: (typeof PERFIL !== 'undefined' && PERFIL) ? PERFIL.nombre : '' },
+      ...Object.entries(tablas).map(([n, f]) => ({ Dato: n + ' (filas)', Valor: f.length })),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumen), 'Respaldo');
+
+    for (const [nombre, filas] of Object.entries(tablas)) {
+      // Las columnas jsonb se aplanan a texto: si no, Excel escribe
+      // "[object Object]" y se pierde el contenido.
+      const planas = filas.map(f => {
+        const o = {};
+        for (const [k, v] of Object.entries(f)) {
+          o[k] = (v !== null && typeof v === 'object') ? JSON.stringify(v) : v;
+        }
+        return o;
+      });
+      XLSX.utils.book_append_sheet(
+        wb,
+        XLSX.utils.json_to_sheet(planas.length ? planas : [{ aviso: 'sin filas' }]),
+        nombre);
+    }
+
+    const d = new Date();
+    const ts = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    XLSX.writeFile(wb, `Respaldo_Facturacion_${ts}.xlsx`);
+
+    const total = Object.values(tablas).reduce((a, f) => a + f.length, 0);
+    showAlert('success',
+      `Respaldo descargado: ${tablas.Solicitudes.length} solicitudes, ` +
+      `${tablas.Detalle.length} líneas de detalle y ${tablas.OrdenesProgramadas.length} órdenes programadas ` +
+      `(${total} filas). Guárdalo donde no se borre solo.`);
+  } catch (e) {
+    console.error(e);
+    showAlert('danger', `No se pudo generar el respaldo: ${e.message}. NO lo des por hecho, vuelve a intentarlo.`);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = rotulo || 'Descargar respaldo'; }
+  }
+}
+
+/* El botón se inyecta desde JS, para no tocar la estructura del HTML. */
+function facPintarBotonRespaldo() {
+  const panel = document.getElementById('fac-panel-estado');
+  if (!panel || document.getElementById('fac-caja-respaldo')) return;
+  const caja = document.createElement('div');
+  caja.id = 'fac-caja-respaldo';
+  caja.style.cssText = 'background:#fff;border:1px solid #DDE3EE;border-radius:10px;' +
+    'padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;' +
+    'flex-wrap:wrap;font-size:12.5px;';
+  caja.innerHTML =
+    '<div style="flex:1 1 340px;line-height:1.5;color:#555">' +
+      '<strong style="color:#19428C">Respaldo de facturación</strong><br>' +
+      'Baja las solicitudes, su detalle y las órdenes programadas a un Excel. ' +
+      'Este plan de Supabase no guarda respaldos, así que este archivo es la única red que hay. ' +
+      'Córrelo cada semana y antes de editar o borrar algo delicado.' +
+    '</div>' +
+    '<button type="button" onclick="facDescargarRespaldo(this)" ' +
+      'style="font-family:inherit;font-size:12px;padding:9px 16px;background:#19428C;color:#fff;' +
+      'border:none;border-radius:6px;cursor:pointer;flex:0 0 auto;">Descargar respaldo</button>';
+  panel.insertBefore(caja, panel.firstChild);
+}
+
+/* ═══════════════════════════════════════════════════════
    EXPORTAR EXCEL — SheetJS
    ═══════════════════════════════════════════════════════ */
 function facExportarExcel() {
@@ -9529,7 +9636,7 @@ function facSwitchTab(tab, btn){
     btn.style.fontWeight = '600';
   }
   if(tab==='historial') renderHistorial();
-  if(tab==='estado')    renderEstado();
+  if(tab==='estado')  { renderEstado(); facPintarBotonRespaldo(); }
 }
 
 function inicializarModuloFacturacion(){
