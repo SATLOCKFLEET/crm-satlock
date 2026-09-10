@@ -60,6 +60,19 @@ export const CONTROL_INVENTARIO = {
   cantidad: 'Por cantidad',
 };
 
+// Coincide con fs_productos_categoria_check.
+// 'sim' no es un accesorio más: es la categoría que activa el control
+// de conectividad, así que una SIM mal clasificada desaparece de ese
+// control sin que nadie lo note.
+export const CATEGORIAS = {
+  equipo: 'Equipo',
+  camara: 'Cámara',
+  sim: 'SIM card',
+  accesorio: 'Accesorio',
+  licencia: 'Licencia',
+  servicio: 'Servicio',
+};
+
 // Coincide con fs_productos_costo_moneda_check
 export const MONEDAS_COSTO = {
   USD: 'Dólares (USD)',
