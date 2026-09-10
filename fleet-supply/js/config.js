@@ -2,11 +2,15 @@
    config.js
    Parámetros, catálogos de valores fijos y rutas de abastecimiento.
    No hay build tools: este archivo se importa con <script type="module">.
+
+   Regla: todo valor que también viva en un CHECK de la base debe
+   coincidir exactamente con él. Si aquí se agrega una marca o una ruta
+   que la base no acepta, el formulario deja elegirla y el guardado
+   falla con un error críptico.
    ═══════════════════════════════════════════════════════ */
 
-// Roles de Fleet Supply (independientes de usuarios.rol, ver fs_usuarios_rol).
-// 'admin' es el súper usuario: va incluido en TODAS las listas de permisos
-// de abajo. Si se agrega una lista nueva, hay que acordarse de incluirlo.
+/* ── Roles ──────────────────────────────────────────── */
+// Roles de Fleet Supply (independientes de usuarios.rol, ver fs_usuarios_rol)
 export const ROLES_FS = {
   JEFE_COMERCIAL: 'jefe_comercial',
   ALMACENISTA: 'almacenista',
@@ -17,83 +21,105 @@ export const ROLES_FS = {
   ADMIN: 'admin',
 };
 
-// Roles que pueden crear/editar el catálogo y los combos.
-// El resto (almacenista, comercio_exterior, financiera, gerencia,
-// solo_lectura) solo consulta en esta fase.
+// admin va en TODAS las listas de permisos. Si se agrega una lista
+// nueva, hay que incluirlo ahí también.
 export const ROLES_EDITAN_CATALOGO = [ROLES_FS.JEFE_COMERCIAL, ROLES_FS.ADMIN];
-
-// Quién puede crear y editar negocios. El Jefe Comercial es quien cierra
-// el negocio y define el combo; los demás consultan (el Almacenista
-// actuará sobre el negocio cuando exista la reserva de stock, en la fase
-// de inventario).
 export const ROLES_EDITAN_NEGOCIOS = [ROLES_FS.JEFE_COMERCIAL, ROLES_FS.ADMIN];
 
-// Quién edita los maestros: proveedores, rutas y sus hitos.
-// Comercio Exterior porque es quien cotiza, coloca los pedidos y
-// conoce los tiempos reales de cada ruta —Carolina es la que ajusta
-// los días de los hitos—, y el Jefe Comercial porque es dueño del
-// módulo y define los mínimos de stock.
+// Comercio Exterior ajusta los días de los hitos; el Jefe Comercial es
+// dueño del módulo.
 export const ROLES_EDITAN_CONFIG = [
   ROLES_FS.COMERCIO_EXTERIOR, ROLES_FS.JEFE_COMERCIAL, ROLES_FS.ADMIN,
 ];
 
-// Los parámetros (TRM, colchón, porcentajes) los toca además
-// Financiera, porque de la TRM depende lo que se desembolsa.
+// Los parámetros mueven plata (TRM, colchón, % de importación), así que
+// Financiera también entra.
 export const ROLES_EDITAN_PARAMETROS = [
-  ROLES_FS.COMERCIO_EXTERIOR, ROLES_FS.FINANCIERA, ROLES_FS.ADMIN,
+  ...ROLES_EDITAN_CONFIG, ROLES_FS.FINANCIERA,
 ];
 
-// Parámetros que usa el sistema por dentro y que nadie edita a mano.
-// Se guardan en fs_parametro para no crear una tabla por cada cosa,
-// pero no salen en la pantalla de Parámetros: esa pantalla valida que
-// todo sea un número y estos no lo son.
-export const PARAMETROS_INTERNOS = ['mapeo_importador_catalogo'];
-
-// Parámetros que son interruptores, no números. La pantalla de
-// Parámetros valida números, así que estos necesitan su propia regla:
-// sin esto, guardar "true" daba "debe ser un número" y no dejaba
-// guardar nada más de la tabla.
-export const PARAMETROS_BOOLEANOS = ['trm_automatica'];
-
-// Líneas de negocio
+/* ── Catálogo de productos ──────────────────────────── */
 export const LINEAS = {
   fleet: 'Fleet',
   carga: 'Carga',
   ambas: 'Ambas',
 };
 
-// Marcas / proveedores de origen del producto
+// Coincide con fs_productos_marca_check
 export const MARCAS = {
   JimiIoT: 'JimiIoT',
   Geotab: 'Geotab',
   GlobalStar: 'GlobalStar',
-  M2M: 'M2M',
+  M2M: 'M2M Dataglobal',
   Otro: 'Otro',
 };
 
-// Modalidad comercial del pedido. El plazo de comodato solo aplica
-// cuando hay comodato: 12, 24 o 36 meses para JimiIoT, y ÚNICAMENTE 36
-// para Geotab (la marca entrega los equipos gratis y no se cobra
-// mensualidad de comodato, solo la de servicio).
-export const MODALIDADES = {
-  venta: 'Venta del equipo',
-  comodato: 'Comodato',
-  mixto: 'Mixto',
+// Coincide con fs_productos_control_inventario_check
+export const CONTROL_INVENTARIO = {
+  serie: 'Por serie / IMEI',
+  cantidad: 'Por cantidad',
 };
 
-export const PLAZOS_COMODATO = [12, 24, 36];
-export const PLAZO_UNICO_GEOTAB = 36;
+// Coincide con fs_productos_costo_moneda_check
+export const MONEDAS_COSTO = {
+  USD: 'Dólares (USD)',
+  COP: 'Pesos (COP)',
+};
 
-// Naturaleza del negocio: la misma estructura sirve para proyectar
-// (forecast), para el pipeline con probabilidad, y para lo ya cerrado.
-// Solo los negocios 'cerrado' reservan stock.
+/* ── Rutas de abastecimiento ────────────────────────── */
+// Coincide con fs_productos_ruta_habitual_check y con fs_ruta.clave.
+// La ruta E (Claro) se eliminó: las SIM solo se le compran a M2M.
+export const RUTAS = {
+  m2m_local: 'M2M Dataglobal — stock local',
+  m2m_importacion: 'M2M Dataglobal — con importación',
+  jimiiot_china: 'JimiIoT China — compra directa',
+  geotab_canada: 'Geotab Canadá',
+  globalstar_importacion: 'GlobalStar — importación',
+};
+
+// En ruta local el proveedor colombiano ya factura la mercancía
+// nacionalizada, así que el % de costos de importación NO aplica:
+// sumarlo sería contarlo dos veces.
+export const RUTAS_IMPORTACION = [
+  'm2m_importacion', 'jimiiot_china', 'geotab_canada', 'globalstar_importacion',
+];
+
+export function esRutaImportacion(clave) {
+  return RUTAS_IMPORTACION.includes(String(clave || ''));
+}
+
+/* ── Negocios ───────────────────────────────────────── */
+// Coincide con fs_negocio_naturaleza_check
 export const NATURALEZAS = {
   forecast: 'Forecast',
   pipeline: 'Pipeline',
   cerrado: 'Cerrado',
 };
 
-// Estado de ejecución del abastecimiento de un negocio
+// Coincide con fs_negocio_modalidad_check.
+// 'mixto' es derivado: lo calcula un disparador a partir de las líneas,
+// no se elige a mano en el encabezado.
+export const MODALIDADES = {
+  venta: 'Venta',
+  comodato: 'Comodato',
+  mixto: 'Mixto',
+};
+
+// Modalidades elegibles por línea (fs_negocio_linea_modalidad_check)
+export const MODALIDADES_LINEA = {
+  venta: 'Venta',
+  comodato: 'Comodato',
+};
+
+export const PLAZOS_COMODATO = [12, 24, 36];
+
+// Con Geotab no hay puntos medios: o compra, o comodato a 36 meses con
+// mensualidad en cero, porque regalan el equipo al firmar a ese plazo.
+// Lo valida el disparador fs_validar_linea_geotab; esta constante existe
+// para avisarlo en el formulario antes de que la base rechace el guardado.
+export const PLAZO_UNICO_GEOTAB = 36;
+
+// Coincide con fs_negocio_estado_ejecucion_check
 export const ESTADOS_EJECUCION = {
   sin_iniciar: 'Sin iniciar',
   en_abastecimiento: 'En abastecimiento',
@@ -102,87 +128,29 @@ export const ESTADOS_EJECUCION = {
   anulado: 'Anulado',
 };
 
-// Escalas de precio por volumen, tal como se guardan en fs_precio_lista
-export const ESCALAS = { '1-10': 'Hasta 10 unidades', '11+': '11 unidades o más' };
+// La escala la decide el NÚMERO DE VEHÍCULOS del negocio, no las
+// unidades de cada SKU: 8 vehículos con 2 cámaras cada uno siguen
+// siendo escala ≤10.
+export const UMBRAL_ESCALA_VOLUMEN = 10;
 
-// Categoría del producto. Además de servir para agrupar reportes, es lo
-// que permite reconocer una SIM y avisar cuando un combo lleve un equipo
-// que necesita conectividad sin la línea de SIM correspondiente.
-export const CATEGORIAS = {
-  equipo: 'Equipo GPS',
-  camara: 'Cámara',
-  sim: 'SIM card',
-  accesorio: 'Accesorio',
-  licencia: 'Licencia',
-  servicio: 'Servicio',
-};
+// Con esto en true, un combo ya usado en un negocio no se edita en
+// sitio: obliga a crear una versión nueva. Se puso en true al activar
+// los negocios, para que un negocio cerrado conserve el combo con el
+// que se vendió.
+export const NEGOCIOS_ACTIVOS = true;
 
-// Moneda en que factura el proveedor. La TRM y el colchón solo aplican
-// a los costos en USD; Claro y otros proveedores locales facturan en COP.
-export const MONEDAS_COSTO = {
-  USD: 'USD',
-  COP: 'COP',
-};
-
-// Tipo de control de inventario por producto
-export const CONTROL_INVENTARIO = {
-  serie: 'Por serie / IMEI',
-  cantidad: 'Por cantidad',
-};
-
-// Rutas de abastecimiento. Los hitos y días de cada una viven ahora en
-// las tablas fs_ruta y fs_hito_plantilla, que Comercio Exterior edita.
-// Estas etiquetas son solo para el selector del catálogo; pendiente
-// migrar fs_productos.ruta_habitual a una FK contra fs_ruta cuando se
-// construya el módulo de compras.
-export const RUTAS = {
-  m2m_local: 'M2M Dataglobal — stock local',
-  m2m_importacion: 'M2M Dataglobal — con importación',
-  jimiiot_china: 'JimiIoT China — compra directa',
-  geotab_canada: 'Geotab Canadá',
-  globalstar_importacion: 'GlobalStar — con importación',
-};
-
-// Rutas que implican traer la mercancía del exterior. Coincide con
-// fs_ruta.modo = 'importacion'.
-//
-// Importa para costear: en la ruta local el proveedor colombiano ya
-// factura la mercancía nacionalizada, así que su precio YA está puesto
-// en Colombia. Sumarle el porcentaje de costos de importación sería
-// contar el flete y la aduana dos veces. En las rutas de importación
-// el costo del proveedor es el valor en origen y esos gastos sí faltan.
-export const RUTAS_IMPORTACION = [
-  'm2m_importacion', 'jimiiot_china', 'geotab_canada', 'globalstar_importacion',
-];
-
-export const esRutaImportacion = (ruta) => RUTAS_IMPORTACION.includes(ruta);
-
-// Escalas de precio por volumen (regla de negocio: ≤10 unidades
-// usa una escala, ≥11 usa otra, automático según cantidad del
-// negocio — esto se usa desde negocios.js en una fase posterior;
-// aquí solo se deja el umbral centralizado para no repetirlo).
-export const UMBRAL_ESCALA_VOLUMEN = 10; // hasta 10 = escala 1; 11+ = escala 2
-
-// Factor de seguridad del stock mínimo sugerido:
-// consumo promedio diario (últimos 90 días) × días de lead time de la
-// ruta de planeación × este factor, redondeado hacia arriba. El valor
-// sugerido se muestra al lado del mínimo definido a mano, nunca lo
-// reemplaza.
+/* ── Planeación ─────────────────────────────────────── */
+export const MESES_FORECAST_DEFECTO = 6;
 export const FACTOR_SEGURIDAD_STOCK = 1.4;
 export const DIAS_CONSUMO_PROMEDIO = 90;
 
-// Meses que proyecta el forecast del tablero. El parámetro
-// meses_forecast de fs_parametro manda si existe; esto es el valor por
-// defecto para no dejar la pantalla en blanco si falta.
-export const MESES_FORECAST_DEFECTO = 6;
+/* ── Parámetros (pantalla de Configuración) ─────────── */
+// Se ocultan de la pantalla porque no son números: esa pantalla valida
+// que el valor sea numérico y los rechazaría.
+export const PARAMETROS_INTERNOS = ['mapeo_importador_catalogo'];
 
-// Zona horaria y formato usados en toda la app
+// Se muestran como interruptor, no como campo de texto.
+export const PARAMETROS_BOOLEANOS = ['trm_automatica'];
+
+/* ── General ────────────────────────────────────────── */
 export const TIMEZONE = 'America/Bogota';
-
-// Cuando ya haya negocios cargados en fs_negocio, poner esto en true.
-// A partir de ahí el módulo bloquea la edición en sitio de un combo que
-// ya se usó en un negocio y obliga a guardar una nueva versión, para que
-// el negocio conserve el combo con el que se vendió. Mientras esté en
-// false los combos se editan libremente, porque todavía no hay negocios
-// que dependan de ellos.
-export const NEGOCIOS_ACTIVOS = true;
