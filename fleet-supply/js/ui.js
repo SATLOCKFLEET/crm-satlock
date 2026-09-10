@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════
    ui.js
    Componentes y helpers de interfaz reutilizables: toasts,
-   modales, cambio de pestañas, estado de carga.
+   modales, cambio de pestañas, estado de carga, y tablas
+   ordenables y filtrables.
    ═══════════════════════════════════════════════════════ */
 
 export function mostrarToast(mensaje, tipo = 'info') {
@@ -71,113 +72,6 @@ export function iniciales(nombre) {
     .join('');
 }
 
-/* ═══════════════ TABLAS ORDENABLES Y FILTRABLES ═══════════════
-   Se usa marcando los <th> que se pueden ordenar:
-     <th data-orden="texto">Nombre</th>
-     <th data-orden="numero">Costo</th>
-     <th data-orden="fecha">Llegada</th>
-   y llamando hacerOrdenable(tablaEl) después de pintar la tabla.
-
-   Ordena las filas que ya están en el DOM, sin volver a consultar la
-   base: son listados de pocos cientos de filas y así el orden no
-   depende de la conexión.
-*/
-
-// Texto visible de una celda, listo para comparar.
-function textoCelda(fila, indice) {
-  const td = fila.children[indice];
-  if (!td) return '';
-  return (td.dataset.orden ?? td.textContent ?? '').trim();
-}
-
-function aComparable(txt, tipo) {
-  if (tipo === 'numero') {
-    // Quita $, puntos de mil, espacios y el signo de moneda.
-    const n = Number(String(txt).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.'));
-    return Number.isFinite(n) ? n : Number.NEGATIVE_INFINITY;
-  }
-  if (tipo === 'fecha') {
-    const t = Date.parse(txt);
-    return Number.isNaN(t) ? Number.NEGATIVE_INFINITY : t;
-  }
-  return String(txt).toLowerCase();
-}
-
-export function hacerOrdenable(tablaEl) {
-  if (!tablaEl) return;
-  const cuerpo = tablaEl.tBodies[0];
-  if (!cuerpo) return;
-
-  tablaEl.querySelectorAll('th[data-orden]').forEach((th, _i) => {
-    const indice = [...th.parentElement.children].indexOf(th);
-    th.addEventListener('click', () => {
-      const tipo = th.dataset.orden || 'texto';
-      const desc = th.classList.contains('asc');
-      tablaEl.querySelectorAll('th[data-orden]').forEach((o) => o.classList.remove('asc', 'desc'));
-      th.classList.add(desc ? 'desc' : 'asc');
-
-      const filas = [...cuerpo.rows];
-      filas.sort((a, b) => {
-        const va = aComparable(textoCelda(a, indice), tipo);
-        const vb = aComparable(textoCelda(b, indice), tipo);
-        if (va < vb) return desc ? 1 : -1;
-        if (va > vb) return desc ? -1 : 1;
-        return 0;
-      });
-      filas.forEach((f) => cuerpo.appendChild(f));
-    });
-  });
-}
-
-/*
-  Filtro de texto sobre una tabla ya pintada. Busca en todas las
-  celdas de cada fila, sin acentos y sin distinguir mayúsculas, de
-  modo que "camara" encuentre "CÁMARA".
-  Si se le pasa un elemento en contadorEl, escribe ahí cuántas filas
-  quedaron visibles.
-*/
-function sinAcentos(s) {
-  return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
-
-export function hacerFiltrable(inputEl, tablaEl, contadorEl = null) {
-  if (!inputEl || !tablaEl) return;
-  const cuerpo = tablaEl.tBodies[0];
-  if (!cuerpo) return;
-
-  const aplicar = () => {
-    const q = sinAcentos(inputEl.value.trim());
-    let visibles = 0;
-    for (const fila of cuerpo.rows) {
-      const coincide = !q || sinAcentos(fila.textContent).includes(q);
-      fila.hidden = !coincide;
-      if (coincide) visibles++;
-    }
-    if (contadorEl) {
-      contadorEl.textContent = q
-        ? `${visibles} de ${cuerpo.rows.length} filas`
-        : `${cuerpo.rows.length} filas`;
-    }
-  };
-
-  inputEl.addEventListener('input', aplicar);
-  aplicar();
-  return aplicar;
-}
-
-/*
-  Bloque para las secciones que todavía no existen. Evita que una
-  pestaña vacía se vea como un error del módulo.
-*/
-export function enObra(contenedorEl, titulo, explicacion, fase) {
-  contenedorEl.innerHTML = `
-    <div class="fs-en-obra">
-      <h3>${escapeHtml(titulo)}</h3>
-      <p>${escapeHtml(explicacion)}</p>
-      ${fase ? `<span class="fs-en-obra-fase">${escapeHtml(fase)}</span>` : ''}
-    </div>`;
-}
-
 export function escapeHtml(str) {
   if (str == null) return '';
   return String(str)
@@ -186,4 +80,152 @@ export function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/* ═══════════════════════════════════════════════════════
+   Tablas ordenables y filtrables
+
+   Las dos reciben elementos ya pintados y no saben nada del
+   dato: trabajan sobre el texto de las celdas. Eso las hace
+   servir para cualquier tabla del módulo sin configuración,
+   a cambio de una regla: la celda debe mostrar el valor, no
+   esconderlo en un atributo.
+
+   Cuando el texto no sirve para ordenar (una fecha dd/mm/aaaa
+   se ordenaría como texto y pondría el 09/02 antes del 10/01),
+   ponga el valor ordenable en data-orden en el <td> y esa
+   función lo usa en vez del texto.
+   ═══════════════════════════════════════════════════════ */
+
+function sinAcentos(txt) {
+  return String(txt ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim();
+}
+
+/**
+ * Convierte el texto de una celda en algo comparable.
+ * Reconoce dinero ($ 1.234.567), porcentajes (25,0%), fechas
+ * dd/mm/aaaa y aaaa-mm-dd. Lo demás se compara como texto.
+ */
+function valorOrdenable(celda) {
+  if (!celda) return '';
+  const explicito = celda.dataset ? celda.dataset.orden : null;
+  const txt = String(explicito ?? celda.textContent ?? '').trim();
+  if (!txt || txt === '—' || txt === '-') return null;   // vacíos, siempre al final
+
+  const fechaCorta = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(txt);
+  if (fechaCorta) return Number(`${fechaCorta[3]}${fechaCorta[2]}${fechaCorta[1]}`);
+
+  const fechaIso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(txt);
+  if (fechaIso) return Number(`${fechaIso[1]}${fechaIso[2]}${fechaIso[3]}`);
+
+  // Dinero y números en formato colombiano: punto de miles, coma decimal
+  const limpio = txt
+    .replace(/[^\d,.\-]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.');
+  if (limpio !== '' && limpio !== '-' && !Number.isNaN(Number(limpio))) {
+    return Number(limpio);
+  }
+
+  return sinAcentos(txt);
+}
+
+function comparar(a, b) {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), 'es');
+}
+
+/**
+ * Hace ordenable una tabla al hacer clic en sus encabezados.
+ * Acepta el <table> o su <tbody>. Un <th> con data-no-orden se
+ * queda quieto (útil para la columna de casillas o de acciones).
+ */
+export function hacerOrdenable(el) {
+  if (!el) return;
+  const tabla = el.tagName === 'TABLE' ? el : el.closest('table');
+  if (!tabla || tabla.dataset.fsOrdenable === 'si') return;
+
+  const cuerpo = tabla.tBodies[0];
+  const encabezados = tabla.tHead
+    ? [...tabla.tHead.rows[tabla.tHead.rows.length - 1].cells]
+    : [];
+  if (!cuerpo || encabezados.length === 0) return;
+
+  tabla.dataset.fsOrdenable = 'si';
+
+  encabezados.forEach((th, i) => {
+    if (th.dataset.noOrden !== undefined) return;
+    th.style.cursor = 'pointer';
+    th.title = 'Ordenar por esta columna';
+
+    th.addEventListener('click', () => {
+      const desc = th.dataset.fsDir === 'asc';
+
+      encabezados.forEach((otro) => {
+        delete otro.dataset.fsDir;
+        otro.textContent = otro.textContent.replace(/\s[▲▼]$/, '');
+      });
+      th.dataset.fsDir = desc ? 'desc' : 'asc';
+      th.textContent = `${th.textContent.replace(/\s[▲▼]$/, '')} ${desc ? '▼' : '▲'}`;
+
+      const filas = [...cuerpo.rows];
+      filas.sort((f1, f2) => {
+        const a = valorOrdenable(f1.cells[i]);
+        const b = valorOrdenable(f2.cells[i]);
+        // Los vacíos van al final SIEMPRE, en los dos sentidos: una fila
+        // sin dato no es "la menor", es una fila sin dato.
+        if (a === null && b === null) return 0;
+        if (a === null) return 1;
+        if (b === null) return -1;
+        const r = comparar(a, b);
+        return desc ? -r : r;
+      });
+      filas.forEach((f) => cuerpo.appendChild(f));
+    });
+  });
+}
+
+/**
+ * Filtra las filas de una tabla mientras se escribe.
+ * Busca todas las palabras del texto en cualquier parte de la
+ * fila, sin importar acentos ni mayúsculas, así "nacar 24"
+ * encuentra a Soluciones Nácar en comodato a 24 meses.
+ *
+ * @param {HTMLElement} input   campo de búsqueda
+ * @param {HTMLElement} tabla   la <table> o su <tbody>
+ * @param {HTMLElement} conteo  dónde escribir cuántas filas quedan (opcional)
+ */
+export function hacerFiltrable(input, tabla, conteo = null) {
+  if (!input || !tabla) return;
+  const cuerpo = tabla.tagName === 'TABLE' ? tabla.tBodies[0] : tabla;
+  if (!cuerpo) return;
+
+  // La tabla se vuelve a pintar y esta función se vuelve a llamar sobre
+  // el mismo input: sin esto se acumularían escuchas duplicadas.
+  if (input._fsFiltro) input.removeEventListener('input', input._fsFiltro);
+
+  const aplicar = () => {
+    const terminos = sinAcentos(input.value).split(/\s+/).filter(Boolean);
+    let visibles = 0;
+
+    [...cuerpo.rows].forEach((fila) => {
+      const texto = sinAcentos(fila.textContent);
+      const pasa = terminos.every((t) => texto.includes(t));
+      fila.style.display = pasa ? '' : 'none';
+      if (pasa) visibles += 1;
+    });
+
+    if (conteo) {
+      const total = cuerpo.rows.length;
+      conteo.textContent = terminos.length
+        ? `${visibles} de ${total}`
+        : `${total} ${total === 1 ? 'registro' : 'registros'}`;
+    }
+  };
+
+  input._fsFiltro = aplicar;
+  input.addEventListener('input', aplicar);
+  aplicar();
 }
