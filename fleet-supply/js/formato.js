@@ -1,114 +1,164 @@
 /* ═══════════════════════════════════════════════════════
    formato.js
-   Formato de moneda (COP/USD), fechas y TRM para toda la app.
-   Interfaz en español de Colombia, zona horaria America/Bogota.
+   Formateo de dinero, fechas y porcentajes, y normalización de SKU.
+
+   Todo el módulo trabaja en zona horaria de Bogotá y en formato
+   colombiano (punto de miles, coma decimal). Un valor vacío o no
+   numérico se muestra como raya, nunca como "NaN" ni como cero:
+   cero es una cifra y significa otra cosa.
    ═══════════════════════════════════════════════════════ */
 
 import { TIMEZONE } from './config.js';
 
-const fmtCOP = new Intl.NumberFormat('es-CO', {
-  style: 'currency',
-  currency: 'COP',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
+const RAYA = '—';
 
-const fmtUSD = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+function aNumeroValido(valor) {
+  if (valor === null || valor === undefined || valor === '') return null;
+  const n = Number(valor);
+  return Number.isFinite(n) ? n : null;
+}
 
-const fmtFechaLarga = new Intl.DateTimeFormat('es-CO', {
-  timeZone: TIMEZONE,
-  day: '2-digit',
-  month: 'long',
-  year: 'numeric',
-});
+/* ── Dinero ─────────────────────────────────────────── */
 
+/** Pesos colombianos, sin decimales. */
 export function formatoCOP(valor) {
-  const n = Number(valor);
-  if (Number.isNaN(n)) return '—';
-  return fmtCOP.format(n);
+  const n = aNumeroValido(valor);
+  if (n === null) return RAYA;
+  return n.toLocaleString('es-CO', {
+    style: 'currency', currency: 'COP',
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
+  });
 }
 
+/** Dólares, siempre con dos decimales. */
 export function formatoUSD(valor) {
-  const n = Number(valor);
-  if (Number.isNaN(n)) return '—';
-  return fmtUSD.format(n);
+  const n = aNumeroValido(valor);
+  if (n === null) return RAYA;
+  return n.toLocaleString('en-US', {
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
 }
 
-// Recibe 'YYYY-MM-DD' o un Date, entrega 'dd/mm/aaaa'
+/** TRM con dos decimales, sin símbolo de moneda. */
+export function formatoTRM(valor) {
+  const n = aNumeroValido(valor);
+  if (n === null) return RAYA;
+  return n.toLocaleString('es-CO', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+}
+
+/* ── Porcentajes ────────────────────────────────────── */
+
+/**
+ * Porcentaje con un decimal. Recibe el número tal cual se guarda
+ * (25 = 25%), no una fracción.
+ */
+export function formatoPorcentaje(valor) {
+  const n = aNumeroValido(valor);
+  if (n === null) return RAYA;
+  return `${n.toLocaleString('es-CO', {
+    minimumFractionDigits: 1, maximumFractionDigits: 1,
+  })}%`;
+}
+
+/* ── Fechas ─────────────────────────────────────────── */
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/**
+ * Una fecha sin hora ('2026-09-09') NO debe pasar por Date: el motor la
+ * interpreta como medianoche UTC y al mostrarla en Bogotá retrocede un
+ * día. Estas se parten como texto y se arman a mano.
+ */
+function partesFechaSimple(valor) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(valor ?? '').trim());
+  return m ? { anio: m[1], mes: m[2], dia: m[3] } : null;
+}
+
+function aFecha(valor) {
+  if (!valor) return null;
+  const d = valor instanceof Date ? valor : new Date(valor);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** DD/MM/AAAA */
 export function formatoFecha(valor) {
-  if (!valor) return '—';
-  const d = valor instanceof Date ? valor : new Date(valor + 'T00:00:00');
-  if (Number.isNaN(d.getTime())) return '—';
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const aaaa = d.getFullYear();
-  return `${dd}/${mm}/${aaaa}`;
+  const p = partesFechaSimple(valor);
+  if (p) return `${p.dia}/${p.mes}/${p.anio}`;
+
+  const d = aFecha(valor);
+  if (!d) return RAYA;
+  return d.toLocaleDateString('es-CO', {
+    timeZone: TIMEZONE, day: '2-digit', month: '2-digit', year: 'numeric',
+  });
 }
 
+/** 15 de enero de 2026 */
 export function formatoFechaLarga(valor) {
-  if (!valor) return '—';
-  const d = valor instanceof Date ? valor : new Date(valor + 'T00:00:00');
-  if (Number.isNaN(d.getTime())) return '—';
-  return fmtFechaLarga.format(d);
+  const p = partesFechaSimple(valor);
+  if (p) return `${Number(p.dia)} de ${MESES[Number(p.mes) - 1]} de ${p.anio}`;
+
+  const d = aFecha(valor);
+  if (!d) return RAYA;
+  return d.toLocaleDateString('es-CO', {
+    timeZone: TIMEZONE, day: 'numeric', month: 'long', year: 'numeric',
+  });
 }
 
-// Fecha de HOY en America/Bogota como 'YYYY-MM-DD' (para inputs date)
+/**
+ * Hoy en Bogotá, como AAAA-MM-DD, lista para un <input type="date">.
+ * Se arma con formatToParts y no con toISOString, porque toISOString
+ * pasa a UTC y en Colombia eso adelanta la fecha desde las 7 p.m.
+ */
 export function fechaHoyBogota() {
   const partes = new Intl.DateTimeFormat('en-CA', {
-    timeZone: TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
+    timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit',
   }).formatToParts(new Date());
-  const obj = Object.fromEntries(partes.map((p) => [p.type, p.value]));
-  return `${obj.year}-${obj.month}-${obj.day}`;
+
+  const p = Object.fromEntries(partes.map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
 }
 
-// TRM: la trae trm.js de la fuente oficial (antes se digitaba a mano).
-// Esto solo la formatea para mostrarla junto al colchón aplicado.
-export function formatoTRM(valor) {
-  const n = Number(valor);
-  if (Number.isNaN(n)) return '—';
-  return n.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+/* ── SKU ────────────────────────────────────────────── */
 
-export function formatoPorcentaje(valor) {
-  const n = Number(valor);
-  if (Number.isNaN(n)) return '—';
-  return `${n.toFixed(1)}%`;
-}
+/**
+ * Deja un SKU en la forma que acepta la base: mayúsculas, sin acentos,
+ * espacios convertidos en guion. Devuelve el código ajustado y, si no
+ * sirve, el motivo.
+ *
+ * Un SKU no se renombra nunca después de creado: renombrarlo es crear
+ * un producto nuevo. Por eso conviene normalizarlo al escribirlo y no
+ * después.
+ *
+ * @returns {{sku: string, cambiado: boolean, error: string|null}}
+ */
+export function normalizarSku(valor) {
+  const original = String(valor ?? '').trim();
+  if (!original) return { sku: '', cambiado: false, error: 'El SKU está vacío.' };
 
-/*
-  El SKU es la identidad del producto, así que se guarda en una sola
-  forma: mayúsculas, sin espacios y sin acentos. Si no, 'JC450',
-  'jc450' y 'JC 450' entran como tres productos distintos, con tres
-  stocks y tres listas de precio.
-
-  Lo que se corrige solo (es formato, no contenido):
-    minúsculas → mayúsculas · espacios → guion · acentos → sin tilde
-  Lo que NO se corrige y se reporta como error: cualquier otro símbolo
-  y los códigos de más de 30 caracteres, que casi siempre son una
-  descripción puesta en la columna equivocada.
-*/
-const FORMA_SKU = /^[A-Z0-9][A-Z0-9._/+-]{0,29}$/;
-
-export function normalizarSku(crudo) {
-  const original = String(crudo ?? '').trim();
-  const limpio = original
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // fuera acentos
+  const sku = original
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // quita acentos
     .toUpperCase()
-    .replace(/\s+/g, '-')                              // espacios → guion
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return {
-    sku: limpio,
-    valido: FORMA_SKU.test(limpio),
-    cambiado: limpio !== original,
-    original,
-  };
+    .replace(/\s+/g, '-');
+
+  if (sku.length > 30) {
+    return {
+      sku, cambiado: sku !== original,
+      error: `El SKU tiene ${sku.length} caracteres y el máximo es 30. `
+           + 'Suele pasar cuando queda la descripción en la columna del SKU.',
+    };
+  }
+
+  if (!/^[A-Z0-9][A-Z0-9._/+-]*$/.test(sku)) {
+    return {
+      sku, cambiado: sku !== original,
+      error: 'El SKU solo admite letras, números y los signos . _ / + - '
+           + 'y debe empezar por letra o número.',
+    };
+  }
+
+  return { sku, cambiado: sku !== original, error: null };
 }
