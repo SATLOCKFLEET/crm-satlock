@@ -13787,7 +13787,7 @@ async function supplyGuardar(enviarCorreo = true) {
         // Notificar a Supply Chain por correo si Gmail conectado
         if (typeof enviarCorreoGmail === 'function' && gcalToken) {
           await enviarCorreoGmail({
-            para: 'Johan.gomez@satlock.com',
+            para: 'Johan.gomez@satlock.com, carolina.salamanca@satlock.com',
             cc: USER.email||'',
             asunto: `⚠ OSI ${solAnterior.consecutivo} fue modificada — requiere nueva gestión`,
             cuerpo: `<div style="font-family:Arial;max-width:600px;"><div style="background:#E8A020;color:white;padding:14px 18px;border-radius:8px 8px 0 0;"><strong>⚠ Solicitud modificada después de gestionada</strong></div><div style="padding:14px 18px;border:1px solid #ddd;border-top:none;border-radius:0 0 8px 8px;font-size:13px;"><p>La OSI <strong>${solAnterior.consecutivo}</strong> — ${solAnterior.nombre_cliente||''} fue editada por ${PERFIL.nombre||''} y ha vuelto a estado <strong>Pendiente</strong>.</p><p>Por favor revise los cambios y vuelva a gestionar la orden en el módulo Supply Chain.</p></div></div>`
@@ -13817,7 +13817,7 @@ async function supplyGuardar(enviarCorreo = true) {
         } else {
           const itemsHtml = _supplyItems.map(it => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.item}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.descripcion}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${it.cantidad}</td></tr>`).join('');
           await enviarCorreoGmail({
-            para: 'Johan.gomez@satlock.com',
+            para: 'Johan.gomez@satlock.com, carolina.salamanca@satlock.com',
             cc: USER.email||'',
             asunto: `OSI ${consecutivo} — ${nombreCliente} | ${caracter} | Supply Chain`,
             cuerpo: `<div style="font-family:Arial,sans-serif;max-width:600px;">
@@ -14020,7 +14020,7 @@ async function supplyEnviarCorreoDesdeVer(id) {
   const det = s.solicitudes_supply_detalle || [];
   const itemsHtml = det.map(it => `<tr><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.item}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;">${it.descripcion}</td><td style="padding:4px 8px;border-bottom:1px solid #eee;text-align:right;">${it.cantidad}</td></tr>`).join('');
   await enviarCorreoGmail({
-    para: 'Johan.gomez@satlock.com',
+    para: 'Johan.gomez@satlock.com, carolina.salamanca@satlock.com',
     cc: USER.email||'',
     asunto: `OSI ${s.consecutivo} — ${s.nombre_cliente||''} | ${s.caracter||'Normal'}`,
     cuerpo: `<div style="font-family:Arial,sans-serif;max-width:600px;">
