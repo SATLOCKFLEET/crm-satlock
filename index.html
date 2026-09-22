@@ -10445,11 +10445,12 @@ function pfac_limpiarBusqueda() {
 
 
 function pfac_exportarIndicadoresExcel() {
-  const hoy       = new Date();
-  const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;
-  const mesLabel  = hoy.toLocaleDateString('es-CO', { month:'long', year:'numeric' });
+  // Exporta EL PERÍODO SELECCIONADO en el panel (mes, trimestre o año).
+  const filtro   = pfacIndFiltroActual();
+  const periodo  = pfacIndPeriodo(filtro);
+  const mesLabel = periodo.label;
 
-  const delMes     = pfac_ordenes.filter(o => o.fecha_factura?.startsWith(mesActual));
+  const delMes     = pfac_ordenes.filter(o => pfacIndEnFiltro(o.fecha_factura, filtro));
   const facturadas = delMes.filter(o => o.estado === 'Facturada');
   const pendientes = delMes.filter(o => o.estado === 'Pendiente');
   const todasFac   = pfac_ordenes.filter(o => o.estado === 'Facturada');
@@ -10483,9 +10484,9 @@ function pfac_exportarIndicadoresExcel() {
     [`Dashboard de Facturación — ${mesLabel.charAt(0).toUpperCase()+mesLabel.slice(1)}`],
     [],
     ['RESUMEN GENERAL'],
-    ['Facturado en el mes', totalFac],
+    [`Facturado en el ${periodo.unidad}`, totalFac],
     ['Pendiente por facturar', totalPend],
-    ['Avance del mes', `${pct}%`],
+    [`Avance del ${periodo.unidad}`, `${pct}%`],
     ['Órdenes facturadas', facturadas.length],
     ['Órdenes pendientes', pendientes.length],
     ['Total histórico facturado', todasFac.reduce((a,o)=>a+o.valor_unitario,0)],
@@ -10562,8 +10563,14 @@ function pfac_exportarIndicadoresExcel() {
   ws3['!cols'] = [{wch:14},{wch:30},{wch:12},{wch:20},{wch:14},{wch:28},{wch:16},{wch:12},{wch:28},{wch:30},{wch:10},{wch:14},{wch:14},{wch:12},{wch:16}];
   XLSX.utils.book_append_sheet(wb, ws3, 'Pendientes');
 
-  const nombreArchivo = `Facturacion_${hoy.getFullYear()}_${String(hoy.getMonth()+1).padStart(2,'0')}_Satlock.xlsx`;
+  const nombreArchivo = `Facturacion_${periodo.archivo}_Satlock.xlsx`;
   XLSX.writeFile(wb, nombreArchivo);
+  if (typeof pfac_toast === 'function') {
+    pfac_toast(delMes.length ? 'success' : 'warning',
+      delMes.length
+        ? `Excel generado — ${periodo.label} (${delMes.length} órdenes).`
+        : `${periodo.label} no tiene órdenes: el Excel salió vacío.`);
+  }
 }
 
 
@@ -10848,6 +10855,49 @@ function pfac_portalTab(tab) {
 /* ═══════════════════════════════════════════════════════
    INDICADORES DE FACTURACIÓN
    ═══════════════════════════════════════════════════════ */
+/* ── Filtro del panel de Indicadores · fuente única ────────────────────────
+   El panel y la exportación a Excel tienen que mirar SIEMPRE el mismo
+   período. Antes la exportación calculaba el mes en curso por su cuenta,
+   así que ignoraba la selección de Mes / Trimestre / Año del panel.       */
+const PFAC_IND_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function pfacIndFiltroActual() {
+  if (typeof window._pfacIndFiltro === 'undefined' || !window._pfacIndFiltro) {
+    const h = new Date();
+    window._pfacIndFiltro = { tipo:'mes', valor: `${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}` };
+  }
+  return window._pfacIndFiltro;
+}
+
+function pfacIndEnFiltro(fechaStr, filtro) {
+  filtro = filtro || pfacIndFiltroActual();
+  if (!fechaStr) return false;
+  if (filtro.tipo === 'mes') return fechaStr.startsWith(filtro.valor);
+  if (filtro.tipo === 'q') {
+    const [ano, q] = filtro.valor.split('-Q');
+    const mes = parseInt(fechaStr.slice(5,7));
+    return fechaStr.startsWith(ano) && Math.ceil(mes/3) === parseInt(q);
+  }
+  if (filtro.tipo === 'ano') return fechaStr.startsWith(filtro.valor);
+  return false;
+}
+
+/* Etiquetas y sufijo de archivo del período seleccionado */
+function pfacIndPeriodo(filtro) {
+  filtro = filtro || pfacIndFiltroActual();
+  if (filtro.tipo === 'mes') {
+    const [a, m] = filtro.valor.split('-');
+    const nom = PFAC_IND_MESES[parseInt(m)-1] || filtro.valor;
+    return { label:`${nom} de ${a}`, unidad:'mes', archivo:`${a}_${m}` };
+  }
+  if (filtro.tipo === 'q') {
+    const [a, q] = filtro.valor.split('-Q');
+    return { label:`Trimestre ${q} de ${a}`, unidad:'período', archivo:`${a}_Q${q}` };
+  }
+  return { label:`Año ${filtro.valor}`, unidad:'período', archivo:`${filtro.valor}_anual` };
+}
+
 function pfac_renderIndicadores() {
   const hoy        = new Date();
   const anoActual  = hoy.getFullYear();
@@ -10856,20 +10906,8 @@ function pfac_renderIndicadores() {
   const METAS_2026 = [90.0,95.0,115.0,146.2,191.8,184.7,205.0,258.6,208.7,240.6,215.5,263.2].map(v=>v*1e6);
   const REAL_2026  = [86.5,126.4,119.6,180.1,129.8,null,null,null,null,null,null,null].map(v=>v?v*1e6:null);
 
-  if (typeof window._pfacIndFiltro === 'undefined') window._pfacIndFiltro = { tipo:'mes', valor: `${anoActual}-${String(hoy.getMonth()+1).padStart(2,'0')}` };
-  const filtro = window._pfacIndFiltro;
-
-  const enFiltro = (fechaStr) => {
-    if (!fechaStr) return false;
-    if (filtro.tipo === 'mes') return fechaStr.startsWith(filtro.valor);
-    if (filtro.tipo === 'q') {
-      const [ano, q] = filtro.valor.split('-Q');
-      const mes = parseInt(fechaStr.slice(5,7));
-      return fechaStr.startsWith(ano) && Math.ceil(mes/3) === parseInt(q);
-    }
-    if (filtro.tipo === 'ano') return fechaStr.startsWith(filtro.valor);
-    return false;
-  };
+  const filtro   = pfacIndFiltroActual();
+  const enFiltro = (fechaStr) => pfacIndEnFiltro(fechaStr, filtro);
 
   const delPeriodo  = pfac_ordenes.filter(o => enFiltro(o.fecha_factura));
   const facturadas  = delPeriodo.filter(o => o.estado === 'Facturada');
