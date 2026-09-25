@@ -8187,11 +8187,38 @@ async function confirmarEnvio() {
       .eq('consecutivo', solicitud.consecutivo);
     if (updErr) throw updErr;
 
-    // 2. Borrar órdenes anteriores (por si se reenvía o edita)
-    await sb.from('ordenes_programadas').delete().eq('solicitud_id', solicitud.consecutivo);
+    // 2. Órdenes anteriores: conservar lo YA FACTURADO, rehacer el resto.
+    //
+    // Antes acá se borraban TODAS las órdenes, incluidas las Facturadas,
+    // y se volvían a crear como Pendiente. Reenviar una solicitud con
+    // facturas emitidas borraba su historia (número de factura) y dejaba
+    // esos meses listos para facturarse otra vez. Misma regla que ya usa
+    // la edición de solicitudes: una orden Facturada no se toca.
+    const { data: ordenesPrevias, error: ordLeeErr } = await sb
+      .from('ordenes_programadas')
+      .select('id, fecha_factura, estado')
+      .eq('solicitud_id', solicitud.consecutivo);
+    if (ordLeeErr) throw ordLeeErr;
 
-    // 3. Generar y persistir órdenes programadas
-    const nuevasOrdenes = OrdenesProgramadasService.generarOrdenes(solicitud);
+    const yaFacturadas     = (ordenesPrevias || []).filter(o => o.estado === 'Facturada');
+    const fechasFacturadas = new Set(yaFacturadas.map(o => String(o.fecha_factura).slice(0,10)));
+    const idsFacturados    = new Set(yaFacturadas.map(o => o.id));
+
+    const { error: delOrdErr } = await sb
+      .from('ordenes_programadas')
+      .delete()
+      .eq('solicitud_id', solicitud.consecutivo)
+      .neq('estado', 'Facturada');
+    if (delOrdErr) throw delOrdErr;
+
+    // Quitar de memoria local las órdenes borradas de esta solicitud
+    ordenesProgramadas = ordenesProgramadas.filter(o =>
+      o.solicitud_id !== solicitud.consecutivo || idsFacturados.has(o.id));
+
+    // 3. Generar y persistir órdenes programadas (saltando meses ya facturados)
+    const nuevasOrdenes = OrdenesProgramadasService.generarOrdenes(solicitud)
+      .filter(o => !fechasFacturadas.has(String(o.fecha_factura).slice(0,10)))
+      .filter(o => !idsFacturados.has(o.id));
 
     if (nuevasOrdenes.length > 0) {
       const ordenesRows = nuevasOrdenes.map(o => ({
@@ -8230,9 +8257,11 @@ async function confirmarEnvio() {
       solicitudes[idx].updated_at = solicitud.updated_at;
     }
 
-    const resumenOrdenes = nuevasOrdenes.length > 0
+    const resumenOrdenes = (nuevasOrdenes.length > 0
       ? ` Se programaron ${nuevasOrdenes.length} orden(es) de facturación recurrente.`
-      : '';
+      : '') + (yaFacturadas.length > 0
+      ? ` Se conservaron ${yaFacturadas.length} orden(es) ya facturada(s).`
+      : '');
 
     const result = await FacturacionService.enviarSolicitud(solicitud, detalle);
     if (result.ok) {
