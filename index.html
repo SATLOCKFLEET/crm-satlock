@@ -7164,8 +7164,20 @@ const OrdenesProgramadasService = {
       // Por instrucción comercial: cantidad = cantidad común del grupo (todos deben
       // coincidir; si difieren se toma el máximo), valor_unitario = suma de valores
       // unitarios de un kit, de modo que total = cantidad * valor_unit_kit
-      const cantidadGrupo = Math.max(...itemsComodato.map(i => i.cantidad || 1));
-      const valorUnitKit  = itemsComodato.reduce((a, i) => a + (i.valor_unitario || 0), 0);
+      // CORRECCIÓN (sol. 000291, sep-2026): antes se tomaba la cantidad MÁXIMA
+      // del grupo × la suma de valores unitarios. Si los ítems no tienen la misma
+      // cantidad (ej. 7 dash cam + 14 SD) eso infla el valor. Ahora el total del
+      // concepto 579 es SIEMPRE la suma real de (cantidad × valor_unitario).
+      //  - Cantidades iguales → se conserva la forma "kit": N × suma de unitarios.
+      //  - Cantidades distintas → 1 × total real del comodato.
+      const cantidadesComodato = itemsComodato.map(i => Number(i.cantidad) || 1);
+      const totalComodato      = itemsComodato.reduce(
+        (a, i) => a + (Number(i.cantidad) || 1) * (Number(i.valor_unitario) || 0), 0);
+      const cantidadesIguales  = new Set(cantidadesComodato).size === 1;
+      const cantidadGrupo = cantidadesIguales ? cantidadesComodato[0] : 1;
+      const valorUnitKit  = cantidadesIguales
+        ? itemsComodato.reduce((a, i) => a + (Number(i.valor_unitario) || 0), 0)
+        : totalComodato;
       detalle.push({
         item:            '579',
         descripcion:     'AVL- SERVICIO RASTREO GPS EQU COMODATO',
