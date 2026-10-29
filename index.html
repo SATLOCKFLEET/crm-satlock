@@ -11108,6 +11108,20 @@ function pfac_renderIndicadores() {
   const pct            = delPeriodo.length > 0 ? Math.round(facturadas.length/delPeriodo.length*100) : 0;
   const barColor       = pct>=80?'#1B7A4A':pct>=50?'#E8A020':'#A32D2D';
 
+  // ── Facturado por moneda y TRM aplicada (período seleccionado) ──
+  const _valorOrig   = o => (parseFloat(o.total) || (o.cantidad * o.valor_unitario) || 0);
+  const _fUSD        = facturadas.filter(o => o.moneda === 'USD');
+  const _fCOP        = facturadas.filter(o => o.moneda !== 'USD');
+  const usdOriginal  = _fUSD.reduce((a,o) => a + _valorOrig(o), 0);
+  const usdEnCOP     = _fUSD.reduce((a,o) => a + pfacCOP(o, _valorOrig(o)), 0);
+  const copDirecto   = _fCOP.reduce((a,o) => a + _valorOrig(o), 0);
+  const usdSinTrm    = _fUSD.filter(o => !(Number(o.trm) > 0)).length;
+  const trmsUsadas   = [...new Set(_fUSD.map(o => Number(o.trm)).filter(t => t > 0))];
+  const fmt2 = n => n.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const trmTexto = trmsUsadas.length === 0 ? '—'
+    : trmsUsadas.length === 1 ? fmt2(trmsUsadas[0])
+    : `${fmt2(Math.min(...trmsUsadas))} – ${fmt2(Math.max(...trmsUsadas))}`;
+
   const meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
   // Meta del período
@@ -11276,6 +11290,25 @@ function pfac_renderIndicadores() {
         <div style="background:#EEF1F8;border-radius:20px;height:5px;margin-top:6px;overflow:hidden;">
           <div style="height:100%;width:${Math.min(pct,100)}%;background:${barColor};border-radius:20px;"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- Facturación por moneda y TRM aplicada -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+      <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid #0F6E56;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Facturado en USD</div>
+        <div style="font-size:17px;font-weight:700;color:#0F6E56;">${formatMoneda(usdOriginal,'USD')}</div>
+        <div style="font-size:10px;color:#9AAABF;margin-top:3px;">${_fUSD.length} cuota(s) · equivale a ${formatCOP(usdEnCOP)}</div>
+      </div>
+      <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid #19428C;border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">Facturado en COP</div>
+        <div style="font-size:17px;font-weight:700;color:#19428C;">${formatCOP(copDirecto)}</div>
+        <div style="font-size:10px;color:#9AAABF;margin-top:3px;">${_fCOP.length} cuota(s) · sin conversión</div>
+      </div>
+      <div style="background:white;border:1px solid #DDE3EE;border-top:3px solid ${usdSinTrm?'#A32D2D':'#534AB7'};border-radius:10px;padding:14px 16px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">TRM aplicada (COP por USD)</div>
+        <div style="font-size:17px;font-weight:700;color:#534AB7;">${trmTexto}</div>
+        <div style="font-size:10px;color:${usdSinTrm?'#A32D2D':'#9AAABF'};margin-top:3px;">${usdSinTrm ? usdSinTrm+' cuota(s) USD sin TRM: no suman en COP' : (trmsUsadas.length>1 ? 'Varias TRM en el período' : 'TRM de las solicitudes USD')}</div>
       </div>
     </div>
 
