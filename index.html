@@ -8480,6 +8480,7 @@ async function crearTrasladoYNotificar(solicitud, ccEjecutivo, opciones = {}) {
       cantidad:       i.cantidad,
       valor_unitario: i.valor_unitario,
       subtotal:       i.cantidad * i.valor_unitario,
+      moneda:         solicitud.moneda || 'COP',
       plazo_comodato: i.plazo_comodato || null,
       fecha_inicio:   solicitud.fecha_primera_factura || null,
     }));
@@ -9330,10 +9331,10 @@ function exportarPDF() {
       i.modalidad === 'Recurrente' ? (i.frecuencia_recurrencia || 'Mensual') : '—',
       i.modalidad === 'Comodato' ? `${i.plazo_comodato} m.` : '—',
       i.cantidad,
-      formatCOP(i.valor_unitario),
-      formatCOP(i.total),
+      formatMoneda(i.valor_unitario, s.moneda),
+      formatMoneda(i.total, s.moneda),
     ]),
-    foot: [['', '', '', '', '', '', 'TOTAL GENERAL', formatCOP(totalGeneral)]],
+    foot: [['', '', '', '', '', '', 'TOTAL GENERAL', formatMoneda(totalGeneral, s.moneda)]],
     headStyles: { fillColor: [25, 66, 140], textColor: 255, fontSize: 7.5, fontStyle: 'bold' },
     footStyles: { fillColor: [232, 238, 248], textColor: [25, 66, 140], fontStyle: 'bold', fontSize: 8.5 },
     bodyStyles: { fontSize: 7.5, textColor: [30, 37, 64] },
@@ -10144,8 +10145,13 @@ function reqsCompletos() {
 /* Login del portal manejado por Supabase Auth del CRM */
 
 /* ── Variables globales del portal ── */
+// Fecha local (Colombia), no UTC: toISOString() adelanta el día después de las 7 p. m.
+function pfacFechaLocal(d) {
+  d = d || new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
 const pfac_hoy  = new Date();
-const pfac_hoyISO = pfac_hoy.toISOString().slice(0, 10);
+const pfac_hoyISO = pfacFechaLocal(pfac_hoy);
 let pfac_calYear  = pfac_hoy.getFullYear();
 let pfac_calMonth = pfac_hoy.getMonth();
 let pfac_fechaSeleccionada = pfac_hoyISO;
@@ -10777,17 +10783,18 @@ function pfac_exportarExcel(id) {
     ['Cuota:',          `${o.cuota_num}${o.cuotas_total&&o.modalidad!=='Recurrente'?'/'+o.cuotas_total:''}`],
     ['Modalidad:',      o.modalidad + (o.frecuencia_recurrencia?' · '+o.frecuencia_recurrencia:'')],
     ['Ejecutivo:',      o.ejecutivo],
+    ['Moneda:',         o.moneda || 'COP'],
     ['Observaciones:',  o.observaciones || '—'],
     ...(reqs.length ? [[], ['⚠ REQUERIMIENTOS ESPECIALES:'], ...reqs.map(r => ['', r])] : []),
     [],
-    ['Ítem', 'Descripción', 'Modalidad', 'Frecuencia', 'Cantidad', 'Valor Unitario', 'Subtotal']
+    ['Ítem', 'Descripción', 'Modalidad', 'Frecuencia', 'Cantidad', `Valor Unitario (${o.moneda || 'COP'})`, `Subtotal (${o.moneda || 'COP'})`]
   ];
 
   const filas = items.map(i => [
     i.item, i.descripcion, i.modalidad, i.frecuencia || '—',
     i.cantidad, i.valor_unitario, i.subtotal
   ]);
-  const total = [['', '', '', '', '', 'TOTAL', items.reduce((a,i) => a + i.subtotal, 0)]];
+  const total = [['', '', '', '', '', `TOTAL ${o.moneda || 'COP'}`, items.reduce((a,i) => a + i.subtotal, 0)]];
 
   const ws = XLSX.utils.aoa_to_sheet([...header, ...filas, [], ...total]);
   ws['!cols'] = [{wch:10},{wch:45},{wch:12},{wch:12},{wch:8},{wch:16},{wch:16}];
@@ -11524,7 +11531,7 @@ function pfac_cerrarModalIPC() {
 async function pfac_confirmarIPC() {
   pfac_cerrarModalIPC();
   const ipc = pfac_ipcPendiente;
-  const hoyISO = new Date().toISOString().slice(0, 10);
+  const hoyISO = pfacFechaLocal();
   const afectadas = pfac_ordenes.filter(o => o.estado === 'Pendiente' && o.moneda !== 'USD' && o.fecha_factura > hoyISO);
 
   if (afectadas.length === 0) {
@@ -11817,7 +11824,7 @@ async function pfac_inicializarPortal(){
 
     // Renderizar después de tener los datos — el semáforo necesita pfac_ordenes cargado
     pfac_renderCalendario();
-    const hoyStr = new Date().toISOString().slice(0,10);
+    const hoyStr = pfacFechaLocal();
     pfac_seleccionarFecha(hoyStr);
     pfac_actualizarMetricas();
 
@@ -11825,7 +11832,7 @@ async function pfac_inicializarPortal(){
     console.error('Error cargando órdenes programadas:', e);
     pfac_ordenes = [];
     pfac_renderCalendario();
-    pfac_seleccionarFecha(new Date().toISOString().slice(0,10));
+    pfac_seleccionarFecha(pfacFechaLocal());
   }
 }
 
@@ -13040,8 +13047,8 @@ function abrirModalTrasDetalle(id){
       <td style="padding:6px 10px;text-align:right;">${i.cantidad}</td>
       <td style="padding:6px 10px;text-align:center;font-weight:600;color:#534AB7;">${i.plazo_comodato ? i.plazo_comodato+' m.' : '—'}</td>
       <td style="padding:6px 10px;text-align:center;color:#6B7A99;">${i.fecha_inicio || '—'}</td>
-      <td style="padding:6px 10px;text-align:right;">${formatCOP(i.valor_unitario)}</td>
-      <td style="padding:6px 10px;text-align:right;font-weight:600;">${formatCOP(i.subtotal)}</td>
+      <td style="padding:6px 10px;text-align:right;">${formatMoneda(i.valor_unitario, i.moneda || 'COP')}</td>
+      <td style="padding:6px 10px;text-align:right;font-weight:600;">${formatMoneda(i.subtotal, i.moneda || 'COP')}</td>
     </tr>`).join('');
 
   const gestionWrap    = document.getElementById('tras-det-gestion-wrap');
@@ -13206,8 +13213,8 @@ async function trasExportarPDF(id){
   doc.autoTable({
     startY: y,
     head: [['Ítem', 'Descripción', 'Cant.', 'V. Unit.', 'Subtotal']],
-    body: items.map(i => [i.item, i.descripcion, i.cantidad, formatCOP(i.valor_unitario), formatCOP(i.subtotal)]),
-    foot: [['', '', '', 'TOTAL', formatCOP(items.reduce((a,i) => a + i.subtotal, 0))]],
+    body: items.map(i => [i.item, i.descripcion, i.cantidad, formatMoneda(i.valor_unitario, i.moneda || 'COP'), formatMoneda(i.subtotal, i.moneda || 'COP')]),
+    foot: [['', '', '', 'TOTAL', formatMoneda(items.reduce((a,i) => a + i.subtotal, 0), (items[0] && items[0].moneda) || 'COP')]],
     headStyles: { fillColor: [25, 66, 140], fontSize: 9 },
     footStyles: { fillColor: [232, 238, 248], textColor: [25, 66, 140], fontStyle: 'bold' },
     bodyStyles: { fontSize: 9 },
