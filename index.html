@@ -7722,6 +7722,15 @@ function validarFormulario() {
     ok = false;
   }
 
+  const monedaSel = document.getElementById('facMoneda')?.value;
+  if (!monedaSel) {
+    setFieldError('facMoneda', 'Seleccione la moneda de la orden.');
+    ok = false;
+  } else if (monedaSel === 'USD' && !(parseFloat(document.getElementById('facTrm')?.value) > 0)) {
+    setFieldError('facTrm', 'Indique la TRM para órdenes en USD.');
+    ok = false;
+  }
+
   const ejComercial = document.getElementById('ejecutivo_comercial')?.value;
   if (!ejComercial) {
     setFieldError('ejecutivo_comercial', 'Seleccione el ejecutivo dueño del negocio.');
@@ -7923,6 +7932,8 @@ async function guardarSolicitud() {
           dia_corte:             solicitud.dia_corte || null,
           ejecutivo_comercial:   solicitud.ejecutivo_comercial || null,
           cuota_inicial:         solicitud.cuota_inicial || 1,
+          moneda:                solicitud.moneda,
+          trm:                   solicitud.trm || null,
           total_general:         solicitud.total_general,
           estado:                'Pendiente',
         })
@@ -7951,6 +7962,7 @@ async function guardarSolicitud() {
           plazo_comodato:         d.plazo_comodato || null,
           cantidad:               d.cantidad,
           valor_unitario:         d.valor_unitario,
+          moneda:                 solicitud.moneda,
         }));
         const { error: detErr } = await sb.from('solicitudes_facturacion_detalle').insert(detalleRows);
         if (detErr) throw detErr;
@@ -7983,6 +7995,7 @@ async function guardarSolicitud() {
           ipc_aplicado:           o.ipc_aplicado || 0,
           estado:                 'Pendiente',
           items_detalle:          o.items_detalle || null,
+          moneda:                 solicitud.moneda,
           // 'total' es GENERATED ALWAYS AS en Supabase — NO incluir
         }));
         const { error: insOrdErr } = await sb.from('ordenes_programadas').insert(filasOrd);
@@ -8032,6 +8045,8 @@ async function guardarSolicitud() {
           ejecutivo_comercial:   solicitud.ejecutivo_comercial || null,
           cuota_inicial:         solicitud.cuota_inicial || 1,
           contacto:              solicitud.contacto || null,
+          moneda:                solicitud.moneda,
+          trm:                   solicitud.trm || null,
           telefono:              solicitud.telefono || null,
           email_facturacion:     solicitud.email_facturacion || null,
           ciudad:                solicitud.ciudad || null,
@@ -8068,6 +8083,7 @@ async function guardarSolicitud() {
           plazo_comodato:         d.plazo_comodato || null,
           cantidad:               d.cantidad,
           valor_unitario:         d.valor_unitario,
+          moneda:                 solicitud.moneda,
         }));
         const { error: detErr } = await sb.from('solicitudes_facturacion_detalle').insert(detalleRows);
         if (detErr) throw detErr;
@@ -8106,6 +8122,15 @@ function limpiarSoloFormulario() {
   window._facReqValores = {};
   renderToggleReqs();
   document.getElementById('ipcAnual').value = '';
+  const elMonR = document.getElementById('facMoneda');
+  if (elMonR) elMonR.value = '';
+  const elTrmR = document.getElementById('facTrm');
+  if (elTrmR) elTrmR.value = '';
+  _facTrmManual = false;
+  const grpR = document.getElementById('fac-trm-group');
+  if (grpR) grpR.style.display = 'none';
+  const infoR = document.getElementById('facTrmInfo');
+  if (infoR) infoR.textContent = '';
   const elFPF = document.getElementById('fechaPrimeraFactura');
   const elDC  = document.getElementById('diaCorte');
   if (elFPF) elFPF.value = '';
@@ -8117,6 +8142,37 @@ function limpiarSoloFormulario() {
   renderBilling();
   ['empresa','nit'].forEach(f => clearFieldError(f));
   document.getElementById('err-productos').style.display = 'none';
+}
+
+let _facTrmManual = false;
+async function facConsultarTrm(forzar) {
+  const info = document.getElementById('facTrmInfo');
+  const input = document.getElementById('facTrm');
+  if (!input) return;
+  if (!forzar && (_facTrmManual || input.value)) return;
+  if (info) info.textContent = 'Consultando TRM...';
+  try {
+    const r = await fetch('https://open.er-api.com/v6/latest/USD');
+    const d = await r.json();
+    const cop = d && d.rates ? d.rates.COP : null;
+    if (!cop) throw new Error('sin tasa');
+    input.value = Math.round(cop * 100) / 100;
+    _facTrmManual = false;
+    const fecha = d.time_last_update_utc ? new Date(d.time_last_update_utc).toLocaleDateString('es-CO') : '';
+    if (info) info.textContent = 'TRM consultada' + (fecha ? ' (' + fecha + ')' : '') + ' · puede editarla';
+  } catch (e) {
+    if (info) info.textContent = 'No se pudo consultar la TRM. Digítela manualmente.';
+  }
+}
+function facTrmManual() {
+  _facTrmManual = true;
+  const info = document.getElementById('facTrmInfo');
+  if (info) info.textContent = 'TRM digitada manualmente';
+}
+function facMonedaCambio(m) {
+  const g = document.getElementById('fac-trm-group');
+  if (g) g.style.display = m === 'USD' ? 'block' : 'none';
+  if (m === 'USD') facConsultarTrm(false);
 }
 
 function buildSolicitud(estado) {
@@ -8141,6 +8197,8 @@ function buildSolicitud(estado) {
     telefono:               document.getElementById('fac-telefono')?.value.trim() || null,
     email_facturacion:      document.getElementById('fac-email')?.value.trim() || null,
     ciudad:                 document.getElementById('fac-ciudad')?.value.trim() || null,
+    moneda:                 document.getElementById('facMoneda')?.value || null,
+    trm:                    (document.getElementById('facMoneda')?.value === 'USD') ? (parseFloat(document.getElementById('facTrm')?.value) || null) : null,
     req_orden_compra:       getReqToggle('oc') === true,
     req_prefactura:         getReqToggle('prefactura') === true,
     req_aprobacion:         getReqToggle('aprobacion') === true,
@@ -8266,6 +8324,7 @@ async function confirmarEnvio() {
         ipc_aplicado:           o.ipc_aplicado || 0,
         estado:                 'Pendiente',
         items_detalle:          o.items_detalle || null,
+        moneda:                 solicitud.moneda,
         // 'total' es GENERATED ALWAYS AS en Supabase — NO incluir en el insert
       }));
 
@@ -8879,6 +8938,10 @@ async function editarDesdeModal() {
 
   const elIPC = document.getElementById('ipcAnual');
   if (elIPC) elIPC.value = s.ipc_anual || '';
+  const elTrm = document.getElementById('facTrm');
+  if (elTrm) { elTrm.value = s.trm || ''; _facTrmManual = !!s.trm; }
+  const elMon = document.getElementById('facMoneda');
+  if (elMon) { elMon.value = s.moneda || 'COP'; facMonedaCambio(elMon.value); }
   const elFecha = document.getElementById('fechaPrimeraFactura');
   if (elFecha) elFecha.value = s.fecha_primera_factura || '';
   const elCorte = document.getElementById('diaCorte');
@@ -9396,7 +9459,7 @@ async function cargarDatosDemoHistorial() {
         observaciones, ipc_anual, total_general, estado, linea,
         updated_at, usuario_id,
         fecha_primera_factura, dia_corte, ejecutivo_comercial, cuota_inicial,
-        contacto, telefono, email_facturacion, ciudad,
+        contacto, telefono, email_facturacion, ciudad, moneda, trm,
         req_orden_compra, req_prefactura, req_aprobacion, req_ensamble,
         solicitudes_facturacion_detalle (
           item, descripcion, tipo_inventario, tipo_item,
@@ -9422,6 +9485,8 @@ async function cargarDatosDemoHistorial() {
       link_docs:             s.link_docs || '',
       observaciones:         s.observaciones || '',
       ipc_anual:             s.ipc_anual || 0,
+      moneda:                s.moneda || 'COP',
+      trm:                   s.trm || null,
       fecha_primera_factura: s.fecha_primera_factura || null,
       dia_corte:             s.dia_corte || null,
       cuota_inicial:         s.cuota_inicial || 1,
@@ -9829,6 +9894,24 @@ function inicializarModuloFacturacion(){
           <span class="error-msg" id="err-requerimientos">Debe indicar Sí o No en cada requerimiento.</span>
         </div>
         <div class="form-group">
+          <label>Moneda de la orden <span class="req">*</span></label>
+          <select id="facMoneda" onchange="facMonedaCambio(this.value)">
+            <option value="" disabled selected>— Seleccione la moneda —</option>
+            <option value="COP">COP — Pesos colombianos</option>
+            <option value="USD">USD — Dólares</option>
+          </select>
+          <span class="error-msg" id="err-facMoneda">Seleccione la moneda de la orden.</span>
+        </div>
+        <div class="form-group" id="fac-trm-group" style="display:none;">
+          <label>TRM aplicada (COP por 1 USD) <span class="req">*</span></label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="number" id="facTrm" min="1" step="0.01" placeholder="Ej: 4200" oninput="facTrmManual()" style="flex:1;">
+            <button type="button" onclick="facConsultarTrm(true)" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);font-size:12px;cursor:pointer;white-space:nowrap;">Actualizar TRM</button>
+          </div>
+          <span id="facTrmInfo" style="font-size:11px;color:var(--text3);margin-top:3px;"></span>
+          <span class="error-msg" id="err-facTrm">Indique la TRM para órdenes en USD.</span>
+        </div>
+        <div class="form-group">
           <label>IPC anual aplicable <span style="font-weight:400;color:var(--text3)">(%) — opcional</span></label>
           <div style="position:relative;">
             <input type="number" id="ipcAnual" min="0" max="50" step="0.1" placeholder="Ej: 9.5" style="padding-right:32px;">
@@ -10158,8 +10241,21 @@ function pfac_seleccionarFecha(iso) {
 /* ═══════════════════════════════════════════════════════
    ÓRDENES DEL DÍA
    ═══════════════════════════════════════════════════════ */
-function formatCOP(v) {
-  return '$ ' + Math.round(v).toLocaleString('es-CO');
+// Conversión a COP para indicadores: USD se multiplica por la TRM guardada en la solicitud
+function pfacCOP(o, valor) {
+  const v = Number(valor) || 0;
+  if (o && o.moneda === 'USD') {
+    if (!o.trm) console.warn('pfac: orden USD sin TRM', o.solicitud_id);
+    return v * (Number(o.trm) || 0);
+  }
+  return v;
+}
+// Muestra un valor en su moneda original (no convierte)
+function formatMoneda(valor, moneda) {
+  if (moneda === 'USD') {
+    return 'US$ ' + (Math.round((Number(valor) || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return formatCOP(valor);
 }
 
 function pfac_renderOrdenesDia(iso) {
@@ -10276,8 +10372,8 @@ function pfac_renderOrdenesDia(iso) {
               </span>
             </td>
             <td style="padding:5px 8px;text-align:right;font-size:12px;">${i.cantidad}</td>
-            <td style="padding:5px 8px;text-align:right;font-size:12px;">${formatCOP(i.valor_unitario)}</td>
-            <td style="padding:5px 8px;text-align:right;font-size:12px;font-weight:700;color:#19428C;">${formatCOP(subtotal)}</td>
+            <td style="padding:5px 8px;text-align:right;font-size:12px;">${formatMoneda(i.valor_unitario, o.moneda)}</td>
+            <td style="padding:5px 8px;text-align:right;font-size:12px;font-weight:700;color:#19428C;">${formatMoneda(subtotal, o.moneda)}</td>
           </tr>`;
         }).join('');
         tablaDetalle = `
@@ -10362,7 +10458,7 @@ function pfac_renderOrdenesDia(iso) {
             </div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:20px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatCOP(o.total || (o.cantidad * o.valor_unitario))}</div>
+            <div style="font-size:20px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatMoneda(o.total || (o.cantidad * o.valor_unitario), o.moneda)}</div>
             <div style="font-size:11px;color:#9AAABF;margin-top:2px;">Total orden</div>
           </div>
         </div>
@@ -10485,7 +10581,7 @@ function pfac_buscarOrdenes(query) {
               </div>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:18px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatCOP(o.total || (o.cantidad * o.valor_unitario))}</div>
+              <div style="font-size:18px;font-weight:700;color:#19428C;font-variant-numeric:tabular-nums;white-space:nowrap;">${formatMoneda(o.total || (o.cantidad * o.valor_unitario), o.moneda)}</div>
             </div>
           </div>
         </div>`;
@@ -10526,16 +10622,16 @@ function pfac_exportarIndicadoresExcel() {
   const wb = XLSX.utils.book_new();
 
   // ── Hoja 1: Resumen del mes ───────────────────────────────────────────────
-  const totalFac  = facturadas.reduce((a, o) => a + o.valor_unitario, 0);
-  const totalPend = pendientes.reduce((a, o) => a + o.valor_unitario, 0);
+  const totalFac  = facturadas.reduce((a, o) => a + pfacCOP(o, o.valor_unitario), 0);
+  const totalPend = pendientes.reduce((a, o) => a + pfacCOP(o, o.valor_unitario), 0);
   const pct       = delMes.length > 0 ? Math.round(facturadas.length / delMes.length * 100) : 0;
 
   // Por ejecutivo
   const porEj = {};
   delMes.forEach(o => {
     if (!porEj[o.ejecutivo]) porEj[o.ejecutivo] = { fac:0, pend:0, valFac:0, valPend:0 };
-    if (o.estado==='Facturada') { porEj[o.ejecutivo].fac++;  porEj[o.ejecutivo].valFac  += o.valor_unitario; }
-    if (o.estado==='Pendiente') { porEj[o.ejecutivo].pend++; porEj[o.ejecutivo].valPend += o.valor_unitario; }
+    if (o.estado==='Facturada') { porEj[o.ejecutivo].fac++;  porEj[o.ejecutivo].valFac  += pfacCOP(o, o.valor_unitario); }
+    if (o.estado==='Pendiente') { porEj[o.ejecutivo].pend++; porEj[o.ejecutivo].valPend += pfacCOP(o, o.valor_unitario); }
   });
 
   // Por facturadora
@@ -10544,7 +10640,7 @@ function pfac_exportarIndicadoresExcel() {
     const q = o.facturada_por || 'Sin registrar';
     if (!porFac[q]) porFac[q] = { count:0, valor:0, clientes: new Set() };
     porFac[q].count++;
-    porFac[q].valor += o.valor_unitario;
+    porFac[q].valor += pfacCOP(o, o.valor_unitario);
     porFac[q].clientes.add(o.nit);
   });
 
@@ -10758,9 +10854,9 @@ async function pfac_exportarPDF(id) {
     body: items.map(i => [
       i.item, i.descripcion,
       i.modalidad + (i.frecuencia?' · '+i.frecuencia:''),
-      i.cantidad, formatCOP(i.valor_unitario), formatCOP(i.subtotal)
+      i.cantidad, formatMoneda(i.valor_unitario, o.moneda), formatMoneda(i.subtotal, o.moneda)
     ]),
-    foot: [['', '', '', '', 'TOTAL', formatCOP(items.reduce((a,i) => a + i.subtotal, 0))]],
+    foot: [['', '', '', '', 'TOTAL', formatMoneda(items.reduce((a,i) => a + i.subtotal, 0), o.moneda)]],
     headStyles: { fillColor: [25, 66, 140], fontSize: 9 },
     footStyles: { fillColor: [232, 238, 248], textColor: [25, 66, 140], fontStyle: 'bold' },
     bodyStyles: { fontSize: 9 },
@@ -10784,7 +10880,7 @@ function pfac_marcarFacturada(id) {
   document.getElementById('modal-factura-orden-info').innerHTML = `
     <strong>${o.empresa}</strong> — NIT ${o.nit}<br>
     Cuota ${o.cuota_num}${o.cuotas_total ? '/'+o.cuotas_total : ''}<br>
-    <span style="color:var(--text-hint)">Total: <strong>${formatCOP(o.total || o._totalOrden || (o.cantidad * o.valor_unitario))}</strong></span>
+    <span style="color:var(--text-hint)">Total: <strong>${formatMoneda(o.total || o._totalOrden || (o.cantidad * o.valor_unitario), o.moneda)}</strong></span>
   `;
   document.getElementById('modal-num-factura').classList.add('show');
   setTimeout(() => document.getElementById('input-num-factura').focus(), 80);
@@ -10987,7 +11083,7 @@ function pfac_renderIndicadores() {
     arr.forEach(o => {
       const k = (o.solicitud_id||o.empresa)+'|'+o.cuota_num;
       if (!m[k]) m[k] = { ...o, _total: 0 };
-      m[k]._total += parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+      m[k]._total += pfacCOP(o, parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0);
     });
     return Object.values(m);
   };
@@ -11042,11 +11138,11 @@ function pfac_renderIndicadores() {
     if (detalle && detalle.length > 0) {
       // Usar ítems reales del detalle, proporcionalmente al total de la orden
       detalle.forEach(i => {
-        _agregarProducto(i.item, i.descripcion, parseFloat(i.subtotal)||0);
+        _agregarProducto(i.item, i.descripcion, pfacCOP(o, parseFloat(i.subtotal)||0));
       });
     } else if (!o.item?.startsWith('FAC-')) {
       // Fila directa (formato Nalsani antiguo ya corregido, por si acaso)
-      _agregarProducto(o.item, o.descripcion||o.item, parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0);
+      _agregarProducto(o.item, o.descripcion||o.item, pfacCOP(o, parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0));
     }
   });
   const top10Prod = Object.values(porProducto).sort((a,b)=>b.val-a.val).slice(0,10);
@@ -11057,7 +11153,7 @@ function pfac_renderIndicadores() {
   [...facturadas,...pendientes].forEach(o => {
     const k=o.nit||o.empresa;
     if (!porCliente[k]) porCliente[k]={empresa:o.empresa,nit:o.nit,fac:0,pend:0};
-    const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+    const v=pfacCOP(o, parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0);
     if(o.estado==='Facturada') porCliente[k].fac+=v; else porCliente[k].pend+=v;
   });
   const top10Cli = Object.values(porCliente).sort((a,b)=>(b.fac+b.pend)-(a.fac+a.pend)).slice(0,10);
@@ -11070,13 +11166,13 @@ function pfac_renderIndicadores() {
       : null;
     if (detalle && detalle.length > 0) {
       detalle.forEach(i => {
-        const v = parseFloat(i.subtotal)||0;
+        const v = pfacCOP(o, parseFloat(i.subtotal)||0);
         if(i.item==='579'||i.modalidad==='Comodato') distModal['Comodato']+=v;
         else if(i.modalidad==='Recurrente') distModal['Recurrente']+=v;
         else distModal['Venta Única']+=v;
       });
     } else {
-      const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+      const v=pfacCOP(o, parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0);
       if(o.item==='579'||o.modalidad==='Comodato') distModal['Comodato']+=v;
       else if(o.modalidad==='Recurrente') distModal['Recurrente']+=v;
       else distModal['Venta Única']+=v;
@@ -11099,7 +11195,7 @@ function pfac_renderIndicadores() {
   const porEjecutivo={};
   delPeriodo.forEach(o=>{
     if(!porEjecutivo[o.ejecutivo]) porEjecutivo[o.ejecutivo]={fac:0,pend:0,valFac:0,valPend:0};
-    const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+    const v=pfacCOP(o, parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0);
     if(o.estado==='Facturada'){porEjecutivo[o.ejecutivo].fac++;porEjecutivo[o.ejecutivo].valFac+=v;}
     if(o.estado==='Pendiente'){porEjecutivo[o.ejecutivo].pend++;porEjecutivo[o.ejecutivo].valPend+=v;}
   });
@@ -11110,7 +11206,7 @@ function pfac_renderIndicadores() {
     const quien=o.facturada_por||'Sin registrar';
     if(!porFaclurador[quien]) porFaclurador[quien]={count:0,valor:0,clientes:new Set()};
     porFaclurador[quien].count++;
-    porFaclurador[quien].valor+=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+    porFaclurador[quien].valor+=pfacCOP(o, parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0);
     porFaclurador[quien].clientes.add(o.nit);
   });
 
@@ -11333,7 +11429,7 @@ function pfac_renderIndicadores() {
                   detalle.forEach(i => {
                     const k = i.item==='579' ? 'Comodato' : (i.modalidad||'Sin definir');
                     if(!pm[k]) pm[k]={fac:0,pend:0,valFac:0,valPend:0};
-                    const v=parseFloat(i.subtotal)||0;
+                    const v=pfacCOP(o, parseFloat(i.subtotal)||0);
                     if(o.estado==='Facturada'){pm[k].valFac+=v;}
                     if(o.estado==='Pendiente'){pm[k].valPend+=v;}
                   });
@@ -11344,7 +11440,7 @@ function pfac_renderIndicadores() {
                 } else {
                   const k=o.modalidad||'Sin definir';
                   if(!pm[k]) pm[k]={fac:0,pend:0,valFac:0,valPend:0};
-                  const v=parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0;
+                  const v=pfacCOP(o, parseFloat(o.total)||(o.cantidad*o.valor_unitario)||0);
                   if(o.estado==='Facturada'){pm[k].fac++;pm[k].valFac+=v;}
                   if(o.estado==='Pendiente'){pm[k].pend++;pm[k].valPend+=v;}
                 }
@@ -11409,8 +11505,8 @@ function pfac_abrirModalIPC() {
     return;
   }
   pfac_ipcPendiente = val;
-  const afectadas = pfac_ordenes.filter(o => o.estado === 'Pendiente' && o.fecha_factura > pfac_hoyISO);
-  const totalAfectado = afectadas.reduce((a, o) => a + o.valor_unitario * o.cantidad, 0);
+  const afectadas = pfac_ordenes.filter(o => o.estado === 'Pendiente' && o.moneda !== 'USD' && o.fecha_factura > pfac_hoyISO);
+  const totalAfectado = afectadas.reduce((a, o) => a + pfacCOP(o, o.valor_unitario * o.cantidad), 0);
 
   document.getElementById('modal-ipc-summary').innerHTML = `
     <strong>IPC a aplicar:</strong> ${val}%<br>
@@ -11429,7 +11525,7 @@ async function pfac_confirmarIPC() {
   pfac_cerrarModalIPC();
   const ipc = pfac_ipcPendiente;
   const hoyISO = new Date().toISOString().slice(0, 10);
-  const afectadas = pfac_ordenes.filter(o => o.estado === 'Pendiente' && o.fecha_factura > hoyISO);
+  const afectadas = pfac_ordenes.filter(o => o.estado === 'Pendiente' && o.moneda !== 'USD' && o.fecha_factura > hoyISO);
 
   if (afectadas.length === 0) {
     pfac_toast('warning', 'No hay órdenes futuras pendientes para ajustar.');
@@ -11477,7 +11573,7 @@ function pfac_actualizarMetricas() {
   const pendientes = delMes.filter(o => o.estado === 'Pendiente').length;
   const mrr = pfac_ordenes
     .filter(o => o.estado === 'Pendiente' && o.fecha_factura.startsWith(mesStr))
-    .reduce((a, o) => a + o.valor_unitario * o.cantidad, 0);
+    .reduce((a, o) => a + pfacCOP(o, o.valor_unitario * o.cantidad), 0);
 
   document.getElementById('pfac-m-total-mes').textContent  = delMes.length;
   document.getElementById('pfac-m-facturadas').textContent = facturadas;
@@ -11658,7 +11754,7 @@ async function pfac_inicializarPortal(){
         .select(`
           *, items_detalle,
           solicitudes_facturacion!solicitud_id (
-            contacto, telefono, email_facturacion, ciudad, observaciones,
+            contacto, telefono, email_facturacion, ciudad, observaciones, trm,
             req_orden_compra, req_prefactura, req_aprobacion, req_ensamble
           )
         `)
@@ -11704,6 +11800,8 @@ async function pfac_inicializarPortal(){
       facturada_at:           o.facturada_at || null,
       facturada_por:          o.facturada_por || null,
       items_detalle:          o.items_detalle || null,
+      moneda:                 o.moneda || 'COP',
+      trm:                    sol.trm || null,
       // Datos de contacto y requerimientos desde solicitudes_facturacion
       contacto:               sol.contacto || null,
       telefono:               sol.telefono || null,
