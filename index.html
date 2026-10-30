@@ -11144,6 +11144,15 @@ function pfac_renderIndicadores() {
   // ── Datos históricos reales 2026 (Ene–May) ────────────────────────────────
   const METAS_2026 = [90.0,95.0,115.0,146.2,191.8,184.7,205.0,258.6,208.7,240.6,215.5,263.2].map(v=>v*1e6);
   const REAL_2026  = [86.5,126.4,119.6,180.1,129.8,null,null,null,null,null,null,null].map(v=>v?v*1e6:null);
+  // Real por mes: enero–mayo son cifras históricas fijas; desde junio, lo facturado en el CRM (COP, con USD convertido)
+  const realCRM2026 = METAS_2026.map((_, i) => {
+    const prefijo = `2026-${String(i+1).padStart(2,'0')}`;
+    const tot = pfac_ordenes
+      .filter(o => o.estado === 'Facturada' && (o.fecha_factura || '').startsWith(prefijo))
+      .reduce((a, o) => a + pfacCOP(o, (o.cantidad * o.valor_unitario) || 0), 0);
+    return tot > 0 ? tot : null;
+  });
+  const REAL_MES = REAL_2026.map((v, i) => (v != null ? v : realCRM2026[i]));
 
   const filtro   = pfacIndFiltroActual();
   const enFiltro = (fechaStr) => pfacIndEnFiltro(fechaStr, filtro);
@@ -11248,7 +11257,7 @@ function pfac_renderIndicadores() {
   let realPeriodo = null;
   if (filtro.tipo==='mes') {
     const mesIdx=parseInt(filtro.valor.slice(5,7))-1;
-    if (filtro.valor.startsWith('2026') && mesIdx<5) realPeriodo=REAL_2026[mesIdx];
+    if (filtro.valor.startsWith('2026') && mesIdx>=0 && mesIdx<12) realPeriodo=REAL_MES[mesIdx];
   }
   const pctMeta   = metaPeriodo>0 ? Math.round((realPeriodo||totalFacturado)/metaPeriodo*100) : null;
   const metaColor = pctMeta===null?'#9AAABF':pctMeta>=100?'#1B7A4A':pctMeta>=80?'#E8A020':'#A32D2D';
@@ -11470,7 +11479,7 @@ function pfac_renderIndicadores() {
       <div style="display:flex;gap:6px;align-items:flex-end;min-width:600px;height:120px;">
         ${meses.map((m,i)=>{
           const meta=METAS_2026[i];
-          const real=REAL_2026[i];
+          const real=REAL_MES[i];
           const pctBar=real?Math.round(real/meta*100):0;
           const col=pctBar>=100?'#1B7A4A':pctBar>=80?'#E8A020':'#A32D2D';
           const maxH=90;
