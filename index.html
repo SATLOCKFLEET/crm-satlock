@@ -11069,6 +11069,74 @@ function pfacIndPeriodo(filtro) {
   return { label:`Año ${filtro.valor}`, unidad:'período', archivo:`${filtro.valor}_anual` };
 }
 
+// Detalle de clientes nuevos de un mes: facturado y programado por cliente (COP)
+function pfacVerNuevosMes(mes) {
+  const primera = {};
+  pfac_ordenes.forEach(o => {
+    if (!o.nit || !o.fecha_factura) return;
+    const p = primera[o.nit];
+    if (!p || o.fecha_factura < p.fecha) primera[o.nit] = { fecha: o.fecha_factura, empresa: o.empresa };
+  });
+  const filas = Object.keys(primera)
+    .filter(n => primera[n].fecha.slice(0, 7) === mes)
+    .map(n => {
+      let fac = 0, prog = 0, cuotasFac = 0, cuotasProg = 0;
+      pfac_ordenes.forEach(o => {
+        if (o.nit !== n || !o.fecha_factura || o.fecha_factura.slice(0, 7) !== mes) return;
+        const v = (o.cantidad * o.valor_unitario) || 0;
+        if (o.estado === 'Facturada') { fac += pfacCOP(o, v); cuotasFac++; }
+        else if (o.estado === 'Pendiente') { prog += pfacCOP(o, v); cuotasProg++; }
+      });
+      return { empresa: primera[n].empresa, nit: n, fecha: primera[n].fecha, fac, prog, cuotasFac, cuotasProg };
+    })
+    .sort((a, b) => (b.fac + b.prog) - (a.fac + a.prog));
+
+  const [a, mm] = mes.split('-');
+  const nombres = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const totFac = filas.reduce((t, f) => t + f.fac, 0);
+  const totProg = filas.reduce((t, f) => t + f.prog, 0);
+
+  const prev = document.getElementById('pfac-modal-nuevos');
+  if (prev) prev.remove();
+  const ov = document.createElement('div');
+  ov.id = 'pfac-modal-nuevos';
+  ov.onclick = (e) => { if (e.target === ov) pfacCerrarNuevosMes(); };
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(13,27,62,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;';
+  ov.innerHTML = `
+    <div style="background:white;border-radius:12px;max-width:820px;width:100%;max-height:85vh;overflow:auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,0.25);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:14px;font-weight:700;color:#19428C;">Clientes nuevos · ${nombres[parseInt(mm)-1]} ${a}</div>
+        <button onclick="pfacCerrarNuevosMes()" style="border:none;background:none;font-size:20px;cursor:pointer;color:#9AAABF;">×</button>
+      </div>
+      <div style="font-size:11px;color:#9AAABF;margin-bottom:12px;">${filas.length} cliente(s) · Facturado ${formatCOP(totFac)} · Programado ${formatCOP(totProg)}</div>
+      ${filas.length === 0 ? '<div style="font-size:12px;color:#9AAABF;">Sin clientes nuevos en este mes.</div>' : `
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead><tr style="color:#9AAABF;font-size:10px;text-transform:uppercase;text-align:left;">
+          <th style="padding:6px 8px;">Cliente</th>
+          <th style="padding:6px 8px;">NIT</th>
+          <th style="padding:6px 8px;">Primera factura</th>
+          <th style="padding:6px 8px;text-align:right;">Facturado</th>
+          <th style="padding:6px 8px;text-align:right;">Programado</th>
+        </tr></thead>
+        <tbody>${filas.map(f => `
+          <tr style="border-top:1px solid #EEF1F7;">
+            <td style="padding:6px 8px;">${f.empresa}</td>
+            <td style="padding:6px 8px;color:#6B7A99;">${f.nit}</td>
+            <td style="padding:6px 8px;">${f.fecha}</td>
+            <td style="padding:6px 8px;text-align:right;color:#1B7A4A;font-weight:600;">${f.cuotasFac ? formatCOP(f.fac) + ' <span style="color:#9AAABF;font-weight:400;">(' + f.cuotasFac + ')</span>' : '—'}</td>
+            <td style="padding:6px 8px;text-align:right;color:#E8A020;font-weight:600;">${f.cuotasProg ? formatCOP(f.prog) + ' <span style="color:#9AAABF;font-weight:400;">(' + f.cuotasProg + ')</span>' : '—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div style="font-size:10px;color:#9AAABF;margin-top:10px;">Montos en COP. Las órdenes en USD se muestran convertidas con la TRM de su solicitud. Entre paréntesis, número de cuotas.</div>`}
+    </div>`;
+  document.body.appendChild(ov);
+}
+function pfacCerrarNuevosMes() {
+  const ov = document.getElementById('pfac-modal-nuevos');
+  if (ov) ov.remove();
+}
+
 function pfac_renderIndicadores() {
   const hoy        = new Date();
   const anoActual  = hoy.getFullYear();
@@ -11385,7 +11453,7 @@ function pfac_renderIndicadores() {
             const v = serieNuevos[m] || { total: 0, fac: 0, prog: 0 };
             const [a, mm] = m.split('-');
             const esFuturo = m > pfacHoyMes;
-            return `<div style="border:1px solid #DDE3EE;border-radius:8px;padding:8px;background:${enFiltro(m+'-01') ? '#F0F6FF' : 'white'};">
+            return `<div style="border:1px solid #DDE3EE;border-radius:8px;padding:8px;cursor:pointer;background:${enFiltro(m+'-01') ? '#F0F6FF' : 'white'};" onclick="pfacVerNuevosMes('${m}')" title="Ver clientes nuevos">
               <div style="font-size:10px;font-weight:700;color:#9AAABF;text-transform:uppercase;">${mesesCortos[parseInt(mm)-1]} ${a}</div>
               <div style="font-size:16px;font-weight:700;color:#19428C;">${v.total}</div>
               <div style="font-size:10px;color:#9AAABF;">${esFuturo ? v.prog + ' programados' : v.fac + ' facturados'}${!esFuturo && v.prog ? ' · ' + v.prog + ' prog.' : ''}</div>
