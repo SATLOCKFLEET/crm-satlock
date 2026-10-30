@@ -11122,6 +11122,47 @@ function pfac_renderIndicadores() {
     : trmsUsadas.length === 1 ? fmt2(trmsUsadas[0])
     : `${fmt2(Math.min(...trmsUsadas))} – ${fmt2(Math.max(...trmsUsadas))}`;
 
+  const pfacHoyMes = pfacFechaLocal().slice(0, 7);
+
+  // ── Clientes facturados en USD (período) ──
+  const usdPorNit = {};
+  _fUSD.forEach(o => {
+    const k = o.nit || o.empresa;
+    if (!usdPorNit[k]) usdPorNit[k] = { empresa: o.empresa, cuotas: 0, usd: 0, cop: 0 };
+    usdPorNit[k].cuotas += 1;
+    usdPorNit[k].usd    += _valorOrig(o);
+    usdPorNit[k].cop    += pfacCOP(o, _valorOrig(o));
+  });
+  const filasUsd = Object.values(usdPorNit).sort((a,b) => b.cop - a.cop);
+
+  // ── Clientes nuevos: NIT cuya primera cuota en el CRM cae en el mes ──
+  const primeraPorNit = {};
+  pfac_ordenes.forEach(o => {
+    const k = o.nit;
+    if (!k || !o.fecha_factura) return;
+    const p = primeraPorNit[k];
+    if (!p || o.fecha_factura < p.fecha) {
+      primeraPorNit[k] = { fecha: o.fecha_factura, empresa: o.empresa, facturada: o.estado === 'Facturada' };
+    } else if (o.fecha_factura === p.fecha && o.estado === 'Facturada') {
+      p.facturada = true;
+    }
+  });
+  const nuevosPeriodo = Object.values(primeraPorNit).filter(v => enFiltro(v.fecha));
+  const serieNuevos = {};
+  Object.values(primeraPorNit).forEach(v => {
+    const m = v.fecha.slice(0, 7);
+    if (!serieNuevos[m]) serieNuevos[m] = { total: 0, fac: 0, prog: 0 };
+    serieNuevos[m].total += 1;
+    if (v.facturada) serieNuevos[m].fac += 1; else serieNuevos[m].prog += 1;
+  });
+  const mesesCortos = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const mesesSerie = [];
+  for (let i = 0; i < 13; i++) {
+    const d = new Date(2026, 5 + i, 1);
+    mesesSerie.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  }
+  const nombresNuevos = nuevosPeriodo.map(v => v.empresa).slice(0, 8);
+
   const meses=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
   // Meta del período
@@ -11309,6 +11350,49 @@ function pfac_renderIndicadores() {
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#9AAABF;margin-bottom:6px;">TRM aplicada (COP por USD)</div>
         <div style="font-size:17px;font-weight:700;color:#534AB7;">${trmTexto}</div>
         <div style="font-size:10px;color:${usdSinTrm?'#A32D2D':'#9AAABF'};margin-top:3px;">${usdSinTrm ? usdSinTrm+' cuota(s) USD sin TRM: no suman en COP' : (trmsUsadas.length>1 ? 'Varias TRM en el período' : 'TRM de las solicitudes USD')}</div>
+      </div>
+    </div>
+
+    <!-- Clientes facturados en USD y clientes nuevos -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px;">
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;overflow-x:auto;">
+        <div style="font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">Clientes facturados en USD</div>
+        ${filasUsd.length === 0
+          ? '<div style="font-size:12px;color:#9AAABF;">Sin facturación en USD en el período.</div>'
+          : `<table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead><tr style="color:#9AAABF;font-size:10px;text-transform:uppercase;text-align:left;">
+                <th style="padding:6px 8px;">Cliente</th>
+                <th style="padding:6px 8px;text-align:right;">Cuotas</th>
+                <th style="padding:6px 8px;text-align:right;">USD</th>
+                <th style="padding:6px 8px;text-align:right;">Equiv. COP</th>
+              </tr></thead>
+              <tbody>${filasUsd.map(f => `
+                <tr style="border-top:1px solid #EEF1F7;">
+                  <td style="padding:6px 8px;">${f.empresa}</td>
+                  <td style="padding:6px 8px;text-align:right;">${f.cuotas}</td>
+                  <td style="padding:6px 8px;text-align:right;font-weight:600;color:#0F6E56;">${formatMoneda(f.usd, 'USD')}</td>
+                  <td style="padding:6px 8px;text-align:right;">${formatCOP(f.cop)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>`}
+      </div>
+      <div style="background:white;border:1px solid #DDE3EE;border-radius:10px;padding:16px;">
+        <div style="font-size:11px;font-weight:700;color:#19428C;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px;">Clientes nuevos</div>
+        <div style="font-size:24px;font-weight:700;color:#1B7A4A;">${nuevosPeriodo.length}</div>
+        <div style="font-size:11px;color:#9AAABF;margin-bottom:12px;">${nombresNuevos.length ? nombresNuevos.join(' · ') + (nuevosPeriodo.length > 8 ? ' …' : '') : 'Sin clientes nuevos en el período'}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;">
+          ${mesesSerie.map(m => {
+            const v = serieNuevos[m] || { total: 0, fac: 0, prog: 0 };
+            const [a, mm] = m.split('-');
+            const esFuturo = m > pfacHoyMes;
+            return `<div style="border:1px solid #DDE3EE;border-radius:8px;padding:8px;background:${enFiltro(m+'-01') ? '#F0F6FF' : 'white'};">
+              <div style="font-size:10px;font-weight:700;color:#9AAABF;text-transform:uppercase;">${mesesCortos[parseInt(mm)-1]} ${a}</div>
+              <div style="font-size:16px;font-weight:700;color:#19428C;">${v.total}</div>
+              <div style="font-size:10px;color:#9AAABF;">${esFuturo ? v.prog + ' programados' : v.fac + ' facturados'}${!esFuturo && v.prog ? ' · ' + v.prog + ' prog.' : ''}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="font-size:10px;color:#9AAABF;margin-top:10px;">Cliente nuevo = NIT cuya primera cuota en el CRM cae en ese mes. Los clientes cargados a mitad de contrato cuentan desde su primera cuota en el sistema.</div>
       </div>
     </div>
 
